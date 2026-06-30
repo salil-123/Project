@@ -1,0 +1,105 @@
+{
+  "root": {
+    "class": "root",
+    "name": "All land",
+    "parent": null,
+    "color": null,
+    "classifier": null,
+    "children": [
+      "greenery",
+      "water",
+      "built_up",
+      "barren"
+    ]
+  },
+  "greenery": {
+    "class": "greenery",
+    "name": "Greenery",
+    "parent": "root",
+    "color": "#2e8b2e",
+    "classifier": "greenery",
+    "children": [
+      "crops",
+      "trees",
+      "shrubs"
+    ]
+  },
+  "water": {
+    "class": "water",
+    "name": "Water",
+    "parent": "root",
+    "color": "#2b6cff",
+    "classifier": null,
+    "children": []
+  },
+  "built_up": {
+    "class": "built_up",
+    "name": "Built-up",
+    "parent": "root",
+    "color": "#d7301f",
+    "classifier": null,
+    "children": []
+  },
+  "barren": {
+    "class": "barren",
+    "name": "Barren",
+    "parent": "root",
+    "color": "#c2a05a",
+    "classifier": "barren",
+    "children": [
+      "barren_other",
+      "mining"
+    ]
+  },
+  "crops": {
+    "class": "crops",
+    "name": "Crops",
+    "parent": "greenery",
+    "color": "#e2b007",
+    "classifier": null,
+    "children": []
+  },
+  "trees": {
+    "class": "trees",
+    "name": "Trees",
+    "parent": "greenery",
+    "color": "#16a085",
+    "classifier": null,
+    "children": []
+  },
+  "shrubs": {
+    "class": "shrubs",
+    "name": "Shrubs",
+    "parent": "greenery",
+    "color": "#e67e22",
+    "classifier": null,
+    "children": [],
+    "source": {
+      "type": "worldcover",
+      "code": 20
+    }
+  },
+  "barren_other": {
+    "class": "barren_other",
+    "name": "Barren",
+    "parent": "barren",
+    "color": "#c2a05a",
+    "classifier": null,
+    "children": [],
+    "source": {
+      "type": "residual",
+      "of": "barren"
+    }
+  },
+  "mining": {
+    "class": "mining",
+    "name": "mining",
+    "parent": "barren",
+    "color": "#8e44ad",
+    "classifier": null,
+    "children": [],
+    "source": {
+      "type": "examples"
+    }
+  }
+}

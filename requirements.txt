@@ -1,0 +1,38 @@
+# --- Earth Engine & geospatial data access ---
+earthengine-api
+geemap
+geotessera
+
+# --- Geospatial processing ---
+geopandas
+shapely
+rasterio
+rioxarray
+pyproj
+contextily
+
+# --- Array / zarr (Tessera returns 2D zarr arrays) ---
+xarray
+zarr
+numcodecs
+
+# --- Dataframe & ML ---
+pandas
+pyarrow
+numpy
+scikit-learn
+joblib
+
+# --- Web interface (FastAPI backend + plain HTML/CSS/JS + Leaflet frontend) ---
+fastapi
+uvicorn
+
+# --- Parallelism, progress, utils ---
+aiohttp
+tqdm
+python-dotenv
+
+# --- Notebook / dev ---
+ipykernel
+jupyter
+pytest

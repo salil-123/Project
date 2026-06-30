@@ -1,0 +1,4 @@
+{
+  "scheme": "indiasat",
+  "model_path": "data/model_pooled.joblib"
+}

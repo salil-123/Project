@@ -1,0 +1,21 @@
+# Python environment & caches (recreate with: python -m venv .venv && pip install -r requirements.txt)
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# secrets / machine-local config (EE project + zoo remote live here)
+.env
+
+# Large training / eval tables. Regenerable from Earth Engine, and master_tessera.csv (138 MB)
+# blows past GitHub's 100 MB hard limit, so none of the data tables are tracked. The trained
+# .joblib models ARE kept (they're tiny), so the app still classifies straight from a clone.
+*.csv
+*.npy
+
+# scratch / backups
+test_data/
+
+# the model zoo is its OWN git repo (pushed to zoo_database.git); not nested inside this one
+data/catalogue/

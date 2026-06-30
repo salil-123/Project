@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Core Stack — LULC</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
+  <link rel="stylesheet" href="/style.css?v=4" />
+</head>
+<body>
+  <aside id="sidebar">
+    <h1>Core Stack <span>LULC</span></h1>
+    <p class="sub">Alpha&nbsp;Earth base map, with greenery split into crops / trees / shrubs.</p>
+
+    <section>
+      <label>Area</label>
+      <select id="preset"></select>
+      <div id="custom" class="hidden">
+        <div class="row">
+          <span><label>Lat</label><input id="clat" type="number" step="0.001" value="19.133"></span>
+          <span><label>Lon</label><input id="clon" type="number" step="0.001" value="72.915"></span>
+        </div>
+        <label>Half-size (deg): <b id="halfval">0.010</b></label>
+        <input id="half" type="range" min="0.005" max="0.25" step="0.005" value="0.01">
+      </div>
+      <label>Mode</label>
+      <select id="mode">
+        <option value="realistic">Realistic (AE + WorldCover, 10 m raster)</option>
+        <option value="detailed">Detailed (AE + Tessera soft-vote)</option>
+      </select>
+      <p class="hint" id="modehint">Server-side 10 m classification served as Earth Engine map tiles — crisp at any zoom, calibrated to India's prior, no downloads.</p>
+      <button id="run" class="primary">Run classification</button>
+      <p class="hint">Base classes and the inference year live in the Model Zoo — open it to pick a
+        starting scheme or change the Alpha Earth year.</p>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section>
+      <h3>🌳 Hierarchy</h3>
+      <p class="hint">Click a class to select it. Selected: <b id="selName">root</b></p>
+      <div id="tree"></div>
+    </section>
+
+    <section>
+      <h3>✏️ Examples for <span id="exClass">root</span></h3>
+      <p class="hint">Draw a polygon on the map, pick a role, then add. Positive = "this is
+        X" (relabel); negative = "not X" (hard-negative).</p>
+      <label>Role</label>
+      <select id="role">
+        <option value="positive">positive</option>
+        <option value="negative">negative</option>
+      </select>
+      <button id="addDrawn">Add drawn polygon</button>
+      <p class="hint">…or upload a GeoJSON / KML of polygons</p>
+      <input id="upload" type="file" accept=".geojson,.json,.kml">
+      <div id="dataDist" class="datadist"></div>
+    </section>
+
+    <section>
+      <h3>🔧 Operations</h3>
+      <label>Split selected leaf into (comma-separated)</label>
+      <input id="splitNames" type="text" placeholder="e.g. cereal, orchard">
+      <button id="doSplit">Create split</button>
+
+      <label>Add a class under selected node</label>
+      <input id="addName" type="text" placeholder="new class name">
+      <button id="doAdd">Add class</button>
+
+      <label>Class balance (if a split is skewed)</label>
+      <select id="balance">
+        <option value="balanced">balanced — class weights (default)</option>
+        <option value="undersample">undersample the majority</option>
+        <option value="oversample">oversample the minority</option>
+      </select>
+      <button id="doRetrain" class="primary">Retrain selected & apply</button>
+      <pre id="metrics" class="metrics"></pre>
+    </section>
+
+    <section>
+      <h3>🔗 Merge classes</h3>
+      <p class="hint">Tick two or more leaf classes <b>in the Hierarchy above</b> (even from
+        different splits/models), name them, and merge. It's a relabelling layer applied after
+        inference — no retraining. Active merges show in the tree with a ✕ to undo.</p>
+      <label>New class name</label>
+      <input id="mergeName" type="text" placeholder="e.g. extractive land">
+      <label class="mergecolor">Colour <input id="mergeColor" type="color" value="#8e44ad"></label>
+      <button id="doMerge">Create merge</button>
+    </section>
+
+    <section>
+      <h3>💾 Save / load scheme</h3>
+      <p class="hint">Download your class hierarchy and the steps that built it as JSON, to
+        continue later or share it. Load one back to pick up where you left off.</p>
+      <button id="exportHier">Download hierarchy (JSON)</button>
+      <p class="hint">…or load a saved hierarchy</p>
+      <input id="importHier" type="file" accept=".json">
+    </section>
+
+    <section>
+      <h3>🗂️ Model Zoo</h3>
+      <p class="hint">Trained models + datasets, stored as cards in a git-backed catalogue.
+        <span id="zooBadge" class="badge"></span></p>
+      <button id="openZoo" class="primary">Open Model Zoo</button>
+    </section>
+
+    <footer>Edit the tree, add example polygons, retrain a node — the 10 m map updates with
+      the new sub-classes. Root-level retrain rebuilds the base map (slow). Trained models land
+      in the Model Zoo as cards you can inspect and publish.</footer>
+  </aside>
+
+  <main id="map"></main>
+  <div id="toast" class="toast hidden"></div>
+
+  <!-- first-run: pick the base classes to start from before doing anything else -->
+  <div id="base-onboard" class="hidden">
+    <div class="onboard-card">
+      <h2>Choose your base classes</h2>
+      <p>Pick the starting scheme to build on. You can split, add, and merge from here — and switch
+        later anytime from the Model Zoo.</p>
+      <div id="baseOptions"></div>
+      <button id="baseSkip" class="ghost">Keep the current scheme</button>
+    </div>
+  </div>
+
+  <!-- full-screen Model Zoo: browse the catalogue without crowding the sidebar -->
+  <div id="zoo-overlay" class="hidden">
+    <header class="zoo-head">
+      <div class="zoo-title">🗂️ Model Zoo <span id="zooHeadBadge" class="badge"></span></div>
+      <div class="zoo-tabs">
+        <button class="ztab sel" data-tab="model">Models</button>
+        <button class="ztab" data-tab="dataset">Datasets</button>
+      </div>
+      <label class="zoo-aoi check"><input type="checkbox" id="zooAoi"> only for current view</label>
+      <div class="zoo-actions">
+        <button id="zooPublishAll">Publish all</button>
+        <button id="closeZoo">✕ Close</button>
+      </div>
+    </header>
+    <div class="zoo-body">
+      <div id="zoo-grid" class="zoo-grid"></div>
+      <aside id="zoo-detail" class="zoo-detail"><p class="hint">Select a card to see its details.</p></aside>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+  <script src="/app.js?v=4"></script>
+</body>
+</html>

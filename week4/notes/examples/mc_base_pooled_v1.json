@@ -1,0 +1,42 @@
+{
+  "id": "mc_base_pooled_v1",
+  "name": "Core Stack base map — 4-class LULC (India)",
+  "node": "root",
+  "parent_class": null,
+  "topology": "base_pooled",
+  "produces": [
+    { "class": "greenery", "std_mapping": { "usda": "Vegetated land" } },
+    { "class": "water",    "std_mapping": { "worldcover": 80, "usda": "Water" } },
+    { "class": "built_up", "std_mapping": { "worldcover": 50, "usda": "Urban" } },
+    { "class": "barren",   "std_mapping": { "worldcover": 60, "usda": "Barren land" } }
+  ],
+  "training": {
+    "datasets": ["ds_master_alpha_full_v1", "ds_worldcover_train_v1", "ds_water_extra_v1"],
+    "embedding": { "source": "alphaearth", "dim": 64 },
+    "algo": "StandardScaler->LinearSVC",
+    "class_weight": null,
+    "balancing": { "method": "worldcover_upweight", "wc_weight": 2.0, "note": "wc_weight chosen by held-out sweep for balanced detection; 'other' dropped" }
+  },
+  "extent": {
+    "spatial": { "type": "region", "value": "India" },
+    "temporal": { "year": 2024 }
+  },
+  "metrics": {
+    "accuracy": 0.80,
+    "eval": "random India (real-world mix)",
+    "secondary": { "accuracy": 0.89, "eval": "balanced expert hold-out" },
+    "note": "greenery near-perfect; rare classes are the hard part"
+  },
+  "artifact": { "path": "data/model_pooled.joblib", "format": "sklearn-joblib" },
+  "deployment": { "ee_asset": null, "tile_url": null, "expressible_as_bandmath": true },
+  "lineage": { "base_model": null, "derived_from": null },
+  "about": {
+    "description": "Pooled linear base classifier over Alpha Earth 64-d embeddings; the root of the zoo's lineage DAG.",
+    "intended_use": "Coarse 4-class LULC across India at 10 m; the substrate every refinement layers onto.",
+    "limitations": "Linear model; rare-class recall limited; trained mostly on India tiles (see generalization-gap note).",
+    "evidence": "Expert polygons (master_alpha_full) + ESA WorldCover + extra water polygons."
+  },
+  "zoo": { "published": true, "valid_region_label": "India", "contributor": "Core Stack" },
+  "version": 1,
+  "created": "2026-06-13T00:00:00Z"
+}

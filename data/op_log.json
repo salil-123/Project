@@ -1,0 +1,92 @@
+[
+  {
+    "seq": 1,
+    "ts": "2026-06-30T16:42:55.376995+00:00",
+    "op": "base_select",
+    "args": {
+      "scheme": "indiasat"
+    },
+    "result": null
+  },
+  {
+    "seq": 2,
+    "ts": "2026-06-30T16:44:21.831222+00:00",
+    "op": "apply",
+    "args": {
+      "card_id": "mc_greenery_v1",
+      "node": "greenery"
+    },
+    "result": null
+  },
+  {
+    "seq": 3,
+    "ts": "2026-06-30T16:49:14.092012+00:00",
+    "op": "merge",
+    "args": {
+      "target": "greenery",
+      "name": "greenery",
+      "sources": [
+        "barren",
+        "non_tea",
+        "tea"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 4,
+    "ts": "2026-06-30T16:51:36.852956+00:00",
+    "op": "merge_remove",
+    "args": {
+      "target": "greenery"
+    },
+    "result": null
+  },
+  {
+    "seq": 5,
+    "ts": "2026-06-30T16:55:41.212960+00:00",
+    "op": "import_hierarchy",
+    "args": {
+      "nodes": 7,
+      "missing": []
+    },
+    "result": null
+  },
+  {
+    "seq": 6,
+    "ts": "2026-06-30T17:30:22.043943+00:00",
+    "op": "merge",
+    "args": {
+      "target": "tea_barren",
+      "name": "tea&barren",
+      "sources": [
+        "tea",
+        "barren"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 7,
+    "ts": "2026-06-30T17:30:22.052875+00:00",
+    "op": "merge",
+    "args": {
+      "target": "tea_barren",
+      "name": "tea&barren",
+      "sources": [
+        "tea",
+        "barren"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 8,
+    "ts": "2026-06-30T17:42:14.167651+00:00",
+    "op": "merge_remove",
+    "args": {
+      "target": "tea_barren"
+    },
+    "result": null
+  }
+]

@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://core-stack.org/schema/model_card.schema.json",
+  "title": "LULC Model Card",
+  "description": "A classifier at one hierarchy node: what it emits, what it trained on, what features it runs on, where it's valid, its metrics, and how it deploys.",
+  "type": "object",
+  "required": ["id", "name", "node", "topology", "produces", "training", "extent", "version"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string", "pattern": "^mc_[a-z0-9_]+_v[0-9]+$" },
+    "name": { "type": "string" },
+    "node": { "type": "string", "description": "hierarchy node id this model resolves" },
+    "parent_class": { "type": ["string", "null"], "description": "base-spine attach point; null only for the root base model" },
+    "topology": { "enum": ["per_node_split", "base_pooled", "flat_multiclass", "merge_relabel"] },
+    "produces": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["class"],
+        "properties": {
+          "class": { "type": "string" },
+          "std_mapping": { "type": "object", "description": "optional outward crosswalk (worldcover/usda/iucn); never required", "additionalProperties": true },
+          "role": { "type": "string" }
+        }
+      }
+    },
+    "training": {
+      "type": "object",
+      "required": ["datasets"],
+      "description": "the LABELED data the model learned from (dataset cards of type=training)",
+      "properties": {
+        "datasets": { "type": "array", "items": { "type": "string", "pattern": "^ds_" } },
+        "embedding": { "type": "object", "additionalProperties": true },
+        "algo": { "type": "string" },
+        "class_weight": { "type": ["string", "null"] },
+        "balancing": { "type": "object", "additionalProperties": true },
+        "selection": {
+          "type": "object",
+          "description": "panel filters actually applied (AOI + year), for reproducibility",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "inference": {
+      "type": "object",
+      "description": "the FEATURE/input source the model consumes at runtime (a dataset card of type=inference). The training/inference pair is the two-dataset link week 5 asks for.",
+      "properties": {
+        "dataset": { "type": ["string", "null"], "pattern": "^ds_" },
+        "embedding": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": true
+    },
+    "extent": { "$ref": "dataset_card.schema.json#/definitions/extent" },
+    "metrics": {
+      "type": "object",
+      "description": "lifted from the joblib held-out report; flexible by topology",
+      "additionalProperties": true
+    },
+    "artifact": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "format": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "deployment": {
+      "type": "object",
+      "properties": {
+        "ee_asset": { "type": ["string", "null"] },
+        "tile_url": { "type": ["string", "null"] },
+        "expressible_as_bandmath": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "lineage": {
+      "type": "object",
+      "properties": {
+        "base_model": { "type": ["string", "null"] },
+        "derived_from": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "about": {
+      "type": "object",
+      "description": "human-readable prose: what it's for, its limits, the evidence behind it",
+      "properties": {
+        "description": { "type": "string" },
+        "intended_use": { "type": "string" },
+        "limitations": { "type": "string" },
+        "evidence": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "zoo": {
+      "type": "object",
+      "properties": {
+        "published": { "type": "boolean" },
+        "valid_region_label": { "type": "string" },
+        "contributor": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "created": { "type": "string" }
+  }
+}

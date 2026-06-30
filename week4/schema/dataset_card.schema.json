@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://core-stack.org/schema/dataset_card.schema.json",
+  "title": "LULC Dataset Card",
+  "description": "A labeled data source for the LULC zoo: polygons, an EE asset, or an embedding table, with extent, provenance and quality.",
+  "type": "object",
+  "required": ["id", "name", "kind", "classes", "definition", "extent", "version"],
+  "additionalProperties": true,
+  "properties": {
+    "id": { "type": "string", "pattern": "^ds_[a-z0-9_]+_v[0-9]+$" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "kind": { "enum": ["polygons", "ee_asset", "embedding_table"] },
+    "classes": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["class"],
+        "properties": {
+          "class": { "type": "string" },
+          "name": { "type": "string" },
+          "count": { "type": ["integer", "null"] },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "definition": {
+      "type": "object",
+      "required": ["type"],
+      "properties": { "type": { "enum": ["polygons", "ee_asset", "embedding_table"] } },
+      "additionalProperties": true
+    },
+    "extent": { "$ref": "#/definitions/extent" },
+    "embedding": { "$ref": "#/definitions/embedding" },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "annotator": { "type": "string" },
+        "method": { "type": "string" },
+        "evidence": { "type": "array", "items": { "type": "string" } },
+        "license": { "type": ["string", "null"] },
+        "notes": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "quality": {
+      "type": "object",
+      "properties": {
+        "n_polygons": { "type": ["integer", "null"] },
+        "n_pixels": { "type": ["integer", "null"] },
+        "occupied_cells": { "type": ["integer", "null"] },
+        "spatial_diversity": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "class_balance": { "type": ["object", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "created": { "type": "string" }
+  },
+  "definitions": {
+    "extent": {
+      "type": "object",
+      "required": ["spatial"],
+      "properties": {
+        "spatial": {
+          "type": "object",
+          "required": ["type"],
+          "properties": { "type": { "enum": ["region", "polygon", "ee_asset"] } },
+          "additionalProperties": true
+        },
+        "temporal": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true,
+      "description": "Open by design: spatial (region | polygon | ee_asset) + temporal now; a future axis (e.g. embedding basis) is an added key, not a schema break."
+    },
+    "embedding": {
+      "type": "object",
+      "properties": {
+        "source": { "type": "string" },
+        "dim": { "type": "integer" },
+        "year": { "type": "integer" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,213 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{caption}{\raggedright\insertcaption\par}
+
+\title[Refining the LULC map]{From 4 fixed classes to a user-grown hierarchy}
+\subtitle{Splitting and adding LULC classes, live, at 10\,m}
+\author[Salil Gujar]{Salil Gujar \\ \footnotesize M.Tech CSE \quad Entry No.\ 2025MCS2106}
+\date{June 2026}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------------
+\begin{frame}{This week}
+\begin{itemize}
+  \item A 4-class base map (greenery, water, built-up, barren) from Alpha Earth, at 10\,m.
+  \item This week: let the user \textbf{grow the classes into a hierarchy} on top of that
+  base --- two operations, at \emph{any} level:
+  \begin{itemize}
+    \item \textbf{SPLIT} a class into children (greenery $\to$ crops / trees / shrubs);
+    \item \textbf{ADD} a new class under a node (barren $\to$ +\,mining).
+  \end{itemize}
+  \item Mark or upload a few example polygons, \textbf{retrain on the fly}, and the 10\,m
+  map updates with the new sub-classes.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{The class tree}
+\begin{itemize}
+  \item One JSON tree; each node carries \texttt{class, name, parent, color, children,
+  source} (where its training pixels come from).
+  \item \textbf{Every non-leaf node owns one small classifier} over just its children.
+  Inference walks \textbf{root $\to$ leaf}: base map says \emph{greenery}, the greenery
+  classifier says \emph{crops}, and so on --- recursively, to any depth.
+  \item SPLIT and ADD are the \emph{same} machinery: ADD onto a leaf is a SPLIT into an
+  auto ``residual'' (keeps the parent's identity) plus the new class.
+  \item Per-node, not one giant model: a new class refits \textbf{one} classifier on
+  \textbf{its} data in seconds, leaving the base map untouched.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Demo 1 --- SPLIT greenery $\to$ crops / trees / shrubs}
+\begin{columns}[T]
+\begin{column}{0.52\textwidth}
+\footnotesize
+\textbf{Data:} crops \& trees from FarmForest \emph{expert} polygons (sampled through the
+tool); shrubs from ESA WorldCover (we couldn't get expert shrub polygons this week).
+\vspace{0.4em}
+\centering
+\begin{tabular}{l c c c}
+\toprule
+class & P & R & F1 \\
+\midrule
+crops  & 0.987 & 0.943 & 0.965 \\
+trees  & 0.997 & 0.986 & 0.991 \\
+shrubs & 0.548 & 0.947 & 0.695 \\
+\midrule
+\multicolumn{4}{c}{accuracy \textbf{0.963} (3{,}014 held-out px)} \\
+\bottomrule
+\end{tabular}
+\flushleft\vspace{0.4em}
+Polygon-held-out split (no pixel leakage). Shrubs is the weak class --- few, noisier
+WorldCover labels.
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=0.49\linewidth]{figures/greenery_before.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/greenery_after.png}\\
+\footnotesize before: greenery \quad$\to$\quad after: crops / trees
+\end{column}
+\end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Demo 2 --- ADD mining under barren}
+\begin{columns}[T]
+\begin{column}{0.52\textwidth}
+\footnotesize
+\textbf{Data:} mining positives from the provided mining polygons
+(\texttt{mining\_polygons\_india.gpkg}); the residual ``Barren'' from existing barren
+pixels --- so ADD reduces to a 2-way split.
+\vspace{0.4em}
+\centering
+\begin{tabular}{l c c c}
+\toprule
+class & P & R & F1 \\
+\midrule
+mining        & 0.860 & 0.886 & 0.873 \\
+barren (rest) & 0.850 & 0.817 & 0.833 \\
+\midrule
+\multicolumn{4}{c}{accuracy \textbf{0.856} (4{,}294 held-out px)} \\
+\bottomrule
+\end{tabular}
+\flushleft\vspace{0.4em}
+The map gains a \emph{mining} class with no change to the inference code --- it
+composites like any other split.
+\end{column}
+\begin{column}{0.48\textwidth}
+\centering
+\includegraphics[width=0.49\linewidth]{figures/mining_before.png}\hfill
+\includegraphics[width=0.49\linewidth]{figures/mining_after.png}\\
+\footnotesize before: barren \quad$\to$\quad after: mining / barren
+\end{column}
+\end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Any level of the hierarchy}
+\begin{itemize}
+  \item \textbf{Splits nest:} a leaf can itself be split one level deeper, and inference
+  recurses into it unchanged --- the tree can grow to any depth.
+  \item \textbf{Root level} too: adding a brand-new \emph{base} class retrains the pooled
+  base model (Alpha Earth + WorldCover), preserving its calibration.
+  \item Validated end-to-end: a 3-deep tree (root $\to$ greenery $\to$ trees $\to$ two
+  sub-classes) renders correctly --- the server-side map matched the Python model
+  \textbf{36/36} at sampled pixels.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{One classifier per node, or one big multiclass?}
+We compared both on the greenery leaves (shared, polygon-held-out test, 15{,}573 px):
+\vspace{0.4em}
+\centering
+\small
+\begin{tabular}{l c c c c c}
+\toprule
+\textbf{topology} & \textbf{acc} & \textbf{macro-F1} & crops F1 & trees F1 & shrubs F1 \\
+\midrule
+Flat (one 6-way model)        & \textbf{0.885} & \textbf{0.777} & 0.842 & 0.938 & 0.158 \\
+Hierarchical (base $\to$ split) & 0.862 & 0.750 & 0.779 & 0.912 & 0.133 \\
+\bottomrule
+\end{tabular}
+\vspace{0.8em}
+\flushleft
+\begin{itemize}\small
+  \item Flat is $\approx$2 pts better offline (no cascading base errors), but
+  \textbf{per-node wins for the live tool}: each edit refits one tiny model on its own
+  data, the base map stays stable, and errors stay local.
+  \item Shrubs is weak in \emph{both} --- a data gap (WorldCover-only), not a topology
+  one.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{10\,m, server-side}
+\begin{itemize}
+  \item The base map and every split are \textbf{linear} (\texttt{StandardScaler $\to$
+  LinearSVC}), so we reproduce them \emph{exactly} as band math on the Alpha Earth image
+  \textbf{inside Earth Engine} and classify at native 10\,m.
+  \item One classified PNG per area (no per-point sampling, no payload blow-up); the
+  greenery split composites on top, then mining, then deeper splits.
+  \item Correctness check: the Earth-Engine label image matched the trained sklearn
+  pipeline \textbf{36/36} at sampled points (base + both splits).
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{The interactive loop}
+\begin{itemize}
+  \item Browser tool (FastAPI + Leaflet): a \textbf{hierarchy tree} you click to select a
+  class.
+  \item \textbf{Add examples} by drawing on the map or uploading GeoJSON / KML; positive
+  = ``this is X'' (relabel), negative = ``not X'' (hard-negative).
+  \item \textbf{Split / Add / Retrain} a node from the sidebar --- training runs, metrics
+  print, and the 10\,m raster re-renders with the new classes.
+\end{itemize}
+\vspace{0.6em}
+\textbf{Honest limits:} numbers are agreement vs expert / WorldCover labels, not field
+truth; shrubs leans on WorldCover (its weak class); root-level retrain is heavier and
+touches the shared base map.
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{How accurate is the base map?}
+Two honest tests of the 4-class base (Realistic --- Alpha Earth $+$ WorldCover, 10\,m):
+\vspace{0.4em}
+\centering
+\small
+\begin{tabular}{l c c}
+\toprule
+\textbf{test} & \textbf{accuracy} & \textbf{macro-F1} \\
+\midrule
+Balanced expert hold-out (classes even) & \textbf{0.89} & \textbf{0.88} \\
+Random real-India ($\approx$89\% greenery) & 0.80 & --- \\
+\bottomrule
+\end{tabular}
+\vspace{0.8em}
+\flushleft
+\begin{itemize}\small
+  \item Strong per-class skill: \textbf{0.89} on the balanced test. On random real ground,
+  greenery is near-perfect (precision 0.99); the 0.80 is held back only by the \emph{rare}
+  classes (barren / water), which are genuinely hard there.
+  \item vs the alternative: Realistic beats Detailed (AE $+$ Tessera) on random India
+  (0.80 vs 0.76) --- Tessera doesn't earn its place under the real prior.
+  \item Both modes kept: Realistic is the default 10\,m map; Detailed for rare-class detail.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}
+\centering
+\Large Thank you 
+\end{frame}
+
+\end{document}

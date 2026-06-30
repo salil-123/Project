@@ -1,0 +1,23 @@
+{
+  "id": "ds_mining_polygons_v1",
+  "name": "India mining-area polygons",
+  "description": "Supervisor-provided mining-area polygons; mining positives for the ADD demo.",
+  "kind": "polygons",
+  "classes": [ { "class": "mining", "name": "Mining", "count": 100 } ],
+  "definition": { "type": "polygons", "path": "data/examples/mining.geojson", "origin": "mining_polygons_india.gpkg" },
+  "extent": {
+    "spatial": { "type": "region", "value": "India" },
+    "temporal": { "year": 2024 }
+  },
+  "embedding": { "source": "alphaearth", "dim": 64, "year": 2024 },
+  "provenance": {
+    "annotator": "supervisor-provided (sir)",
+    "method": "delineated mining-area polygons",
+    "evidence": ["provided mining polygon dataset"],
+    "license": null,
+    "notes": "100 polygons; used for the live ADD demo (instruction #27)."
+  },
+  "quality": { "n_polygons": 100, "occupied_cells": 65, "spatial_diversity": 0.867, "class_balance": { "mining": 1.0 } },
+  "version": 1,
+  "created": "2026-06-13T00:00:00Z"
+}

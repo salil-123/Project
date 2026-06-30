@@ -1,0 +1,23 @@
+{
+  "id": "ds_worldcover_shrubs_v1",
+  "name": "ESA WorldCover shrubland slice (shrubs)",
+  "description": "Shrub-class pixels pulled from the ESA WorldCover standard library (code 20).",
+  "kind": "ee_asset",
+  "classes": [ { "class": "shrubs", "name": "Shrubs", "count": 430 } ],
+  "definition": { "type": "ee_asset", "asset": "ESA/WorldCover/v200", "band": "Map", "code": 20 },
+  "extent": {
+    "spatial": { "type": "region", "value": "India" },
+    "temporal": { "year": 2021 }
+  },
+  "embedding": { "source": "alphaearth", "dim": 64, "year": 2024, "note": "cached in data/worldcover_train.csv (wc==20)" },
+  "provenance": {
+    "annotator": "ESA WorldCover v200",
+    "method": "global automated classification (10 m)",
+    "evidence": ["ESA WorldCover product"],
+    "license": "CC-BY-4.0",
+    "notes": "Lower label quality than expert polygons; flagged as a model limitation."
+  },
+  "quality": { "n_polygons": null, "n_pixels": 430, "spatial_diversity": null, "class_balance": { "shrubs": 1.0 } },
+  "version": 1,
+  "created": "2026-06-13T00:00:00Z"
+}

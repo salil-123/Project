@@ -1,0 +1,28 @@
+{
+  "id": "ds_master_alpha_full_v1",
+  "name": "Master Alpha Earth expert pixel table (4 base classes)",
+  "description": "Expert-labelled Alpha Earth pixels over ~200 diverse India tiles; the base map's primary training table.",
+  "kind": "embedding_table",
+  "classes": [
+    { "class": "greenery", "name": "Greenery" },
+    { "class": "water",    "name": "Water" },
+    { "class": "built_up", "name": "Built-up" },
+    { "class": "barren",   "name": "Barren" }
+  ],
+  "definition": { "type": "embedding_table", "path": "data/master_alpha_full.csv", "label_col": "core_class" },
+  "extent": {
+    "spatial": { "type": "region", "value": "India" },
+    "temporal": { "year": 2024 }
+  },
+  "embedding": { "source": "alphaearth", "dim": 64, "year": 2024 },
+  "provenance": {
+    "annotator": "Core Stack (week-2 build)",
+    "method": "expert polygons over ~200 diverse India tiles, sampled to interior pixels",
+    "evidence": ["week2/select_diverse_tiles.py provenance", "pipeline.md"],
+    "license": null,
+    "notes": "The base map's primary training table; filter by core_class for residual sources."
+  },
+  "quality": { "n_polygons": null, "n_pixels": null, "spatial_diversity": null, "class_balance": null },
+  "version": 1,
+  "created": "2026-06-13T00:00:00Z"
+}

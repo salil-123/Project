@@ -1,0 +1,73 @@
+{
+  "root": {
+    "class": "root",
+    "name": "All land",
+    "parent": null,
+    "color": null,
+    "classifier": null,
+    "children": [
+      "greenery",
+      "water",
+      "built_up",
+      "barren"
+    ],
+    "source": null
+  },
+  "greenery": {
+    "class": "greenery",
+    "name": "Greenery",
+    "parent": "root",
+    "color": "#2e8b2e",
+    "classifier": "greenery",
+    "children": [
+      "non_tea",
+      "tea"
+    ],
+    "source": null
+  },
+  "water": {
+    "class": "water",
+    "name": "Water",
+    "parent": "root",
+    "color": "#2b6cff",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "built_up": {
+    "class": "built_up",
+    "name": "Built-up",
+    "parent": "root",
+    "color": "#d7301f",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "barren": {
+    "class": "barren",
+    "name": "Barren",
+    "parent": "root",
+    "color": "#c2a05a",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "non_tea": {
+    "class": "non_tea",
+    "name": "Non Tea",
+    "parent": "greenery",
+    "color": "#8e44ad",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "tea": {
+    "class": "tea",
+    "name": "Tea",
+    "parent": "greenery",
+    "color": "#16a085",
+    "classifier": null,
+    "children": [],
+    "source": null
+  }
+}

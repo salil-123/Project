@@ -1,0 +1,1 @@
+{"type": "FeatureCollection", "features": [{"type": "Feature", "geometry": {"type": "Point", "coordinates": [75.846, 26.954]}, "properties": {"label": "orchard", "kind": "marker", "note": "", "is_new_class": true, "ts": "2026-05-24T11:39:08.513957+00:00"}}]}

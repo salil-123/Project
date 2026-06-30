@@ -1,0 +1,44 @@
+{
+  "id": "mc_barren_mining_v1",
+  "name": "Barren + Mining (ADD under barren, India)",
+  "node": "barren",
+  "parent_class": "barren",
+  "topology": "per_node_split",
+  "produces": [
+    { "class": "barren_other", "std_mapping": { "worldcover": 60 }, "role": "residual" },
+    { "class": "mining",       "std_mapping": { "worldcover": 60, "usda": "Extractive" } }
+  ],
+  "training": {
+    "datasets": ["ds_barren_expert_v1", "ds_mining_polygons_v1"],
+    "embedding": { "source": "alphaearth", "dim": 64 },
+    "algo": "StandardScaler->LinearSVC",
+    "class_weight": "balanced",
+    "balancing": { "method": "class_weight_balanced + residual_cap", "residual_cap": 8000 }
+  },
+  "extent": {
+    "spatial": { "type": "region", "value": "India" },
+    "temporal": { "year": 2024 }
+  },
+  "metrics": {
+    "accuracy": 0.867,
+    "macro_f1": 0.854,
+    "eval": "polygon-holdout",
+    "n_test": 3171,
+    "per_class": {
+      "barren_other": { "precision": 0.903, "recall": 0.891, "f1": 0.897, "support": 2071 },
+      "mining":       { "precision": 0.800, "recall": 0.820, "f1": 0.810, "support": 1100 }
+    }
+  },
+  "artifact": { "path": "data/refine/barren.joblib", "format": "sklearn-joblib" },
+  "deployment": { "ee_asset": null, "tile_url": null, "expressible_as_bandmath": true },
+  "lineage": { "base_model": "mc_base_pooled_v1", "derived_from": null },
+  "about": {
+    "description": "ADD operation = a split with an auto 'residual' that keeps the parent's identity (barren -> still-barren + mining).",
+    "intended_use": "Layered where the base map predicts barren; surfaces mining in barren belts.",
+    "limitations": "Works because mining is genuinely distinct in the embedding; near-look-alike classes would collapse back to the residual.",
+    "evidence": "100 real mining polygons (mining_polygons_india.gpkg); residual barren from expert base pixels."
+  },
+  "zoo": { "published": false, "valid_region_label": "India", "contributor": "" },
+  "version": 1,
+  "created": "2026-06-13T00:00:00Z"
+}
