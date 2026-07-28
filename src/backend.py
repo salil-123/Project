@@ -349,27 +349,39 @@ def classify_water(west: float, south: float, east: float, north: float, date: s
 # ----------------------------- IndiaSAT EE-RF models (#13 wk10) -----------------------------
 @app.get("/api/treecrop")
 def classify_treecrop(west: float, south: float, east: float, north: float,
-                      start: str = None, end: str = None):
+                      start: str = None, end: str = None, composite: bool = True):
     """Tree vs crop over a bbox (#13): the pan-India IndiaSAT model — an EE Random Forest on a
-    Sentinel-1 SAR 16-day time series — trained + classified server-side, served as tiles."""
+    Sentinel-1 SAR 16-day time series — trained + classified server-side, served as tiles.
+
+    `composite` (default) plugs it into the hierarchy as a refinement of greenery: outside greenery
+    the base map stands, inside greenery it becomes tree/crop. `composite=false` shows the model alone
+    (labels the whole box), which only makes sense over pure vegetation."""
     import ee_rf
     bbox = (west, south, east, north)
     guard = aoi.check(bbox, "tiles")
     if not guard["ok"]:
         raise HTTPException(400, guard["reason"])
     try:
-        tile_url, counts, classes = ee_rf.classify_treecrop_tiles(bbox, start=start, end=end)
+        if composite:
+            tile_url, counts, classes = ee_rf.classify_composited(bbox, "treecrop", start=start, end=end)
+            colors = {**infer.load_colors(), **ee_rf.TREECROP_COLORS}
+        else:
+            tile_url, counts, classes = ee_rf.classify_treecrop_tiles(bbox, start=start, end=end)
+            colors = ee_rf.TREECROP_COLORS
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(400, f"tree/crop classify failed (try a smaller area/other dates): {e}")
     return {"render": "tiles", "tile_url": tile_url, "bounds": [west, south, east, north],
-            "counts": counts, "colors": ee_rf.TREECROP_COLORS}
+            "counts": counts, "colors": colors}
 
 
 @app.get("/api/farmshrub")
-def classify_farmshrub(west: float, south: float, east: float, north: float, year: int = 2024):
+def classify_farmshrub(west: float, south: float, east: float, north: float, year: int = 2024,
+                       composite: bool = True):
     """Farm / plantation / scrubland over a bbox (#13): the per-AEZ IndiaSAT model — an EE Random
     Forest on Alpha Earth embeddings, trained on the AOI's agro-ecological-region samples, served
-    as tiles."""
+    as tiles. `composite` (default) refines the greenery class; `composite=false` shows it alone."""
     import ee_rf
     bbox = (west, south, east, north)
     guard = aoi.check(bbox, "tiles")
@@ -377,11 +389,18 @@ def classify_farmshrub(west: float, south: float, east: float, north: float, yea
         raise HTTPException(400, guard["reason"])
     year = min(max(year, AE_YEARS[0]), AE_YEARS[-1])
     try:
-        tile_url, counts, classes = ee_rf.classify_farmshrub_tiles(bbox, year=year)
+        if composite:
+            tile_url, counts, classes = ee_rf.classify_composited(bbox, "farmshrub", year=year)
+            colors = {**infer.load_colors(), **ee_rf.FARMSHRUB_COLORS}
+        else:
+            tile_url, counts, classes = ee_rf.classify_farmshrub_tiles(bbox, year=year)
+            colors = ee_rf.FARMSHRUB_COLORS
+    except ValueError as e:
+        raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(400, f"farm/shrub classify failed (AOI may be outside a known AEZ): {e}")
     return {"render": "tiles", "tile_url": tile_url, "bounds": [west, south, east, north],
-            "year": year, "counts": counts, "colors": ee_rf.FARMSHRUB_COLORS}
+            "year": year, "counts": counts, "colors": colors}
 
 
 # ----------------------------- vectorize a class into segments (#4 wk10) -----------------------------

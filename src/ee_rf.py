@@ -136,22 +136,27 @@ def _treecrop_feature_image(ee, start, end, region, interpolate=False):
     return vv.addBands(vh).select(_SAR_BANDS).clip(region)
 
 
-def classify_treecrop_tiles(bbox, start=None, end=None):
-    """Tree vs crop for the bbox over a one-year SAR window, served as EE tiles (#13). Trains the
-    pan-India smileRandomForest on the L2 SAR asset and classifies the AOI's own SAR time series.
-    Returns (tile_url, counts, classes)."""
-    ee = config.ee_init()
-    end = end or "2024-07-01"
-    start = start or "2023-07-01"
-    w, s, e, n = bbox
-    region = ee.Geometry.Rectangle([w, s, e, n])
+# each model classifies into its OWN class scheme, not the base 4-class tree. So on its own it would
+# label the whole box (built-up, water and all) as one of its classes. The right way to use it is as a
+# refinement of the greenery/vegetation class: classify_composited() keeps the base map everywhere and
+# lets the sub-model's classes take over only inside greenery. The standalone `classify_*_tiles` stay
+# for showing the model alone.
 
+def _treecrop_classified(ee, region, start, end):
+    """The tree/crop RF's class image over the region (labels 5=cropland, 6=tree) + its code map."""
     training = ee.FeatureCollection(TREECROP_ASSET)
     model = ee.Classifier.smileRandomForest(numberOfTrees=100, seed=42).train(
         features=training, classProperty="class", inputProperties=_SAR_BANDS)
     feat = _treecrop_feature_image(ee, start, end, region)
-    classified = feat.classify(model)                # outputs the training labels 5 / 6
-    return _render(ee, classified, {5: "cropland", 6: "tree"}, TREECROP_COLORS, region)
+    return feat.classify(model), {5: "cropland", 6: "tree"}
+
+
+def classify_treecrop_tiles(bbox, start=None, end=None):
+    """Tree vs crop over the bbox, standalone, served as EE tiles (#13)."""
+    ee = config.ee_init()
+    region = ee.Geometry.Rectangle(list(bbox))
+    classified, c2n = _treecrop_classified(ee, region, start or "2023-07-01", end or "2024-07-01")
+    return _render(ee, classified, c2n, TREECROP_COLORS, region)
 
 
 # ============================ farm / plantation / scrubland (Alpha Earth) ============================
@@ -161,19 +166,9 @@ def _aez_for(ee, region):
     return ee.Algorithms.If(hit, ee.Feature(hit).get("ae_regcode"), None)
 
 
-def classify_farmshrub_tiles(bbox, year=2024):
-    """Farm / plantation / scrubland for the bbox, served as EE tiles (#13). Resolves the AOI's AEZ,
-    trains a per-AEZ smileRandomForest on Alpha Earth features sampled at gee_samples_all points, and
-    classifies the AE mosaic. Returns (tile_url, counts, classes)."""
-    ee = config.ee_init()
-    w, s, e, n = bbox
-    region = ee.Geometry.Rectangle([w, s, e, n])
+def _farmshrub_classified(ee, region, year):
+    """The per-AEZ farm/shrub RF's class image over the region (labels 1/2/3) + its code map."""
     regcode = _aez_for(ee, region)
-
-    # train on the AOI's agro-ecological samples, but only those near the box — sampling AE across a
-    # whole AEZ is too heavy for an interactive tile request. This is a rural/agri model, so a box
-    # with no farm/shrub ground truth nearby (e.g. a city) legitimately has nothing to train on; the
-    # count check below turns that into a clean error instead of an opaque EE failure.
     buf = region.buffer(SAMPLE_BUFFER_M)
     near = (ee.FeatureCollection(FARMSHRUB_SAMPLES)
             .filter(ee.Filter.eq("aez_no", regcode)).filterBounds(buf))
@@ -181,17 +176,72 @@ def classify_farmshrub_tiles(bbox, year=2024):
         raise ValueError("no farm/shrub ground truth near this area — it's a rural/agricultural "
                          "model; try a farmland box (e.g. Punjab, Assam tea belt).")
     samples = near.randomColumn("r", 42).sort("r").limit(SAMPLE_CAP)
-
     ae_col = ee.ImageCollection(AE_COLLECTION).filterDate(f"{year}-01-01", f"{year+1}-01-01")
     ae_train = ae_col.filterBounds(buf).mosaic()          # covers the training points, not just the AOI
-    band_names = ae_train.bandNames()
     training = ae_train.sampleRegions(collection=samples, properties=["label"], scale=10, tileScale=4)
     model = ee.Classifier.smileRandomForest(numberOfTrees=100, seed=42).train(
-        features=training, classProperty="label", inputProperties=band_names)
-
+        features=training, classProperty="label", inputProperties=ae_train.bandNames())
     ae_aoi = ae_col.filterBounds(region).mosaic()         # classify the AOI itself
-    classified = ae_aoi.classify(model).clip(region)
-    return _render(ee, classified, FARMSHRUB_MAP, FARMSHRUB_COLORS, region)
+    return ae_aoi.classify(model).clip(region), FARMSHRUB_MAP
+
+
+def classify_farmshrub_tiles(bbox, year=2024):
+    """Farm / plantation / scrubland over the bbox, standalone, served as EE tiles (#13)."""
+    ee = config.ee_init()
+    region = ee.Geometry.Rectangle(list(bbox))
+    classified, c2n = _farmshrub_classified(ee, region, year)
+    return _render(ee, classified, c2n, FARMSHRUB_COLORS, region)
+
+
+# ============================ plug a model into the hierarchy (refine greenery) ============================
+def classify_composited(bbox, which, year=2024, parent="greenery", start=None, end=None):
+    """Apply an IndiaSAT model as a *refinement of the base `parent` class* (default greenery), served
+    as tiles (#13). Everywhere outside greenery the base map stands; inside greenery the sub-model's
+    classes (tree/crop, or farm/plantation/scrubland) take over. This is how the two models plug into
+    our hierarchy despite bringing their own class scheme, without changing the framework — the base
+    classifies, the sub-model refines one branch, and the two are combined in Earth Engine.
+
+    Returns (tile_url, counts, classes). Raises ValueError if `parent` isn't in the current base."""
+    import infer
+    ee = config.ee_init()
+    region = ee.Geometry.Rectangle(list(bbox))
+    # the base map with no splits, so greenery is intact to refine
+    _, base_final, base_classes, _, _ = infer._labelled_bbox(bbox, year, infer.load_model(), {}, None)
+    if parent not in base_classes:
+        raise ValueError(f"this model refines the '{parent}' class, which isn't in the current base "
+                         f"scheme (has {base_classes}). Switch to the IndiaSAT base and try again.")
+    p = base_classes.index(parent)
+
+    if which == "treecrop":
+        classified, c2n = _treecrop_classified(ee, region, start or "2023-07-01", end or "2024-07-01")
+        sub_colors = TREECROP_COLORS
+    else:
+        classified, c2n = _farmshrub_classified(ee, region, year)
+        sub_colors = FARMSHRUB_COLORS
+    sub_codes = sorted(c2n)
+    sub_classes = [c2n[c] for c in sub_codes]
+
+    # sub-model class index 0..K-1, then shifted to sit after the base classes; paint it only where
+    # the base map says `parent`. So greenery becomes tree/crop (or farm/shrub); the rest is untouched.
+    sub_idx = ee.Image(0)
+    for i, code in enumerate(sub_codes):
+        sub_idx = sub_idx.where(classified.eq(code), i)
+    all_classes = list(base_classes) + sub_classes
+    composited = base_final.where(base_final.eq(p), sub_idx.add(len(base_classes)))
+
+    colors = {**infer.load_colors(), **sub_colors}
+    palette = [colors.get(c, "#999999") for c in all_classes]
+    vis = composited.visualize(min=0, max=len(all_classes) - 1, palette=palette).clip(region)
+    tile_url = vis.getMapId()["tile_fetcher"].url_format
+    counts = {}
+    try:
+        hist = (composited.rename("c").reduceRegion(reducer=ee.Reducer.frequencyHistogram(),
+                geometry=region, scale=60, maxPixels=int(1e8), bestEffort=True).getInfo().get("c") or {})
+        for k, v in hist.items():
+            counts[all_classes[int(float(k))]] = int(v)
+    except Exception:
+        pass
+    return tile_url, counts, all_classes
 
 
 # ============================ shared render ============================

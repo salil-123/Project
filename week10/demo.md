@@ -18,24 +18,28 @@ which.
 ---
 
 ## 1. Plug in the IndiaSAT tree-against-crop model (13)
-The IndiaSAT models are picked from the Model Zoo, like any other model, not from sidebar buttons.
-1. Pick a rural area with fields and trees. A good one is the Assam tea belt preset, or draw a box over
-   farmland. Urban Delhi is a poor choice here.
+These models bring their own class scheme, so they plug in as a **refinement of the greenery class**:
+the base map stays everywhere else, and greenery becomes the model's classes. They are picked from the
+Model Zoo, like any other model, not from sidebar buttons. (This needs the IndiaSAT base scheme, since
+that is where greenery lives.)
+1. Pick an area with vegetation, for example the Jalpaiguri or Assam tea belt preset. Mixed areas are
+   fine now, since only greenery is refined.
 2. Open the Model Zoo, find the card **"Tree vs crop (IndiaSAT SAR RF)"** (id `mc_treecrop_ee_v1`,
-   topology `ee_rf`), and press "Use this model on the current view". After a few seconds the map paints
-   two classes, `cropland` and `tree`, as crisp tiles, with counts in the status line.
+   topology `ee_rf`), and press "Use this model on the current view". After a few seconds the map keeps
+   built-up, water, and barren from the base map, and paints the greenery as `cropland` and `tree`.
 3. This is Raman's pan-India model, a Random Forest on a Sentinel-1 radar time series, trained and
    classified entirely inside Earth Engine. Nothing was downloaded and we did not re-implement it; we
-   rebuilt the radar feature series and handed it his training asset.
+   rebuilt the radar feature series, handed it his training asset, and combine its output with the base
+   map inside Earth Engine so it slots into our hierarchy.
 4. The card records the training asset, the feature source, and the classes. It carries no file,
-   because the model is re-trained on demand in Earth Engine. It runs as its own overlay for now, not
-   yet composited into the base hierarchy.
+   because the model is re-trained on demand in Earth Engine.
 
 ## 2. Plug in the per-region farm, plantation, scrubland model (13)
-1. Still over farmland, open the zoo, pick **"Farm / plantation / scrubland (IndiaSAT AEZ RF)"**
-   (id `mc_farmshrub_ee_v1`), and "Use this model on the current view". The tool first works out which
-   agro-ecological region the box falls in, trains the lab's Random Forest on that region's
-   ground-truth points, and classifies. It paints `farm`, `plantation`, and `scrubland` as tiles.
+1. Over farmland (for example a Punjab box), open the zoo, pick
+   **"Farm / plantation / scrubland (IndiaSAT AEZ RF)"** (id `mc_farmshrub_ee_v1`), and "Use this model
+   on the current view". The tool works out which agro-ecological region the box falls in, trains the
+   lab's Random Forest on that region's ground-truth points, and refines the greenery into `farm`,
+   `plantation`, and `scrubland`, keeping the rest of the base map.
 2. Try it over a city box instead. It refuses with a clear message that there is no agricultural ground
    truth near the area, because this is a rural model, rather than failing opaquely.
 3. The card is `ee_rf` topology on the Alpha Earth feature source, the very embedding our base map uses.

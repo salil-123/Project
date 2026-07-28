@@ -1198,9 +1198,9 @@ function modelDetail(c) {
       ? `<div class="prose">Already live as a relabel layer — undo it from the Hierarchy tree.</div>`
       : c.topology === "ee_rf"
       ? `<button id="useEeRfBtn" class="primary">Use this model on the current view</button>
-         <p class="hint">Runs this IndiaSAT model (Earth-Engine Random Forest) on the area on screen
-           and shows its classes as an overlay. It plugs in as a standalone map for now, not yet
-           composited into the base hierarchy.</p>`
+         <p class="hint">Plugs this IndiaSAT model (Earth-Engine Random Forest) in as a refinement of
+           the <b>greenery</b> class: the base map stays everywhere else, and greenery becomes this
+           model's classes (${(c.produces||[]).map(p=>p.class).join(", ")}). Needs the IndiaSAT base.</p>`
       : `<button id="applyBtn" class="primary">${
           c.base_scheme === "worldcover" ? "Use WorldCover base (7 classes)"
           : c.topology === "base_pooled" ? "Use IndiaSAT base (4 classes)"
