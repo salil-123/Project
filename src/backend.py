@@ -72,12 +72,35 @@ PRESETS = {
 
 def _reload():
     """Re-read the base model + splits so the next classify reflects a just-made change."""
-    global _model, _refinements
+    global _model, _refinements, _tree_mtime
     _model = infer.load_model()
     _refinements = infer.load_refinements()
+    _tree_mtime = _hierarchy_mtime()
+
+
+def _hierarchy_mtime():
+    try:
+        return (_ROOT / "data" / "hierarchy.json").stat().st_mtime
+    except OSError:
+        return 0.0
+
+
+_tree_mtime = _hierarchy_mtime()
+
+
+def _maybe_reload():
+    """Pick up hierarchy/split changes made on disk while the server is running — e.g. a script like
+    week3/scripts/add_mining.py that adds the mining split. Without this the in-memory refinements
+    stay stale until a UI op triggers a reload, so a script-made split silently doesn't show. Cheap:
+    one mtime stat; reload only when hierarchy.json is newer than our last load."""
+    global _tree_mtime
+    m = _hierarchy_mtime()
+    if m and m > _tree_mtime:
+        _reload()   # _reload() also refreshes _tree_mtime
 
 
 def _tree_payload():
+    _maybe_reload()
     tree = hierarchy.load()
     # op_seq = the current head of the op-log, so the client can anchor a "session" to it and
     # export only the ops that happened since (#4).
@@ -240,6 +263,7 @@ def classify(west: float, south: float, east: float, north: float,
     `year` picks the inference data's temporal slice (#7): Alpha Earth 2017-2024 for Realistic;
     Detailed is pinned to 2024 (Tessera's only India coverage). Same model either way.
     """
+    _maybe_reload()                                  # pick up a script-made split (e.g. add_mining.py)
     bbox = (west, south, east, north)
     # some live splits can't render as AE band-math tiles, so the whole area falls back to the
     # point-grid render: a Tessera split (#16, features in downloaded tiles) or a non-linear AE
@@ -365,6 +389,7 @@ def segment(west: float, south: float, east: float, north: float,
     mining pixels into discrete objects (speckle dropped, small blobs filtered). Returns GeoJSON +
     a summary (segment count, total area). The class must be live on the map."""
     import config
+    _maybe_reload()                                  # pick up a script-made split (e.g. add_mining.py)
     bbox = (west, south, east, north)
     guard = aoi.check(bbox, "tiles")
     if not guard["ok"]:

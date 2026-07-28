@@ -91,17 +91,20 @@ zoo so a user can pick one to split a class.
 \end{frame}
 
 % ------------------------------------------------------------------
-\begin{frame}{Biomass from GEDI, as a regression on our features}
+\begin{frame}{Biomass from GEDI: understanding the scripts}
+This is a study of Ratinder's biomass scripts, to see how they would fit, not a surfaced feature yet.
 \begin{itemize}\small
-  \item Ratinder's biomass work samples GEDI, a space-borne lidar that measures above-ground biomass,
-  and pairs each shot with the \emph{exact} Alpha Earth embedding we already classify on, plus slope.
-  So biomass is not a new pipeline, it is a regression target on our own feature space.
-  \item We reproduced the data collection over an area and year, with the same quality and error masks,
-  and trained a Random Forest regressor. On his AEZ-8 frame it reproduces his ballpark.
-  \item It rides the non-linear point-grid path from the previous slide, drawn as a green ramp of
-  above-ground biomass in tonnes per hectare, and it is a regression card in the zoo.
-  \item Honest note: biomass from an annual embedding is inherently noisy; a strict region-held-out
-  test scores modestly, which is expected and is the honest number to report.
+  \item What the scripts do: they sample GEDI, a space-borne lidar that measures above-ground biomass,
+  and pair each shot with the \emph{exact} Alpha Earth embedding we already classify on, plus slope,
+  then fit a Random Forest that predicts biomass everywhere from that embedding.
+  \item The key finding: biomass is not a new pipeline for us, it is a regression target on our own
+  feature space. So it slots in naturally, the same features, a Random Forest regressor, the same
+  point-grid render a non-linear model uses.
+  \item We reproduced the data collection over an area and year, with his quality and error masks, and
+  confirmed it reaches his ballpark on the AEZ-8 frame. Biomass from an annual embedding is inherently
+  noisy, so a strict region-held-out test scores modestly, which is the honest number.
+  \item It is kept out of the interface for now; we can enable a biomass layer later once we know how
+  it should appear in the LULC.
 \end{itemize}
 \end{frame}
 

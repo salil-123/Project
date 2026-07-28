@@ -49,6 +49,9 @@ The IndiaSAT models are picked from the Model Zoo, like any other model, not fro
 3. Switch the same split's algorithm back to a linear model and retrain: the map is crisp tiles again.
    This is the algorithm-aware render, the model type now decides the path. XGBoost is available on the
    Tessera source, on a Tessera site, since it is installed.
+4. "Auto — best model" now bakes off Random Forest alongside the linear models on Alpha Earth too, not
+   only on Tessera. If Random Forest wins on accuracy the split simply renders on the point grid; if a
+   linear model wins it stays on crisp tiles.
 
 ## 4. Biomass, understood from the scripts (3)
 Biomass is not surfaced in the interface yet, on purpose: this round was about understanding the
@@ -62,28 +65,34 @@ scripts and reproducing the data collection, pending a decision on how to fold i
 
 ## 5. Segment the mining class into objects (4)
 1. Segmentation needs the mining class live. If it is not, add it once with
-   `python week3\scripts\add_mining.py`, which splits barren into barren-other and mining. Important:
-   this script writes to disk, so if the app was already running, **restart the server** afterwards —
-   a running server keeps the class tree in memory and will not see a script-made split until it
-   reloads (create the split from the UI instead and it updates live).
+   `python week3\scripts\add_mining.py`, which splits barren into barren-other and mining. You do not
+   need to restart the app: the server now notices the change on disk and reloads the split on the next
+   classify or segment (a script-made split used to stay invisible until a restart — that is fixed).
 2. Go to the Asola Bhatti preset, select the mining leaf in the hierarchy, and press "Segment". The
    scattered mining pixels are traced into a handful of clean orange polygons, each with a hover tooltip
    of its area in hectares, and the status line reports the count and total area (about nine segments,
    6.8 hectares on that box).
 3. Press the GeoJSON button that appears to download the segments. Note the button segments whichever
    leaf class you have selected, not only mining.
+   (If you ever see "class 'mining' isn't on the current map", just run a normal classification once —
+   that triggers the reload — then segment again.)
 
-## 6. Water is robust across bodies and years, and works anywhere (11)
-1. The robustness check is a script, run once:
-   `python week10\water_robustness.py --max-dates 60 --n-pix 6 --test-years 2023 2024`.
-   It prints temporal-only, spatial-only, and combined spatial-and-temporal accuracy, plus the per-year
-   spread. The combined number is around 0.98 with a small spread, so no fluke year.
-2. The augmented, works-anywhere water model is already deployed. Press "Map water" for a date over a
-   dry area, and it no longer paints the dry land as water, which the old within-water-body model did.
-   Rebuild it if needed with `python scripts\train_water_fortnight.py --augment`.
+## 6. Map water on a fortnight, and check it works anywhere (11)
+1. Default water test location: pick the **"Man Sagar Lake, Jaipur"** preset in Area — a clear water
+   body, good for seeing the model light up water and nothing else.
+2. Pick a date in "Water on a fortnight" (default 2024-07-14) and press "Map water". The lake paints as
+   water on crisp tiles; change the date to a dry-season fortnight and the water extent shrinks. This is
+   the intra-annual signal the annual embedding cannot give.
+3. The augmented, works-anywhere water model is deployed, so it no longer paints ordinary dry land as
+   water the way the old within-water-body model did — try "Map water" over a dry box and it stays
+   quiet. Rebuild it if needed with `python scripts\train_water_fortnight.py --augment`.
+4. The robustness check is a script, run once:
+   `python week10\water_robustness.py --max-dates 60 --n-pix 6 --test-years 2023 2024`. It prints
+   temporal-only, spatial-only, and combined spatial-and-temporal accuracy, plus the per-year spread.
+   The combined number is around 0.98 with a small spread, so no fluke year.
 
 ## 7. Count how many fortnights each pixel held water (11)
-1. Pick an area with a water body, for example the Man Sagar Lake preset.
+1. Stay on the **Man Sagar Lake, Jaipur** preset (or any area with a water body).
 2. Press "Water frequency". The tool runs the water model over about twenty four fortnights of the year
    and paints, per pixel, how many fortnights it held water, on a blue ramp: deep blue for perennial
    water, pale for water that appeared only briefly.

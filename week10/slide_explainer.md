@@ -127,23 +127,27 @@ Bullet three: so the user can choose Random Forest on Alpha Earth; it renders on
 instead of tiles, and the interface says so in the option's note. Linear models still give the crisp
 map.
 
-Bullet four: this same non-linear point-grid path is what biomass needs, which is the next slide.
+Bullet four: this same non-linear point-grid path is what biomass would use, which is the next slide.
 
-### Slide 6, biomass from GEDI, as a regression on our features
-Bullet one: Ratinder's biomass work samples GEDI, foundation 7, and pairs each shot with the exact
-Alpha Earth embedding we already classify on, plus slope. So biomass is not a new pipeline, it is a
-regression target, foundation 6, on our own feature space. This is why it fits so cleanly.
+### Slide 6, biomass from GEDI: understanding the scripts
+The framing: this slide is a study of Ratinder's biomass scripts, to understand them and see how they
+would fit, not a feature surfaced in the interface.
 
-Bullet two: we reproduced the data collection over an area and year, with the same quality, error, and
-slope masks he uses, and trained a Random Forest regressor. On his AEZ-8 frame it reproduces his
-ballpark.
+Bullet one, what the scripts do: they sample GEDI, foundation 7, pair each shot with the exact Alpha
+Earth embedding we already classify on plus slope, and fit a Random Forest that predicts biomass
+everywhere from that embedding.
 
-Bullet three: it rides the non-linear point-grid path from the previous slide, drawn as a green ramp of
-above-ground biomass in tonnes per hectare, and it is a regression card in the zoo.
+Bullet two, the key finding: biomass is not a new pipeline for us, it is a regression target,
+foundation 6, on our own feature space, which is why it slots in naturally, the same features, a
+Random Forest regressor, and the same point-grid render a non-linear model uses.
 
-Bullet four, the honest note: biomass from an annual embedding is inherently noisy, and a strict
-region-held-out test scores modestly. That is the expected and honest number; a plain random split
-flatters it.
+Bullet three: we reproduced the data collection over an area and year, with his quality, error, and
+slope masks, and confirmed it reaches his ballpark on the AEZ-8 frame. Biomass from an annual embedding
+is inherently noisy, so a strict region-held-out test scores modestly, which is the honest number; a
+plain random split flatters it.
+
+Bullet four: it is kept out of the interface for now, and a biomass layer can be enabled later once we
+know how it should appear in the LULC.
 
 ### Slide 7, segmenting the mining class into objects
 Bullet one: mining is a per-pixel class, so it shows as scattered pixels. The goal is segmentation,

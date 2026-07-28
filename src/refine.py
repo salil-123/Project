@@ -76,7 +76,7 @@ def model_families(source="alphaearth"):
         {"id": "linearsvc", "label": "Linear SVC", "kind": "pixel", "available": True},
         {"id": "logreg", "label": "Logistic Regression", "kind": "pixel", "available": True},
         {"id": "ridge", "label": "Ridge", "kind": "pixel", "available": True},
-        {"id": "auto", "label": "Auto (best linear)", "kind": "pixel", "available": True},
+        {"id": "auto", "label": "Auto (best model)", "kind": "pixel", "available": True},
     ]
     if source == "tessera":
         return linear + [
@@ -305,10 +305,12 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
     labels = sorted(set(y))
 
     # bake-off (#17): fit each candidate, score on the held-out polygons, keep the best by accuracy.
-    # "auto" stays linear on Alpha Earth (must be band-math renderable) but adds the non-linear
-    # learners when the source is Tessera (#1) — where a Random Forest can genuinely win.
+    # "auto" always tries the linear models, plus Random Forest — on Alpha Earth too now (wk10
+    # follow-up): if RF wins it just renders on the point grid instead of tiles, which the
+    # algorithm-aware inference already handles. Tessera additionally throws in XGBoost.
     if algo == "auto":
-        candidates = list(_LINEAR_ALGOS) + (list(_NONLINEAR_ALGOS) if embedding == "tessera" else [])
+        extra = list(_NONLINEAR_ALGOS) if embedding == "tessera" else ["randomforest"]
+        candidates = list(_LINEAR_ALGOS) + extra
     else:
         candidates = [algo if algo in _ALL_ALGOS else "linearsvc"]
     scored = []
