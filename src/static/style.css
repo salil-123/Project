@@ -36,7 +36,7 @@ button.stub { background: #232a33; color: #7e8794; font-style: italic; }
 .water-row input[type="date"] { width: 100%; }
 .aoi-size.warn { color: #d7301f; font-weight: 600; }   /* AOI over a size cap (#3) */
 .meta { font-size: 12px; color: #9aa3af; margin-top: 10px; line-height: 1.6; }
-.hidden { display: none; }
+.hidden { display: none !important; }   /* must beat display-setting classes like .run-row (flex) */
 footer { font-size: 11px; color: #6b727c; padding-top: 14px; border-top: 1px solid #262b34; }
 
 /* run row: classify button + the overlay eye-toggle (#21) */

@@ -59,8 +59,11 @@ catalogue.sync_ee_rf_cards()        # the two ported IndiaSAT EE-RF models get c
 # UI selects the first entry on load, so this is what the map shows on arrival.
 PRESETS = {
     "IIT Delhi + Sanjay Van (acacia)": [77.165, 28.520, 77.205, 28.560],
-    # Asola Bhatti — old mines reclaimed into built-up + acacia; a good false-positive probe.
-    "Asola Bhatti (mining/acacia)": [77.19, 28.42, 77.27, 28.48],
+    # Jharia coalfield — a real active coalfield, the positive control for the mining class (so the
+    # mining segments here are genuine, unlike Asola which is reclaimed and reads as false positives).
+    "Jharia coalfield (active mining)": [86.23, 23.62, 86.41, 23.80],
+    # Asola Bhatti — old mines reclaimed into built-up + acacia; a false-positive probe, not real mines.
+    "Asola Bhatti (reclaimed/acacia)": [77.19, 28.42, 77.27, 28.48],
     # Jalpaiguri — where we demo starting from an IndiaSAT/WorldCover base then splitting/adding.
     "Jalpaiguri (base-scheme demo)": [88.68, 26.48, 88.78, 26.56],
     # Upper Assam tea belt — has both tea and non-tea ground truth, so a trees->tea/non-tea split
