@@ -70,15 +70,14 @@ These recur across the slides, so it helps to fix them first.
 The title names the week's themes: plugging in the lab's production models, biomass, robust water, and
 non-linear learners. The running title at the foot is the short version.
 
-### Slide 2, where we are, and what week 10 tackled
-Two columns. The left is the state before this week, the right is what this week added.
+### Slide 2, where we are, and what this tackled
+Two columns. The left is the state before this round, the right is what it added.
 
 Left: the product is a 4-class base map at 10 m with a living hierarchy, all rendered as crisp
 Earth-Engine tiles, plus a git-backed zoo, save and resume, a GeoTIFF export, and per-fortnight water.
 
 Right, the five themes, one per major slide: plug in the IndiaSAT models; add non-linear learners;
-biomass; mining segmentation and robust water; and STACD provenance and the Tessera measurement. The
-phrase a chosen subset is deliberate, these are the points we picked to present.
+biomass; mining segmentation and robust water; and STACD provenance and the Tessera measurement.
 
 ### Slide 3, plugging in the lab's production models
 This is the headline: use Raman's IndiaSAT models, train and store them, and list them in the zoo so a
@@ -247,18 +246,7 @@ with selective recomputation and an instance database, is the natural next layer
 record that lines up with the drone and bioacoustics outputs the group already produces, so it can be
 compared across the projects.
 
-### Slide 14, where the product stands
-Bullet one: the framework now carries the lab's own production models, not only ones we trained here.
-That is the piece that turns it from a demo into something the group can populate, tree against crop,
-farm and scrub, biomass, water, all as cards a user can pick.
-
-Bullet two: Alpha Earth remains the default for browsing anywhere, with linear models on crisp tiles.
-Random Forest, XGBoost, biomass, and Tessera are there when a task needs them, on the point grid.
-
-Bullet three: the next step towards a hosted service is packaging, a container and a service-account
-key. The code is modular, so these sit on top of the existing structure as additions, not rewrites.
-
-### Slide 15, thank you
+### Slide 14, thank you
 Closing slide.
 
 ---

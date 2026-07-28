@@ -14,7 +14,7 @@
 \frame{\titlepage}
 
 % ------------------------------------------------------------------
-\begin{frame}{Where we are, and what week 10 tackled}
+\begin{frame}{Where we are, and what this tackled}
 \begin{columns}[T]
 \begin{column}{0.5\textwidth}
 \emph{Done so far}
@@ -26,7 +26,7 @@
 \end{itemize}
 \end{column}
 \begin{column}{0.5\textwidth}
-\emph{This week (a chosen subset)}
+\emph{This round}
 \begin{itemize}\small
   \item Plug the lab's own IndiaSAT models straight into the framework as usable, carded classifiers.
   \item Add non-linear learners: Random Forest on Alpha Earth, XGBoost on Tessera.
@@ -232,19 +232,6 @@ What the emitter actually does, all from metadata, no Earth-Engine run.
   \item We emit the metadata half of STACD. The runtime half from the paper, an Airflow scheduler with
   selective recomputation and an instance database, is the natural next layer. This is a shareable
   record that lines up with the drone and bioacoustics outputs the group already produces.
-\end{itemize}
-\end{frame}
-
-% ------------------------------------------------------------------
-\begin{frame}{Where the product stands}
-\begin{itemize}
-  \item The framework now carries the lab's own production models, not only ones we trained here. That
-  is the piece that turns it from a demo into something the group can actually populate: tree against
-  crop, farm and scrub, biomass, water, all as cards a user can pick.
-  \item Alpha Earth remains the default for browsing anywhere, with linear models on crisp tiles.
-  Random Forest, XGBoost, biomass, and Tessera are there when a task needs them, on the point grid.
-  \item The next step towards a hosted service is packaging, a container and a service-account key.
-  The code is modular, so these sit on top of the existing structure as additions, not rewrites.
 \end{itemize}
 \end{frame}
 
