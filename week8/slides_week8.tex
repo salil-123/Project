@@ -1,0 +1,167 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\setbeamertemplate{navigation symbols}{}
+
+\title[Self-explaining LULC workbench]{From classifier to product: a self-explaining LULC workbench, a richer model zoo, and portable outputs}
+\author[Salil Gujar]{Salil Gujar \\ \footnotesize M.Tech CSE \quad Entry No.\ 2025MCS2106}
+\date{July 2026}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------------
+\begin{frame}{Where we are, and what week 8 tackled}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\emph{Done so far}
+\begin{itemize}\small
+  \item A 4-class base map over India at 10\,m with a living hierarchy: split or add a class, give a
+  few example polygons, and retrain that node on the fly.
+  \item A git-backed zoo of Model and Dataset cards, with save, reload, merge, base and year
+  selection, publishing, and site testing on acacia, tea, and mining.
+\end{itemize}
+\end{column}
+\begin{column}{0.5\textwidth}
+\emph{What was advised (26 points)}
+\begin{itemize}\small
+  \item Make it explainable and controllable: show only the controls that fit the flow, and guide the
+  user through the pipeline.
+  \item Make the zoo honest: standard classes, dataset-to-model links, selective publishing.
+  \item Add new abilities: Tessera training, an auto model bake-off, a GeoTIFF export, a resumable
+  project.
+  \item Answer the operational questions on schemas, deployment, and running Tessera with joblib.
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{A workbench that explains itself}
+\begin{itemize}
+  \item Two panels, one job each. The left panel is navigation (area, hierarchy, save, zoo); a new
+  right panel is contextual: click a class and it shows exactly what you can do with it, in order:
+  mark data, split, add, merge, retrain.
+  \item Only the relevant controls. The balancing and multi-year knobs appear only when you are
+  training your own split, not for a bare leaf or the base map.
+  \item Two ways to see the scheme. ``By hierarchy'' is the class tree; ``by operations'' is the
+  ordered sequence that built it, and clicking a step acts on that class. The same right panel serves
+  both views.
+  \item Draw the area on the map, with a rectangle tool or a click-to-centre size slider; the
+  classification is clipped to the box, and an eye toggle hides or shows it.
+  \item Moving to a new area offers a clean reset, confirmed first, so a scheme built for one site does
+  not leak into the next.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Model zoo improvements}
+\begin{itemize}
+  \item Every trained model shows up as a card. We fixed the case where re-splitting a node dropped
+  its old model, so nothing trained goes missing, and any card can be deleted.
+  \item Standard classes on the card. If the uploader maps a class to a standard scheme (ESA
+  WorldCover or USDA), the small card shows the standard name, for example ``Tree cover''; the detail
+  pane still shows what the uploader calls it, acacia mapped to Tree cover.
+  \item Provenance both ways. A dataset card now lists which models use it, alongside the existing
+  model-to-dataset links, so one dataset feeding several models is visible from either side.
+  \item Selective publishing. Tick the cards you want and publish those, instead of only ``publish
+  all''.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Auto model bake-off}
+``Auto'' trains several models on the same held-out-polygon split and keeps the most accurate. We
+restrict the field to linear models, because only a linear model replays as Earth-Engine band math, so
+the winner still renders as the crisp 10\,m tile map.
+\vspace{4mm}
+\centering
+\begin{tabular}{lc}
+\toprule
+Candidate (acacia / non-acacia) & Held-out accuracy \\
+\midrule
+LinearSVC & 0.703 \\
+Logistic Regression & 0.692 \\
+Ridge & 0.731 \\
+\bottomrule
+\end{tabular}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Tessera as a training embedding}
+\begin{itemize}\small
+  \item A user can now train a split on Tessera (128-d) instead of Alpha Earth (64-d), for example
+  acacia against non-acacia. It is scored, carded, and kept like any other model.
+  \item On a Delhi run, acacia against non-acacia on Tessera reached about 0.73 held-out, comparable to
+  Alpha Earth on the same split.
+  \item Our four requested ROIs were approved for 2017 to 2025 (v1.1, cambridge variant). Because only
+  these four boxes were approved, we have the multi-year Tessera data only inside those boxes, so
+  Tessera training is offered only there.
+  \item A Tessera split is a per-point download rather than an Earth-Engine image, so it does not ride
+  the crisp tile map. It is evaluated and carded, and the card is marked accordingly.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Portable outputs: GeoTIFF and a resumable project}
+\begin{itemize}
+  \item Download the result as a GeoTIFF. The classified area exports as a single-band integer-class
+  raster at 10\,m, with a code-to-class legend, built server-side and fetched by the browser, ready to
+  open in QGIS.
+  \item Save the whole project as one JSON: the class scheme, the sequence of steps that built it, and
+  the area, year, and base classes. Datasets and models ride as links, never copied. Reloading resumes
+  the exact view.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{New ground truth: seasonal water}
+We downloaded a set of water and non-water polygons for farm ponds and water bodies, marked across
+about ten dates each between 2019 and 2025, and folded them into the zoo as a dataset card. This is a
+seasonal signal: water present or absent by date, keyed by a per-water-body id.
+
+\vspace{4mm}
+\begin{center}
+\begin{tabular}{lr}
+\toprule
+What we have & Count \\
+\midrule
+Total polygons (WGS84) & 876 \\
+\quad water & 720 \\
+\quad non-water & 156 \\
+Spatial spread (0.25$^\circ$ grid) & 0.61 \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Deploying this on a server}
+\begin{itemize}
+  \item Runtime: a Python virtual environment from the requirements file, served with uvicorn. State
+  is plain files (the hierarchy, the cards, the model binaries), so there is no database to run.
+  \item Earth Engine: the app initialises with a project id and the runtime user's Earth Engine
+  credentials, so on a server we authenticate once as that user. A service-account key is the natural
+  choice for a fully headless box.
+  \item Publishing to GitHub: the model zoo is its own git repository pushed to a configured remote.
+  We leave authentication to the system git, so a server needs either a token through a credential
+  helper or an SSH deploy key.
+  \item Configuration is a small set of environment variables: the Earth-Engine project and user, and
+  the zoo remote. Committed model binaries let a fresh clone classify straight away.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}
+\centering
+\vspace{1.5cm}
+{\Large Thank you}
+\vspace{0.5cm}
+
+
+\end{frame}
+
+\end{document}

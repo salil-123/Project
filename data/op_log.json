@@ -88,5 +88,324 @@
       "target": "tea_barren"
     },
     "result": null
+  },
+  {
+    "seq": 9,
+    "ts": "2026-07-14T16:52:50.473474+00:00",
+    "op": "split",
+    "args": {
+      "parent": "greenery",
+      "children": [
+        {
+          "name": "tea"
+        },
+        {
+          "name": "non-tea"
+        }
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 10,
+    "ts": "2026-07-14T16:53:14.894091+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": []
+    },
+    "result": null
+  },
+  {
+    "seq": 11,
+    "ts": "2026-07-14T16:53:44.205265+00:00",
+    "op": "split",
+    "args": {
+      "parent": "greenery",
+      "children": [
+        {
+          "name": "acacia"
+        },
+        {
+          "name": "non-acacia"
+        }
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 12,
+    "ts": "2026-07-14T17:15:51.835565+00:00",
+    "op": "retrain",
+    "args": {
+      "node": "greenery",
+      "balance": "balanced",
+      "years": [
+        2019,
+        2021,
+        2023,
+        2025
+      ]
+    },
+    "result": {
+      "model": "mc_greenery_v1",
+      "datasets": [
+        "ds_acacia_polygons_v1",
+        "ds_non_acacia_polygons_v1"
+      ]
+    }
+  },
+  {
+    "seq": 13,
+    "ts": "2026-07-14T17:38:41.398631+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "acacia",
+        "non_acacia"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 14,
+    "ts": "2026-07-14T21:31:07.768452+00:00",
+    "op": "retrain",
+    "args": {
+      "node": "greenery",
+      "balance": "balanced",
+      "years": [
+        2019,
+        2021,
+        2023,
+        2025
+      ],
+      "algo": "ridge",
+      "embedding": "tessera"
+    },
+    "result": {
+      "model": "mc_greenery_v1",
+      "datasets": [
+        "ds_acacia_polygons_v1",
+        "ds_non_acacia_polygons_v1"
+      ]
+    }
+  },
+  {
+    "seq": 15,
+    "ts": "2026-07-15T03:27:12.526382+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "acacia",
+        "crops",
+        "mining",
+        "non_acacia",
+        "non_tea",
+        "tea",
+        "trees"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 16,
+    "ts": "2026-07-15T03:50:59.017800+00:00",
+    "op": "retrain",
+    "args": {
+      "node": "greenery",
+      "balance": "balanced",
+      "years": null,
+      "algo": "linearsvc",
+      "embedding": "tessera"
+    },
+    "result": {
+      "model": "mc_greenery_v1",
+      "datasets": [
+        "ds_acacia_polygons_v1",
+        "ds_non_acacia_polygons_v1"
+      ]
+    }
+  },
+  {
+    "seq": 17,
+    "ts": "2026-07-15T04:21:14.419366+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "acacia",
+        "crops",
+        "mining",
+        "non_acacia",
+        "non_tea",
+        "tea",
+        "trees"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 18,
+    "ts": "2026-07-15T04:21:52.044140+00:00",
+    "op": "split",
+    "args": {
+      "parent": "greenery",
+      "children": [
+        {
+          "name": "acacia"
+        },
+        {
+          "name": "non-acacia"
+        }
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 19,
+    "ts": "2026-07-15T04:23:41.296677+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "acacia"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 20,
+    "ts": "2026-07-15T04:24:04.821001+00:00",
+    "op": "split",
+    "args": {
+      "parent": "barren",
+      "children": [
+        {
+          "name": "mining"
+        },
+        {
+          "name": "non-mining"
+        }
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 21,
+    "ts": "2026-07-15T04:25:46.795832+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "mining"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 22,
+    "ts": "2026-07-22T01:09:55.499834+00:00",
+    "op": "rule_split",
+    "args": {
+      "parent": "greenery",
+      "rule": {
+        "clauses": [
+          {
+            "when": "ndvi_annual > 0.3",
+            "class": "dense_veg"
+          }
+        ],
+        "default": "sparse_veg"
+      },
+      "classes": [
+        "dense_veg",
+        "sparse_veg"
+      ]
+    },
+    "result": {
+      "model": "mc_greenery_rule_v1"
+    }
+  },
+  {
+    "seq": 23,
+    "ts": "2026-07-22T01:12:24.280167+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": []
+    },
+    "result": null
+  },
+  {
+    "seq": 24,
+    "ts": "2026-07-22T01:18:25.724115+00:00",
+    "op": "retrain",
+    "args": {
+      "node": "root",
+      "balance": "balanced",
+      "years": null,
+      "algo": null,
+      "embedding": "ae"
+    },
+    "result": {
+      "model": "mc_root_v1",
+      "datasets": []
+    }
+  },
+  {
+    "seq": 25,
+    "ts": "2026-07-22T04:40:17.181361+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": []
+    },
+    "result": null
+  },
+  {
+    "seq": 26,
+    "ts": "2026-07-22T04:40:31.728393+00:00",
+    "op": "rule_split",
+    "args": {
+      "parent": "greenery",
+      "rule": {
+        "clauses": [
+          {
+            "when": "ndvi_annual > 0.3",
+            "class": "dense_veg"
+          }
+        ],
+        "default": "sparse_veg"
+      },
+      "classes": [
+        "dense_veg",
+        "sparse_veg"
+      ]
+    },
+    "result": {
+      "model": "mc_greenery_rule_v1"
+    }
+  },
+  {
+    "seq": 27,
+    "ts": "2026-07-27T18:16:49.502022+00:00",
+    "op": "retrain",
+    "args": {
+      "node": "barren",
+      "balance": "balanced",
+      "years": null,
+      "algo": "linearsvc",
+      "embedding": "ae"
+    },
+    "result": {
+      "model": "mc_barren_v1",
+      "datasets": [
+        "ds_master_alpha_full_v1",
+        "ds_mining_polygons_v1"
+      ]
+    }
   }
 ]

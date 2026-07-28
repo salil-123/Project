@@ -1,5 +1,5 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
-:root { --sidebar: 360px; }   /* one knob: sidebar width + toast centering both read it */
+:root { --sidebar: 360px; --context: 340px; }   /* left nav + right contextual panel widths */
 html, body { height: 100%; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
 body { display: flex; }
 
@@ -30,9 +30,46 @@ button.stub { background: #232a33; color: #7e8794; font-style: italic; }
 .check input { width: auto; }
 .status { font-size: 12px; color: #9aa3af; margin-top: 8px; min-height: 16px; }
 .hint { font-size: 11px; color: #7e8794; margin: 10px 0 4px; }
+.aoi-size { margin: 2px 0 4px; font-variant-numeric: tabular-nums; }
+.water-row { align-items: flex-end; gap: 8px; }
+.water-row span { flex: 1; }
+.water-row input[type="date"] { width: 100%; }
+.aoi-size.warn { color: #d7301f; font-weight: 600; }   /* AOI over a size cap (#3) */
 .meta { font-size: 12px; color: #9aa3af; margin-top: 10px; line-height: 1.6; }
 .hidden { display: none; }
 footer { font-size: 11px; color: #6b727c; padding-top: 14px; border-top: 1px solid #262b34; }
+
+/* run row: classify button + the overlay eye-toggle (#21) */
+.run-row { display: flex; gap: 6px; align-items: stretch; }
+.run-row .primary { flex: 1; }
+#eyeToggle { width: 42px; flex: none; margin-top: 10px; font-size: 15px; padding: 0; }
+#eyeToggle.off { background: #3a2020; }
+#dlTif { margin-top: 6px; }
+
+/* biomass ramp legend (#3 wk10): two swatches (low..high AGBD) + the range values */
+.biomass-ramp { display: inline-flex; align-items: center; gap: 4px; font-size: 11px;
+  color: #9aa3af; margin-top: 10px; }
+.biomass-ramp i { width: 16px; height: 12px; border-radius: 2px; display: inline-block; }
+
+/* left-panel view toggle (#13): hierarchy vs operations */
+.views { display: flex; gap: 4px; margin-bottom: 8px; }
+.vtab { flex: 1; margin: 0; padding: 6px; font-size: 12px; background: #1a1f27; color: #9aa3af;
+  border: 1px solid #262b34; }
+.vtab.sel { background: #2f6df6; color: #fff; border-color: #2f6df6; font-weight: 600; }
+.vtab:hover:not(.sel) { background: #1d232c; color: #cfd4db; }
+
+/* operations / schema view rows (#13) */
+#ops .op-row { display: flex; align-items: baseline; gap: 7px; font-size: 12px; padding: 5px 6px;
+  border-radius: 5px; cursor: pointer; border-left: 2px solid transparent; }
+#ops .op-row:hover { background: #1d232c; }
+#ops .op-row.sel { background: #2b3340; border-left-color: #4ea1ff; }
+#ops .op-row.noclick { cursor: default; opacity: .8; }
+#ops .op-seq { color: #6b727c; font-variant-numeric: tabular-nums; min-width: 14px; }
+#ops .op-verb { font-size: 10px; text-transform: uppercase; letter-spacing: .03em; color: #6b9bff;
+  min-width: 58px; }
+#ops .op-verb.v-merge, #ops .op-verb.v-merge_remove { color: #b98cff; }
+#ops .op-verb.v-reset, #ops .op-verb.v-base_select { color: #e0b341; }
+#ops .op-sum { color: #cfd4db; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* hierarchy tree */
 #tree .node { display: flex; align-items: center; font-size: 13px; padding: 3px 6px;
@@ -55,10 +92,41 @@ footer { font-size: 11px; color: #6b727c; padding-top: 14px; border-top: 1px sol
 .metrics { font-size: 11px; color: #9aa3af; white-space: pre-wrap; margin-top: 8px;
   max-height: 150px; overflow-y: auto; font-family: ui-monospace, monospace; }
 
+/* right-hand contextual panel (#8): what you can do with the selected class */
+#context {
+  width: var(--context); height: 100vh; overflow-y: auto; flex-shrink: 0;
+  background: #14181f; color: #e6e8ec; padding: 18px 16px; border-left: 1px solid #262b34;
+}
+#context h2 { font-size: 16px; font-weight: 700; color: #e6e8ec; }
+#context > .hint { margin-top: 4px; margin-bottom: 6px; color: #9aa3af; }
+#context .ctx-block { border-top: 1px solid #262b34; padding: 12px 0; transition: opacity .15s; }
+#context .ctx-block h3 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em;
+  color: #9aa3af; margin-bottom: 6px; }
+/* the less-relevant actions for this class are dimmed, not hidden, so nothing's lost (#10) */
+#context .ctx-block.muted { opacity: .4; }
+#context .ctx-block.muted:hover { opacity: 1; }
+.ctxcls { color: #6b9bff; font-weight: 600; }
+button.danger { background: #3a2020; color: #ff9c9c; }
+button.danger:hover { background: #4d2626; }
+button.ghost { background: none; border: 1px solid #2c333d; color: #9aa3af; margin-top: 8px; }
+button.ghost:hover { background: #1d232c; color: #cfd4db; }
+
+/* our own confirm modal — replaces the native confirm() so prompts look native to the app (#11) */
+.modal-back { position: fixed; inset: 0; z-index: 3000; background: rgba(0,0,0,.55);
+  display: flex; align-items: center; justify-content: center; backdrop-filter: blur(2px); }
+.modal-card { background: #1b212b; color: #e6e8ec; border: 1px solid #2c333d; border-radius: 10px;
+  padding: 22px; max-width: 440px; width: 90%; box-shadow: 0 12px 44px rgba(0,0,0,.55);
+  animation: modalpop .12s ease-out; }
+@keyframes modalpop { from { transform: scale(.96); opacity: .6; } to { transform: scale(1); opacity: 1; } }
+.modal-msg { font-size: 14px; line-height: 1.55; white-space: pre-line; color: #dfe3e9; }
+.modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+.modal-btns button { margin: 0; flex: 1; padding: 10px; }
+
 /* floating feedback toast over the map — visible no matter which panel you're using */
 .toast {
-  position: fixed; top: 16px; left: calc(var(--sidebar) + (100% - var(--sidebar)) / 2);
-  transform: translateX(-50%); z-index: 1000; max-width: 70%;
+  position: fixed; top: 16px;
+  left: calc(var(--sidebar) + (100% - var(--sidebar) - var(--context)) / 2);
+  transform: translateX(-50%); z-index: 1000; max-width: 50%;
   padding: 11px 18px; border-radius: 8px; font-size: 14px; font-weight: 600;
   color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.35);
   background: #2c333d; border-left: 4px solid #4ea1ff; transition: opacity .2s; opacity: 1;
@@ -125,12 +193,18 @@ footer { font-size: 11px; color: #6b727c; padding-top: 14px; border-top: 1px sol
   background: #232a33; color: #9aa3af; text-transform: uppercase; letter-spacing: .03em; }
 .pill.pub { background: #173a26; color: #3ddc84; } .pill.loc { background: #3a3417; color: #e0b341; }
 .pill.train { background: #1b2c3a; color: #6cb6ff; } .pill.infer { background: #2c1b3a; color: #c08cff; }
+.pill.arch { background: #2a2f38; color: #9aa3af; }   /* superseded/archived model card (#9) */
+/* per-tile publish tick (#25) */
+.zoo-card .pubchk { width: auto; margin: 0 7px 0 0; vertical-align: middle; cursor: pointer; accent-color: #2f6df6; }
+#zooPublishSel:not(:disabled) { background: #2f6df6; color: #fff; font-weight: 600; }
 
 .chip { font-size: 11px; padding: 3px 9px; border-radius: 10px; background: #1d232c; color: #cfd4db;
   display: inline-flex; align-items: center; gap: 6px; }
 .chip .sw { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
 .chip.link { cursor: pointer; font-family: ui-monospace, monospace; }
 .chip.link:hover { background: #2b3340; color: #fff; }
+/* a tile chip showing a STANDARD class name (#14) — subtly tinted + dotted underline as a cue */
+.chip.std { background: #1b2c22; color: #9fe3b8; border-bottom: 1px dotted #4c7a5c; cursor: help; }
 
 /* detail pane — wide enough that most cards fit without scrolling */
 .zoo-detail { width: 40%; min-width: 440px; max-width: 620px; flex-shrink: 0; overflow-y: auto;

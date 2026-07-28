@@ -2,11 +2,17 @@
 
 A hands-on script to **demo** the week-6 work and **verify** every piece yourself. Each
 feature has: what to click, what you should see, and (where useful) a one-line check you can
-run in a terminal. Slides: `week6/slides_week6.pdf`. Full build log: `week6/plan.md`.
+run in a terminal. Slides: `week6/slides_week6.pdf` (point-by-point: `week6/slide_explainer.md`).
+Full build log: `week6/plan.md`.
 
 > The features map to `week6_instructions.txt`: base picker (#5), inference-year (#7),
 > merge (#9), save/reload (#4), recommendations (#2), spread grid (#1), publish storage +
 > contributor + data link (#8, #6), operation log (#11), UI sweep (#3).
+>
+> **Updated for the current UI** (post-week-6 refinements, see `master_document.md` §5): the base
+> picker and the inference year now live in the **Model Zoo** (not the sidebar); merge sources are
+> **ticked in the Hierarchy tree**; and publishing no longer pops up prompts (contributor + dataset
+> link are set on the cards). The backend/API checks below are unchanged.
 
 ---
 
@@ -15,8 +21,13 @@ run in a terminal. Slides: `week6/slides_week6.pdf`. Full build log: `week6/plan
 ```
 uvicorn backend:app --reload --app-dir src
 ```
-Open http://127.0.0.1:8000/. You should see the map, the left sidebar (Area, Base classes,
-Hierarchy, Examples, Operations, Merge, Save/load, Model Zoo), and no console errors.
+Open http://127.0.0.1:8000/. On a fresh browser you're greeted by a **"Choose your base classes"**
+modal (section 1). Behind it: the map and the left sidebar (Area, Hierarchy, Examples, Operations,
+Merge, Save/load, Model Zoo) — no console errors.
+
+> Tip: the base modal appears on **every launch** (a session starts by choosing a base). The current
+> scheme is tagged — pick it (or *Keep the current scheme*) to carry on without reseeding. If you
+> don't see fresh changes after an edit, hard-refresh (Ctrl+Shift+R) — assets are cache-busted `?v=N`.
 
 Quick API health check (optional):
 ```
@@ -28,16 +39,18 @@ Expect `{"status":"ok", "classes":[...], ...}`.
 
 ## 1. Pick your base classes (#5)
 
-**Do:** in **Base classes**, the dropdown offers *IndiaSAT (4 classes)* and *WorldCover
-(effective)*. Pick **WorldCover**, click **Use these base classes**, confirm the prompt.
+**Do:** on first load the **"Choose your base classes"** modal offers *IndiaSAT (4 classes)* and
+*WorldCover (7 classes)*, with the current scheme tagged. Click **WorldCover** and confirm. (Later,
+you can switch any time from the **Model Zoo** → Models tab → a base card's *Use … base* button —
+see section 6.)
 
 **See:** the Hierarchy panel reseeds to 7 classes (tree, shrubland, grassland, cropland,
-built-up, bare, water). Run a classification (section 2) and the map is now a 7-class
-WorldCover map. Switch back with **IndiaSAT** to restore greenery/water/built-up/barren.
+built-up, bare, water), then the map auto-classifies as a 7-class WorldCover map. Re-open the base
+choice (or the zoo) and pick **IndiaSAT** to restore greenery/water/built-up/barren.
 
-**Note:** switching base is deliberately destructive (it clears your splits/merges and backs
-the old tree up to `data/hierarchy.prev.json`). The WorldCover base uses weak labels, so it is
-an alternate starting point, not a more accurate one.
+**Note:** switching to a *different* base is deliberately destructive (it clears your splits/merges
+and backs the old tree up to `data/hierarchy.prev.json`); picking the current scheme just proceeds.
+The WorldCover base uses weak labels, so it is an alternate starting point, not a more accurate one.
 
 **Check:**
 ```
@@ -48,12 +61,15 @@ curl -s http://127.0.0.1:8000/api/base        # active scheme + the two options
 
 ## 2. Pick the inference data / year (#7)
 
-**Do:** in **Area**, choose a preset (e.g. *Pune (mixed)*). Mode = *Realistic*. Set
-**Inference year = 2024**, click **Run classification**. Then set **year = 2022** and run again.
+**Do:** open the **Model Zoo** → **Datasets** tab → the *Alpha Earth annual embeddings* card. Its
+detail pane has an **Inference year** dropdown — set it to **2024** and close the zoo. In **Area**,
+choose a preset (e.g. *Pune (mixed)*), Mode = *Realistic*, click **Run classification**. Then
+re-open that card, set the year to **2022**, and run again.
 
-**See:** both runs paint the map; the status line reads `Done (2024): {...}` / `Done (2022):
-{...}` and the class counts **differ** between the years (same model, different temporal
-slice). Switch Mode to *Detailed* and the year control **locks to 2024** (Tessera coverage).
+**See:** both runs paint the map; the status line reads `Done: {...}` and the class counts
+**differ** between the years (same model, different temporal slice). The picked year is remembered
+(`localStorage.inferYear`). In **Detailed** mode the year is ignored and pinned to 2024 (Tessera
+coverage).
 
 **Check (counts differ by year):**
 ```
@@ -69,19 +85,25 @@ curl -s "http://127.0.0.1:8000/api/classify?$B&mode=realistic&year=2022" | pytho
 **Setup:** make sure you are on the IndiaSAT base with the demo splits (greenery to tea/non-tea,
 barren to mining). If not, the *Assam tea belt* preset and the existing splits are the easiest.
 
-**Do:** in **Merge classes**, tick two leaves from **different** splits, e.g. `tea` and
-`mining`. Type a name (e.g. `extractive`), pick a colour, click **Create merge**.
+**Do:** in the **Hierarchy** tree, tick the checkbox on two leaves from **different** splits, e.g.
+`tea` and `mining`. Then in **Merge classes** type a name (e.g. `extractive`), pick a colour, and
+click **Create merge**.
 
 **See:** the map re-renders; the merged class appears in the counts with its colour, and the
-source classes disappear (they were relabelled). It shows under **Active merges** with an
-`x` to remove it. Removing it brings the original classes back.
+source classes disappear (they were relabelled). On the **Hierarchy tree** the two source leaves
+now show a coloured `→ extractive` tag, and a **Merges (cross-model)** virtual node appears with an
+`✕` to undo it (which brings the originals back). The merge also mints a **local model card**
+`mc_merge_extractive_v1` — open the **Model Zoo** → Models tab to see it (topology `merge_relabel`,
+no trained artifact), and the badge shows `1 unpublished`.
 
 **Check (the merge is exact: tea + mining counts collapse into the target):**
 ```
 curl -s -X POST http://127.0.0.1:8000/api/merge -H "Content-Type: application/json" \
   -d '{"name":"extractive","sources":["tea","mining"],"color":"#8e44ad"}' >/dev/null
 curl -s "http://127.0.0.1:8000/api/classify?$B&mode=realistic&year=2024" | python -c "import sys,json;c=json.load(sys.stdin)['counts'];print('extractive=',c.get('extractive'),'| tea/mining gone:', 'tea' not in c and 'mining' not in c)"
-curl -s -X DELETE http://127.0.0.1:8000/api/merge/extractive >/dev/null   # clean up
+# the merge produced a local model card:
+curl -s http://127.0.0.1:8000/api/cards/mc_merge_extractive_v1 | python -c "import sys,json;d=json.load(sys.stdin);print('card topology:',d['topology'],'| produces:',[p['class'] for p in d['produces']])"
+curl -s -X DELETE http://127.0.0.1:8000/api/merge/extractive >/dev/null   # clean up (also deletes the card)
 ```
 
 ---
@@ -133,7 +155,7 @@ curl -s "http://127.0.0.1:8000/api/cards/ds_crops_polygons_v1/spread?cell=1.0"
 
 **Do:** open the **Model Zoo**, **Models** tab.
 
-**See:** four model cards, including **WorldCover effective base** and the **Core Stack base
+**See:** four model cards, including the **WorldCover base** and the **Core Stack base
 map** (IndiaSAT). Opening the WorldCover card shows a *Use WorldCover base (7 classes)* button;
 the IndiaSAT card shows *Use IndiaSAT base (4 classes)*. Either one switches the live base.
 
@@ -141,7 +163,8 @@ the IndiaSAT card shows *Use IndiaSAT base (4 classes)*. Either one switches the
 ```
 curl -s http://127.0.0.1:8000/api/catalogue | python -c "import sys,json;print([c['id'] for c in json.load(sys.stdin)['cards'] if c['kind']=='model'])"
 ```
-Expect `mc_barren_v1, mc_greenery_v1, mc_root_v1, mc_worldcover_base_v1`.
+Expect `mc_barren_v1, mc_greenery_v1, mc_root_v1, mc_worldcover_base_v1` (plus any `mc_merge_*`
+card if a merge from section 3 is currently active).
 
 ---
 
@@ -149,14 +172,20 @@ Expect `mc_barren_v1, mc_greenery_v1, mc_root_v1, mc_worldcover_base_v1`.
 
 > Publishing pushes to the shared GitHub zoo. Demo this only when you actually intend to share.
 
-**Do:** open a model card in the Zoo, click **Publish to zoo**. You are prompted for a
-**GitHub handle / email** (remembered next time), then for a **public link** for each training
-dataset (leave blank to keep a dataset private).
+**No popups anymore** — the contributor and the dataset link are set on the cards beforehand:
 
-**See:** the card shows as *published*, with your handle as the contributor. Any dataset link
-you gave shows on that dataset's card as **Public source**. Behind the scenes the model's
-`.joblib` is committed into the zoo's `artifacts/` folder, while raw private uploads are never
-pushed.
+- **Contributor (#6):** open a model card → **Annotate / evidence / class mapping** → fill the
+  **Contributor** field (GitHub handle / email) → **Save annotation**. It's remembered
+  (`localStorage.contributor`) and used silently on every later publish.
+- **Dataset link (#8b):** open a training **dataset** card → in **Public source link**, paste the
+  URL it came from (leave blank to keep it private) → **Save link**. It shows as **Public source**
+  on the card.
+
+**Do:** open a model card in the Zoo, click **Publish to zoo** (it just publishes — no prompts).
+
+**See:** the card shows as *published*, with your saved handle as the contributor. Behind the
+scenes the model's `.joblib` is committed into the zoo's `artifacts/` folder, while raw private
+uploads (datasets with no link) are never pushed.
 
 **Verify the storage choices (no push needed to read these):**
 - `data/catalogue/.gitignore` keeps `artifacts/*.joblib` but drops `*.csv` / `*.npy`.
@@ -175,9 +204,10 @@ python -c "import json;[print(e['seq'],e['op'],e['args']) for e in json.load(ope
 ```
 
 **UI sweep:** click through every panel; the zoo shows all models in both tabs, the detail-pane
-buttons (Use, Publish, Annotate, Show on map) all respond, and the year / merge / base controls
-work. (The earlier "models not showing" was a CSS layering bug fixed in week 5; the index is
-consistent.)
+buttons (Use, Publish, Annotate, Show on map) all respond, and the relocated controls work — the
+base modal / base cards, the inference-year on the Alpha Earth card, and tree-based merge selection.
+The zoo badge now counts actual **cards** (a dirty `index.json` no longer misreads as
+"1 unpublished"). A merge card hides the *Use* button (it's already live as a relabel layer).
 
 ---
 

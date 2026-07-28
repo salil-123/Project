@@ -54,7 +54,7 @@ a vacuum.
 
 - **The point:** the user isn't locked to one starting vocabulary. On arrival they pick a scheme.
   - **IndiaSAT**: greenery / water / built-up / barren — the calibrated default.
-  - **WorldCover (effective)**: tree, shrubland, grassland, cropland, built-up, bare, water.
+  - **WorldCover base** (7 classes): tree, shrubland, grassland, cropland, built-up, bare, water.
 - **How the WorldCover base is built:** train a LinearSVC on Alpha Earth points *labelled by ESA
   WorldCover*, keeping only the classes with real India support; the very rare ones (snow, wetland,
   moss, mangrove — a handful of points) are dropped for lack of data.
@@ -87,8 +87,7 @@ a vacuum.
 - **The core idea:** a merge is **relabelling**. Take a class produced at one node and a class
   produced at another — possibly from *different models* — and declare them one new class.
 - **It's a correction layer, not training.** It runs *after* the per-node classifiers, on the
-  labels they produced. This mirrors the **pixel-level error-correction layers** in the
-  regionally-accurate LULC work (the Chahat / IIT-Delhi line of work).
+  labels they produced.
 - **Worked example:** relabel `tea` (from the greenery split) together with `mining` (from the
   barren split) into one `extractive` class — the map and the per-class counts reflect it at once.
 - **Reproducible + reversible:** merges are stored as **rules** (`merge_rules.json`), so a result
@@ -172,6 +171,128 @@ its source models rather than baking its own binary).
 
 ---
 
+## Deep-dives (review questions, answered in full)
+
+### Q1 — Why is the WorldCover base *weaker* than IndiaSAT?
+
+It comes down to **what each one was trained on**, i.e. the quality of the *labels*, not the model.
+
+- **IndiaSAT base** learns from **expert ground-truth polygons** — the IndiaSAT, FarmForest and
+  GT_BINARY assets, which are human-verified for India. Strong, trusted labels.
+- **WorldCover base** learns from **ESA WorldCover**, which is itself an *automated, global*
+  land-cover product (a machine classifier run worldwide). So we're training a model on **another
+  model's guesses**, not on verified truth. That's what "weak labels" means: the label noise of the
+  automated product flows into ours. We even say so on its card — *"weak ESA WorldCover labels."*
+- Two follow-on costs: (a) WorldCover's classes are global, and several barely occur over India
+  (snow, wetland, moss, mangrove — a handful of points), so we **drop** them for lack of support,
+  keeping only the 7 well-supported ones; (b) global label conventions don't always match India's
+  on-the-ground reality as cleanly as the expert assets do.
+- **Bottom line:** it's offered as an *alternate starting vocabulary* (7 classes vs 4), not a better
+  one. "Weaker" = trained on noisier labels and a thinner India signal, so it trails IndiaSAT in
+  accuracy. (This is also why the slide drops the word "effective" next to it — see the naming
+  note at the end.)
+
+### Q2 — What does the saved scheme JSON contain, and how is it structured?
+
+The "download your scheme" file (`GET /api/hierarchy/export`) is **one JSON object with three
+top-level keys**:
+
+```jsonc
+{
+  "hierarchy":   { ... the class tree ... },     // the SHAPE
+  "op_log":      [ ... ordered operations ... ],  // the RECIPE (how it was built)
+  "classifier_refs": { ... per-node pointers ...} // where each trained model lives
+}
+```
+
+- **`hierarchy`** — a flat dict keyed by canonical class id. Each node looks like:
+  ```jsonc
+  "greenery": {
+    "class": "greenery",   // canonical id (== the key)
+    "name":  "Greenery",   // display label
+    "parent": "root",      // null only for the root
+    "color": "#2e8b2e",    // display colour
+    "classifier": "greenery", // the model that resolves its children (null if a leaf)
+    "children": ["tea", "non_tea"],
+    "source": null         // where this class's training samples come from (examples/worldcover/residual)
+  }
+  ```
+  Root is `"root"` with `parent: null`. The whole tree is just these nodes; "where to add" is
+  inserting a key.
+- **`op_log`** — the ordered list of every tree-changing step (see Q3): each entry is
+  `{seq, ts, op, args, result}`, e.g. `{"seq": 6, "op": "merge", "args": {"target": "extractive",
+  "sources": ["tea","mining"]}}`.
+- **`classifier_refs`** — for each node that carries a trained classifier, a pointer to its artifact
+  and zoo card: `{"greenery": {"artifact": "data/refine/greenery.joblib", "card": "mc_greenery_v1"}}`.
+  The file stays **light** — it references the trained models, it doesn't embed the binaries.
+
+On **import**, the tree is validated and installed, classifiers are **rebound** to whatever
+artifacts are present on disk, and any split whose model is missing is reported so you can retrain
+it. Note: **merges live in their own file** (`merge_rules.json`) on the server, but they're captured
+in the `op_log` of the export, so they travel with the scheme.
+
+### Q3 — What's the "log" for, why not just the JSON, and was it even asked?
+
+First, the honest answer to "was it asked": **yes** — instruction **#11** asks for exactly this:
+*"the sequence … of operations … the workflow/ordering in which we need to apply … we need to store
+that so we can get their unique output … and that sequence needs to be persistent."* So persisting
+the order was a direct requirement, not invented scope.
+
+Second, "why not just let the user have one JSON file?" — **they do.** The op-log isn't a separate
+file the user juggles; it's **one section inside the single exported JSON** (the `op_log` key from
+Q2). On the server it's kept as its own append-only file (`op_log.json`) only so every mutating
+endpoint can cheaply add one line; at export time it's folded into the same file the user downloads.
+
+Third, "why is the order needed when the tree already describes the result?" Because the **tree is
+the shape, the log is the recipe**, and some things aren't reconstructable from shape alone:
+
+- **Merges are not in the tree.** A merge is a post-inference relabel layer (tea+mining→extractive);
+  the tree still shows tea and non_tea. Only the log/rules record that relabel.
+- **Order changes the output.** Which base you picked, an `apply` of a zoo model, a split, then a
+  merge over its leaves — run in a different order and you can get a different final map. To
+  reproduce a user's *unique* output you replay the steps **in order**.
+- **Provenance / audit.** It's a readable history of how a classifier was built — valuable when
+  sharing a scheme so a reviewer can see (and trust) how it was reached.
+
+Honest scope note: today's *restore* rebuilds state from the tree + classifier rebind; it doesn't
+yet *replay* the log step-by-step. The log's present job is (a) satisfying #11's "sequence is
+persistent", (b) carrying the merge/apply history the tree can't, and (c) being the substrate for
+exact replay later. It's a few KB of plain data, so the cost is negligible and the reproducibility
+guarantee is real.
+
+### Q4 — "Recommend where a model applies": metadata-driven, not hand-curated — what does that mean?
+
+Your reading is right: **it's plain constraint-checking over the cards' own metadata — no model is
+run, no probabilistic "will this work here" score is computed.** Concretely, `recommend_placement`
+does three cheap lookups:
+
+1. **Attach point ("apply after X").** A per-node split, by construction, only runs on pixels the
+   base map already called `X` (its parent node). So the recommendation *reads the card's `node`
+   field* and says "apply after that node." It's not inferred by analysis — it's literally where the
+   model attaches in the hierarchy. (Base models say "the starting point"; merge cards say
+   "cross-model relabel, applied after inference.")
+2. **Standard-class hint (optional).** If *any* card in the zoo has mapped that class to a WorldCover
+   code (via the Annotate → std_mapping crosswalk), we name it: "apply after Greenery
+   (WorldCover: Tree cover)." Pure lookup over existing card metadata.
+3. **Area awareness.** A plain **rectangle-overlap** test between the card's validity `extent` (a
+   bbox) and the map's current view, labelling "outside current view" when they don't overlap. No
+   distance model, no "is the labelled region close" geometry beyond bbox overlap.
+
+So "not hand-curated" means: **nobody types "this model goes after greenery" by hand** — it's
+derived from each card's own fields (`node`, `std_mapping`, `extent`), so it stays correct
+automatically as the zoo grows. The trade-off is honesty: it's a *suggestion from metadata*, not a
+guarantee the model will perform well on your pixels.
+
+### Naming note (why we dropped "effective")
+
+We stopped writing *"WorldCover (effective)"* next to the scheme. The bracketed "effective" reads as
+if WorldCover is *the effective one of the two* — the opposite of the truth (IndiaSAT is the
+stronger base). It now reads **"WorldCover (7 classes)"**, parallel to **"IndiaSAT (4 classes)"** —
+informative, and no implied ranking. ("Effective subset" still appears in internal code comments to
+mean *the well-supported 7 classes*, but never in viewer-facing labels.)
+
+---
+
 ## Likely follow-up questions (and crisp answers)
 
 - **"Is a merge a model?"** Conceptually it's a *relabel layer*, so it has no trained weights — but
@@ -185,3 +306,41 @@ its source models rather than baking its own binary).
   step, before you've built anything.
 - **"How is a year change not retraining?"** The model is linear on temporally-consistent AE
   embeddings, so the same weights apply; we only sample the chosen year's features.
+
+---
+
+## Q5 — If the labelled data is sparse, is a user-chosen grid cell (1° vs 0.25°) even useful?
+
+Fair pushback — and the honest answer is: the slider isn't there to squeeze a precise number out of
+sparse data, it's there because **"spread" only means something *at a scale*, and the useful scale
+depends on the question you're asking.** The spread score bins each polygon's centroid into
+`cell`-degree squares and measures how evenly they fall (normalized Shannon entropy). Change the
+cell and you change what counts as "the same place."
+
+- **The same sparse data reads differently at different cells.** At a **coarse** grid (1° ≈ 111 km),
+  polygons that are genuinely tens of km apart land in the *same* cell, so they look *clustered*
+  (low diversity, few occupied cells). At a **finer** grid (0.25° ≈ 28 km) those same polygons split
+  into *different* cells and look *spread*. Nothing about the data changed — only the ruler.
+- **Which ruler is "right" depends on intent:**
+  - *"Does this model see enough of India to generalize?"* → read it **coarse** (1°). You want
+    polygons scattered across the country, not clumped in one state.
+  - *"Within this district, is my data varied or all from one village?"* → read it **fine**
+    (0.1–0.25°). Micro-clustering that a 1° grid hides shows up here.
+- **Sparsity is the reason the knob helps, not the reason it's pointless.** With few polygons a
+  single fixed grid can flat-out mislead. The **occupied-cell count** is the real tell: *30 polygons
+  in 2 cells* vs *30 in 20 cells* is a huge difference in generalization risk — and you only see it
+  by moving the cell. Sliding it tells you whether your sparse data is **concentrated** (all one
+  area — risky) or **distributed** (about as good as sparse data gets).
+- **So how much does 1° vs 0.25° actually change?** It can *flip the verdict.* A dataset spread
+  across, say, Pune district sits in **one** cell at 1° (diversity ≈ 0, "clustered") but several
+  cells at 0.25° ("spread"). That flip is exactly the call a user makes — "do I trust this to
+  generalize, or go collect data elsewhere?" — so the difference is decision-level, not cosmetic.
+
+**The honest caveats** (say these if pressed): it's a **diagnostic slider, not a precise metric**.
+At the extremes it saturates — a grid finer than your polygon spacing puts every polygon in its own
+cell (diversity → 1, meaningless), and a grid coarser than the whole dataset collapses to one cell
+(diversity → 0). And with very few polygons the absolute entropy is noisy regardless. Its value is
+letting the user find the scale where the spread question is meaningful *for their use*, and exposing
+whether sparse data is concentrated or distributed — which, per week 2's finding that **spread (not
+volume) is what generalizes**, is the thing that actually predicts whether the model will hold up
+elsewhere.

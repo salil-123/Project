@@ -11,7 +11,7 @@
     "name": { "type": "string" },
     "node": { "type": "string", "description": "hierarchy node id this model resolves" },
     "parent_class": { "type": ["string", "null"], "description": "base-spine attach point; null only for the root base model" },
-    "topology": { "enum": ["per_node_split", "base_pooled", "flat_multiclass", "merge_relabel"] },
+    "topology": { "enum": ["per_node_split", "base_pooled", "flat_multiclass", "merge_relabel", "rule_split", "regression", "ee_rf"] },
     "produces": {
       "type": "array", "minItems": 1,
       "items": {

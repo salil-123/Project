@@ -44,7 +44,7 @@
   \item On arrival, the user chooses a starting scheme rather than being fixed to one:
   \begin{itemize}\small
     \item IndiaSAT: greenery, water, built-up, barren, the calibrated default.
-    \item WorldCover (effective): tree, shrubland, grassland, cropland, built-up, bare, water.
+    \item WorldCover base (7 classes): tree, shrubland, grassland, cropland, built-up, bare, water.
   \end{itemize}
   \item The WorldCover base is trained from WorldCover-labelled Alpha Earth points, keeping
   only the classes with real coverage over India; the very rare ones are dropped for lack of
@@ -74,8 +74,7 @@
 \begin{itemize}
   \item A merge is, in essence, a relabelling: take a class produced at one node and a class
   produced at another, possibly from different models, and declare them one new class.
-  \item It runs as a correction layer applied after the classifiers, not as retraining. This
-  mirrors the idea of pixel-level error-correction layers in the regionally-accurate LULC work.
+  \item It runs as a correction layer applied after the classifiers, not as retraining.
   \item For example, relabel tea, from the greenery split, together with mining, from the
   barren split, into a single extractive class; the map and the counts reflect it at once.
   \item Merges are stored as rules, so the result is reproducible and a merge can be removed.

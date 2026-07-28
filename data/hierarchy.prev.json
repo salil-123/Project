@@ -20,8 +20,8 @@
     "color": "#2e8b2e",
     "classifier": "greenery",
     "children": [
-      "non_tea",
-      "tea"
+      "acacia",
+      "non_acacia"
     ],
     "source": null
   },
@@ -29,7 +29,7 @@
     "class": "water",
     "name": "Water",
     "parent": "root",
-    "color": "#2b6cff",
+    "color": "#1e88e5",
     "classifier": null,
     "children": [],
     "source": null
@@ -48,26 +48,56 @@
     "name": "Barren",
     "parent": "root",
     "color": "#c2a05a",
-    "classifier": null,
-    "children": [],
+    "classifier": "barren",
+    "children": [
+      "barren_other",
+      "mining"
+    ],
     "source": null
   },
-  "non_tea": {
-    "class": "non_tea",
-    "name": "Non Tea",
+  "acacia": {
+    "class": "acacia",
+    "name": "Acacia",
     "parent": "greenery",
-    "color": "#8e44ad",
+    "color": "#6a8f3c",
     "classifier": null,
     "children": [],
-    "source": null
+    "source": {
+      "type": "examples"
+    }
   },
-  "tea": {
-    "class": "tea",
-    "name": "Tea",
+  "non_acacia": {
+    "class": "non_acacia",
+    "name": "Non-acacia",
     "parent": "greenery",
-    "color": "#16a085",
+    "color": "#2e8b2e",
     "classifier": null,
     "children": [],
-    "source": null
+    "source": {
+      "type": "examples"
+    }
+  },
+  "barren_other": {
+    "class": "barren_other",
+    "name": "Barren",
+    "parent": "barren",
+    "color": "#c2a05a",
+    "classifier": null,
+    "children": [],
+    "source": {
+      "type": "residual",
+      "of": "barren"
+    }
+  },
+  "mining": {
+    "class": "mining",
+    "name": "Mining",
+    "parent": "barren",
+    "color": "#8e5a3c",
+    "classifier": null,
+    "children": [],
+    "source": {
+      "type": "examples"
+    }
   }
 }

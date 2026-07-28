@@ -1,0 +1,10 @@
+week-7 site tests (live GEE)
+
+[tea vs non-tea]  held-out accuracy: 0.957  (860 px)
+
+[mining detector]  held-out accuracy: 0.859
+  recall on real mines (held-out): 0.854
+  false-positive rate (non-mining called mining): 0.139
+  spatial probe (% of area flagged mining):
+    Asola Bhatti (reclaimed): 17.1%  (625 cells)
+    Jharia coalfield (active): 71.2%  (625 cells)

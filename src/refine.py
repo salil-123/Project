@@ -27,11 +27,76 @@ import pandas as pd
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
+from sklearn.linear_model import LogisticRegression, RidgeClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import GroupShuffleSplit
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+
+# the bake-off candidates (#17). All LINEAR — each exposes coef_/intercept_, so the winner still
+# replays as Earth-Engine band math and rides the crisp tile map. class_weight is set at fit time.
+_LINEAR_ALGOS = {
+    "linearsvc":  lambda cw: LinearSVC(class_weight=cw),
+    "logreg":     lambda cw: LogisticRegression(class_weight=cw, max_iter=2000),
+    "ridge":      lambda cw: RidgeClassifier(class_weight=cw),
+}
+
+# non-linear learners (#1): richer, but they DON'T replay as band math, so they only make sense on
+# a feature source we render on the point grid anyway — i.e. Tessera (local), not Alpha Earth. This
+# is the "if you go local you're not limited to linear models" branch. XGBoost is optional (used
+# only if the package is installed), so the registry can offer it without a hard dependency.
+def _has_xgb():
+    try:
+        import xgboost  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _xgb(cw):
+    from xgboost import XGBClassifier
+    return XGBClassifier(n_estimators=300, max_depth=6, n_jobs=-1, tree_method="hist")
+
+
+_NONLINEAR_ALGOS = {
+    "randomforest": lambda cw: RandomForestClassifier(n_estimators=300, n_jobs=-1, class_weight=cw),
+}
+if _has_xgb():
+    _NONLINEAR_ALGOS["xgboost"] = _xgb
+
+_ALL_ALGOS = {**_LINEAR_ALGOS, **_NONLINEAR_ALGOS}
+
+# which model families are valid for which inference data (#1). Earth Engine can only run linear
+# models (band math), so the EE list is linear-only; a Tessera-local run can additionally use the
+# non-linear pixel learners, and leaves room for an object-detection family we haven't built yet.
+# `available` reflects what's actually installed/implemented, so the UI can grey out the rest.
+def model_families(source="alphaearth"):
+    """The model families a user can train for a given inference source (#1): id, label, kind
+    (pixel / object), and whether it's available right now. EE -> linear only; Tessera -> +non-linear."""
+    linear = [
+        {"id": "linearsvc", "label": "Linear SVC", "kind": "pixel", "available": True},
+        {"id": "logreg", "label": "Logistic Regression", "kind": "pixel", "available": True},
+        {"id": "ridge", "label": "Ridge", "kind": "pixel", "available": True},
+        {"id": "auto", "label": "Auto (best linear)", "kind": "pixel", "available": True},
+    ]
+    if source == "tessera":
+        return linear + [
+            {"id": "randomforest", "label": "Random Forest", "kind": "pixel", "available": True},
+            {"id": "xgboost", "label": "XGBoost", "kind": "pixel", "available": _has_xgb(),
+             "note": None if _has_xgb() else "install xgboost to enable"},
+            {"id": "objectdetection", "label": "Object detection (crowns)", "kind": "object",
+             "available": False, "note": "planned — for discrete objects like tree crowns"},
+        ]
+    # Alpha Earth / EE: linear models replay as band math (crisp tiles). Random Forest is offered
+    # too since sir asked for it (#7, wk10) — it just renders on the point grid instead of tiles.
+    # XGBoost stays Tessera-only.
+    return linear + [
+        {"id": "randomforest", "label": "Random Forest", "kind": "pixel", "available": True,
+         "note": "runs on Alpha Earth but renders on the point grid, not crisp tiles"},
+    ]
 
 import hierarchy
 import examples
+import sampling                    # YEAR default + interior-point/alpha sampling
 
 REFINE_DIR = "data/refine"
 WC_CSV = "data/worldcover_train.csv"
@@ -39,6 +104,7 @@ FULL_CSV = "data/master_alpha_full.csv"
 BASE_MODEL_PATH = "data/model_pooled.joblib"
 WORLDCOVER_BASE_PATH = "data/model_worldcover_base.joblib"
 AE_COLS = [f"ae_{i:03d}" for i in range(64)]
+TE_COLS = [f"te_{i:03d}" for i in range(128)]      # Tessera embedding columns (#16)
 RESIDUAL_CAP = 8000              # max residual rows, so a split stays roughly balanced
 BASE_CORE = {"greenery", "water", "built_up", "barren"}  # classes living in master_alpha_full
 
@@ -52,7 +118,7 @@ WC_BASE = [
     (40, "cropland", "Cropland",      "#f0c14b"),
     (50, "built_up", "Built-up",      "#d7301f"),
     (60, "bare",     "Bare / sparse", "#c2a05a"),
-    (80, "water",    "Water",         "#2b6cff"),
+    (80, "water",    "Water",         "#1e88e5"),
 ]
 
 
@@ -67,10 +133,10 @@ def _wc_rows(wc_code, label):
     return out[["label", "poly"] + AE_COLS]
 
 
-def _residual_rows(of_node, label, n_pix=30, cap=RESIDUAL_CAP):
+def _residual_rows(of_node, label, n_pix=30, cap=RESIDUAL_CAP, year=sampling.YEAR):
     """The parent's own pixels ('stayed b'), labelled as the residual child. For a base
-    class they come from master_alpha_full; for a deeper leaf, from its own examples. The
-    group id (polygon) rides along so splits stay leak-free."""
+    class they come from master_alpha_full (baked at 2024); for a deeper leaf, from its own
+    examples re-sampled at `year`. The group id (polygon) rides along so splits stay leak-free."""
     if of_node in BASE_CORE:
         df = pd.read_csv(FULL_CSV, usecols=["polygon_id", "core_class"] + AE_COLS)
         df = df[df.core_class == of_node].reset_index(drop=True)
@@ -80,34 +146,43 @@ def _residual_rows(of_node, label, n_pix=30, cap=RESIDUAL_CAP):
         out["label"] = label
         out["poly"] = df.polygon_id.values
         return out[["label", "poly"] + AE_COLS]
-    # deeper leaf: re-sample the node's own example polygons
-    df = examples.build_training_frame(of_node, n_pix=n_pix)[["poly"] + AE_COLS].copy()
+    # deeper leaf: re-sample the node's own example polygons at the chosen year
+    df = examples.build_training_frame(of_node, n_pix=n_pix, year=year)[["poly"] + AE_COLS].copy()
     df["label"] = label
     return df[["label", "poly"] + AE_COLS]
 
 
-def _child_frame(tree, child, n_pix):
-    """Training rows for one child, dispatched on its `source`. Also folds in any
-    hard-negatives stored against its *siblings* that should count as this child (only
-    the residual child of an ADD split absorbs siblings' negatives)."""
+def _child_frame(tree, child, n_pix, year=sampling.YEAR, embedding="ae"):
+    """Training rows for one child, dispatched on its `source`, sampled at `year`. Also folds in
+    any hard-negatives stored against its *siblings* that should count as this child (only the
+    residual child of an ADD split absorbs siblings' negatives).
+
+    `embedding` = "ae" (Alpha Earth) or "tessera" (#16). Tessera is only wired for the *examples*
+    source — the worldcover/residual sources are the base-class tables, which are Alpha-Earth-only."""
+    cols = TE_COLS if embedding == "tessera" else AE_COLS
     node = tree[child]
     src = node.get("source") or {"type": "examples"}
     kind = src["type"]
+    if kind in ("worldcover", "residual") and embedding == "tessera":
+        raise ValueError(f"Tessera training isn't supported for '{child}' ({kind} source); "
+                         "Tessera splits train from example polygons only.")
     if kind == "worldcover":
         df = _wc_rows(src["code"], child)
         print(f"  {child}: {len(df)} WorldCover rows")
     elif kind == "residual":
         of = src.get("of", src.get("core_class"))
-        df = _residual_rows(of, child, n_pix=n_pix)
+        df = _residual_rows(of, child, n_pix=n_pix, year=year)
         print(f"  {child}: {len(df)} residual rows (of {of})")
-        df = pd.concat([df, _sibling_negatives(tree, child, n_pix)], ignore_index=True)
-    else:  # examples
-        df = examples.build_training_frame(child, n_pix=n_pix)[["label", "poly"] + AE_COLS]
-        print(f"  {child}: {len(df)} expert pixels from {df.poly.nunique()} polygons")
+        df = pd.concat([df, _sibling_negatives(tree, child, n_pix, year=year)], ignore_index=True)
+    else:  # examples — sample the chosen embedding
+        te = embedding == "tessera"
+        df = examples.build_training_frame(child, with_tessera=te, n_pix=n_pix, year=year)
+        df = df[["label", "poly"] + cols]
+        print(f"  {child}: {len(df)} expert pixels ({embedding}) from {df.poly.nunique()} polygons")
     return df
 
 
-def _sibling_negatives(tree, residual_child, n_pix):
+def _sibling_negatives(tree, residual_child, n_pix, year=sampling.YEAR):
     """Hard-negatives marked against the residual's siblings ('not mining') become
     evidence for the residual ('barren'). Returns rows labelled as the residual child."""
     parent = tree[residual_child]["parent"]
@@ -115,7 +190,7 @@ def _sibling_negatives(tree, residual_child, n_pix):
     for sib in tree[parent]["children"]:
         if sib == residual_child:
             continue
-        neg = _negatives_frame(sib, n_pix)
+        neg = _negatives_frame(sib, n_pix, year=year)
         if neg is not None:
             neg["label"] = residual_child
             neg["poly"] = [f"hardneg:{sib}:{i}" for i in range(len(neg))]
@@ -127,37 +202,61 @@ def _sibling_negatives(tree, residual_child, n_pix):
     return pd.DataFrame(columns=["label", "poly"] + AE_COLS)
 
 
-def _negatives_frame(child, n_pix):
-    """Sample embeddings at a child's role='negative' example polygons, or None."""
+def _negatives_frame(child, n_pix, year=sampling.YEAR):
+    """Sample embeddings at a child's role='negative' example polygons at `year`, or None."""
     fc = examples.load_examples(child)
     negs = [f for f in fc["features"] if f["properties"].get("role") == "negative"]
     if not negs:
         return None
-    import sampling
     import geopandas as gpd
     gdf = gpd.GeoDataFrame.from_features(negs, crs=4326)
     gdf["poly"] = [f"{child}-neg:{i}" for i in range(len(gdf))]
     pts = sampling.interior_points(gdf[["poly", "geometry"]], n_pix=n_pix)
-    ae = sampling.sample_alpha(pts).reset_index(drop=True)
+    ae = sampling.sample_alpha(pts, year=year).reset_index(drop=True)
     df = pd.concat([pts[["poly"]].reset_index(drop=True), ae], axis=1)
     return df.dropna(subset=AE_COLS).reset_index(drop=True)
 
 
 # ----------------------------- training -----------------------------
-def build_split_dataset(parent="greenery", n_pix=50, resample=False):
-    """Assemble the parent's training table from its children's sources. Cached as a
-    build artifact so model tweaks don't re-hit GEE; pass resample=True to rebuild."""
-    cache = os.path.join(REFINE_DIR, f"{parent}_train.csv")
+def _year_list(years):
+    """Normalize a year arg (None / int / iterable) to a sorted list; None means the default year."""
+    if years is None:
+        return [sampling.YEAR]
+    if isinstance(years, int):
+        return [years]
+    return sorted(years)
+
+
+def build_split_dataset(parent="greenery", n_pix=50, resample=False, years=None, embedding="ae"):
+    """Assemble the parent's training table from its children's sources, sampled at one or more
+    `years`. Pooling several years teaches the split what each class looks like across time, which
+    is what makes it temporally robust (#3): the same polygon sampled at 2019 and 2023 is two rows
+    but shares its group id, so a whole polygon is still held out together (no leakage) — the extra
+    years are time-augmentation, not new polygons. Cached as a build artifact (pass resample=True to
+    rebuild); the cache is keyed by the year set, with the single default year keeping the bare name
+    for back-compat with existing caches."""
+    years = _year_list(years)
+    stem = parent if years == [sampling.YEAR] else f"{parent}_" + "_".join(str(y) for y in years)
+    if embedding == "tessera":                       # keep te caches separate from the ae ones (#16)
+        stem += "_te"
+    cache = os.path.join(REFINE_DIR, f"{stem}_train.csv")
     if os.path.exists(cache) and not resample:
         print(f"using cached training data {cache}")
         return pd.read_csv(cache)
 
     tree = hierarchy.load()
-    frames = [_child_frame(tree, child, n_pix) for child in tree[parent]["children"]]
+    if not tree.get(parent, {}).get("children"):
+        raise ValueError(f"'{parent}' has no sub-classes to train — split it or add classes first.")
+    frames = []
+    for y in years:
+        if len(years) > 1:
+            print(f"sampling year {y}…")
+        frames += [_child_frame(tree, child, n_pix, year=y, embedding=embedding)
+                   for child in tree[parent]["children"]]
     data = pd.concat(frames, ignore_index=True)
     os.makedirs(REFINE_DIR, exist_ok=True)
     data.to_csv(cache, index=False)
-    print(f"assembled {len(data)} rows -> {cache}")
+    print(f"assembled {len(data)} rows ({len(years)} year(s)) -> {cache}")
     return data
 
 
@@ -177,9 +276,25 @@ def _rebalance(X, y, how, seed=0):
     return X[idx], y[idx]
 
 
-def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="balanced"):
-    data = build_split_dataset(parent, n_pix=n_pix, resample=resample)
-    X, y, groups = data[AE_COLS].values, data.label.values, data.poly.values
+def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="balanced",
+          years=None, algo="linearsvc", embedding="ae"):
+    """Train the parent's split classifier.
+
+    `years=[...]` pools multiple years for temporal robustness (#3). `embedding` picks the feature
+    source: "ae" (Alpha Earth, 64-d, the default — rides the crisp tile map) or "tessera" (128-d,
+    #16, point-grid only). `algo` picks the estimator: a specific linear model, or "auto" to bake
+    off all the linear candidates and keep the best by held-out accuracy (#17) — the winner stays
+    linear, so it still replays as band math."""
+    years = _year_list(years)
+    # non-linear learners can't replay as EE band math. Random Forest is still allowed on Alpha
+    # Earth (#7, wk10) — it just renders on the point grid instead of the crisp tile map — but the
+    # rest (XGBoost) stay Tessera-only, where we render on the point grid anyway.
+    if algo in _NONLINEAR_ALGOS and embedding != "tessera" and algo != "randomforest":
+        raise ValueError(f"'{algo}' is a non-linear model that runs on Tessera (local) features only. "
+                         "On Alpha Earth only linear models and Random Forest are supported.")
+    cols = TE_COLS if embedding == "tessera" else AE_COLS
+    data = build_split_dataset(parent, n_pix=n_pix, resample=resample, years=years, embedding=embedding)
+    X, y, groups = data[cols].values, data.label.values, data.poly.values
 
     # hold out whole polygons so train/test never share a polygon's pixels
     tr, te = next(GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=0)
@@ -187,12 +302,30 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
     # under/oversample balances the data itself, so drop class_weight then; else lean on it
     cw = None if balance in ("undersample", "oversample") else "balanced"
     Xtr, ytr = _rebalance(X[tr], y[tr], balance)
-    model = make_pipeline(StandardScaler(), LinearSVC(class_weight=cw))
-    model.fit(Xtr, ytr)
-
     labels = sorted(set(y))
+
+    # bake-off (#17): fit each candidate, score on the held-out polygons, keep the best by accuracy.
+    # "auto" stays linear on Alpha Earth (must be band-math renderable) but adds the non-linear
+    # learners when the source is Tessera (#1) — where a Random Forest can genuinely win.
+    if algo == "auto":
+        candidates = list(_LINEAR_ALGOS) + (list(_NONLINEAR_ALGOS) if embedding == "tessera" else [])
+    else:
+        candidates = [algo if algo in _ALL_ALGOS else "linearsvc"]
+    scored = []
+    for name in candidates:
+        m = make_pipeline(StandardScaler(), _ALL_ALGOS[name](cw))
+        m.fit(Xtr, ytr)
+        acc = accuracy_score(y[te], m.predict(X[te]))
+        scored.append((acc, name, m))
+        if algo == "auto":
+            print(f"  bake-off {name:10} held-out acc {acc:.3f}")
+    scored.sort(key=lambda t: t[0], reverse=True)
+    best_acc, best_algo, model = scored[0]
+    if algo == "auto":
+        print(f"  -> best linear model: {best_algo} ({best_acc:.3f})")
+
     pred = model.predict(X[te])
-    print(f"\n=== {parent} split ({balance}): held-out report ({len(te)} px) ===")
+    print(f"\n=== {parent} split ({balance}, {best_algo}, {embedding}): held-out report ({len(te)} px) ===")
     print(classification_report(y[te], pred, digits=3))
     print("confusion (rows=true, cols=pred):", labels)
     print(confusion_matrix(y[te], pred, labels=labels))
@@ -200,8 +333,9 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
 
     Xall, yall = _rebalance(X, y, balance)
     model.fit(Xall, yall)  # refit on everything (balanced) for the deployed model
-    bundle = {"model": model, "classes": labels, "features": "ae", "parent": parent,
-              "report": report, "n_test": int(len(te)), "balance": balance}
+    bundle = {"model": model, "classes": labels, "features": embedding, "parent": parent,
+              "report": report, "n_test": int(len(te)), "balance": balance, "years": years,
+              "algo": best_algo}
     os.makedirs(REFINE_DIR, exist_ok=True)
     out = os.path.join(REFINE_DIR, f"{parent}.joblib")
     joblib.dump(bundle, out)
@@ -284,6 +418,33 @@ def split_op(parent, children, examples_srcs=None, n_pix=30, do_train=True):
         train(parent, n_pix=n_pix, resample=True)
 
 
+# ----------------------------- RULE SPLIT (any level) -----------------------------
+def rule_split_op(parent, rule, colors=None):
+    """Split a leaf `parent` by an interpretable *rule* (#12) instead of a trained model.
+
+    A rule is `{clauses: [{when, class}], default}` over the index registry (rules.py). This just
+    creates the child leaves the rule produces and stashes the rule on the parent node — no
+    training, no examples. Inference evaluates the rule live in Earth Engine (infer._refine_idx),
+    so the split renders as crisp tiles like any linear split. Returns the child class list."""
+    import rules
+    rules.validate_rule(rule)                    # shape + expressions, before we touch the tree
+    classes = rules.rule_classes(rule)
+    tree = hierarchy.load()
+    if parent not in tree:
+        raise KeyError(f"unknown parent {parent!r}")
+    if tree[parent].get("children"):
+        raise ValueError(f"'{parent}' already has sub-classes; rule-split a leaf.")
+    colors = colors or {}
+    children = [{"name": c.replace("_", " ").title(), "canonical": c, "color": colors.get(c)}
+                for c in classes]
+    hierarchy.split_class(tree, parent, children)
+    tree[parent]["rule"] = rule                  # the resolver for this node is a rule, not a joblib
+    tree[parent]["classifier"] = None
+    hierarchy.save(tree)
+    print(f"rule-split {parent!r} -> {classes} via {len(rule['clauses'])} clause(s)")
+    return classes
+
+
 # ----------------------------- ROOT level: retrain the base model -----------------------------
 def retrain_base(new_id=None, new_name=None, examples_src=None, new_color=None, n_pix=30,
                  out_path=BASE_MODEL_PATH):
@@ -360,13 +521,16 @@ def train_worldcover_base(out_path=WORLDCOVER_BASE_PATH, min_support=50):
     return bundle
 
 
-def retrain(node, balance="balanced"):
+def retrain(node, balance="balanced", years=None, algo="linearsvc", embedding="ae"):
     """Retrain whichever classifier owns `node`: the root -> the base model (pooling all
     user-added base classes); any other node -> its split (resampling its examples). `balance`
-    picks the imbalance remedy for a split: balanced (class weight) | undersample | oversample."""
+    picks the imbalance remedy for a split: balanced (class weight) | undersample | oversample.
+    `years` pools several years of Alpha Earth into the split for temporal robustness (#3); the
+    base can't do this (its CSVs have no year column), so years is ignored at the root. `algo`
+    picks the estimator or "auto" bake-off (#17); `embedding` picks ae vs tessera features (#16)."""
     if node == hierarchy.ROOT:
         return retrain_base()
-    return train(node, resample=True, balance=balance)
+    return train(node, resample=True, balance=balance, years=years, algo=algo, embedding=embedding)
 
 
 # ----------------------------- relabel / hard-negatives -----------------------------

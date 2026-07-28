@@ -1,0 +1,34 @@
+1. Understand Biomass data collection (KT); what is gedi? all the data download that is happening, the training is straightforward
+ we use EE Rf understand the different vegetation indexes;  // leave this first point for me to understand
+2. why are we not directly using the worldcover labels for india? is that possible? indiasat has a lot of classes but we have merged them to 
+fewer base classes similarly in worldcover if there are a lot of classes we can map them to fewer base classes if thats better than just 
+directly using the classes given by worldcover
+3. the vegetation changes from year to year and models are sensitive to that, so for models to be robust you should feed it data from multiple
+years; training must be done on multiple years and check if its temporally robust; assuming you have ground truth for some said years, 
+you train on some and you predict on the others so you can ensure the model is temporally robust.
+(How many years is the ground truth valid over we can provide that information to the user while they pick the data (from the zoo i suppose idk for sure from where))
+4. number of points that are labelled and the spread of those points; now the number of points should be contingent on the size of the area
+instead of absolute numbers something like percentage of pixels for which the training data is available and then the skew or spread of the data
+which is your entropy (the sir was not sure about the 4th point completely claude so just think of a standard optimal approach here that fits the bill given by sir)
+5. you can validate the json, if you actually were to apply those operations would it work? or if something is missing? even before you execute
+it; someone uploads a json before executing we validate that json with a validation module
+6. we can also try looking at tessera, so the user can kind of choose tessera as well; i asked him that tessera only has data for 2024 then sir 
+said we can raise a request for the other years or that data and get it;
+7. we can start doing some stress testing, acacia and non-acacia ; they are for trees only ; we can look at the IIT delhi area and sanjay van 
+we can look at this area as one of our standard areas it has acacia/non-acacia; iit has all the built up; the sanjay van has the trees and has 
+a small water body you can also adjust to include haus khaz and green park; this whole strip of land 5-6kms for this area we can get from 
+tessera and lets make it one of the main places to work on; we will also select other main sites for stress testing; lets say one model
+we use alphaearth and the other model we create with tessera for acacia/non-acacia and then we can also keep the option of mixing and matching
+; for the iit delhi area and this strip of land we can do acacia/non-acacia trees; another we can take jalpaigudi over there we can 
+demonstrate that we start with indiasat base class or worldcover base class and then demonstrate the splits or add operations
+8. mining thing will be a next thing we can do in the future (the next big thing we can develop in the future) for which we will need the 
+segmentation model
+9. the asola bhatti is also another good area for mining and acacia/non-acacia trees but now those areas may not look like mines at all we would 
+have to see, apparently after looking the mines must have been reclaimed and settled by humans with the built-up; even then it might be useful
+to see if we get some false positive here or likely could be a false positive with our mining model
+10. similarly we can apply tea and non-tea as well on that area or some other area and check
+11. lets select some areas like these above and actually start applying using and demonstrating the framework also add these locations to the default 
+areas and spend some time on strengthening; we can later in the future look at the segmentation model and stuff.
+
+
+//acacia/non-acacia model replaced the tea/non-tea model so look into this.

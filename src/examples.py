@@ -92,6 +92,27 @@ def load_examples(node):
         return json.load(fh)
 
 
+def archive_all():
+    """Move every marked example file aside so a fresh start begins with an empty canvas (#4).
+
+    A new area is a new problem, and leftover example polygons from a past demo make a fresh split
+    look pre-filled. This tucks the current markings into data/examples/archive/<timestamp>/ — it's
+    a move, not a delete, so nothing's lost and trained models (which live as joblibs/zoo cards) are
+    untouched. Returns the list of nodes whose examples were cleared."""
+    import shutil
+    if not os.path.isdir(EXAMPLES_DIR):
+        return []
+    files = [fn for fn in os.listdir(EXAMPLES_DIR) if fn.endswith(".geojson")]
+    if not files:
+        return []
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+    dest = os.path.join(EXAMPLES_DIR, "archive", stamp)
+    os.makedirs(dest, exist_ok=True)
+    for fn in files:
+        shutil.move(os.path.join(EXAMPLES_DIR, fn), os.path.join(dest, fn))
+    return [fn[: -len(".geojson")] for fn in files]
+
+
 def summary():
     """Per-node example counts broken down by role — handy for the UI/debugging."""
     out = {}
@@ -123,10 +144,13 @@ def build_training_frame(node, with_tessera=False, n_pix=sampling.N_PIX, year=sa
     gdf["label"] = node
     gdf["poly"] = [f"{node}:{i}" for i in range(len(gdf))]  # group id for leak-free splits
 
-    pts = sampling.interior_points(gdf[["label", "role", "poly", "geometry"]], n_pix=n_pix)
+    # carry `area` (the crown's source region) through when the examples have it, so a spatial
+    # region-held-out split is possible (#8 wk10). Absent for most nodes -> just the usual columns.
+    carry = ["label", "role", "poly"] + (["area"] if "area" in gdf.columns else [])
+    pts = sampling.interior_points(gdf[carry + ["geometry"]], n_pix=n_pix)
 
     ae = sampling.sample_alpha(pts, year=year)
-    parts = [pts[["label", "role", "poly", "lat", "lon"]].reset_index(drop=True),
+    parts = [pts[carry + ["lat", "lon"]].reset_index(drop=True),
              ae.reset_index(drop=True)]
     if with_tessera:
         parts.append(sampling.sample_tessera(pts, year=year).reset_index(drop=True))

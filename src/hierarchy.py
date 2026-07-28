@@ -33,7 +33,7 @@ ROOT = "root"
 # but importing infer would load the joblib models at module top, which we don't want.
 _BASE = [
     ("greenery", "Greenery", "#2e8b2e"),
-    ("water",    "Water",    "#2b6cff"),
+    ("water",    "Water",    "#1e88e5"),
     ("built_up", "Built-up", "#d7301f"),
     ("barren",   "Barren",   "#c2a05a"),
 ]

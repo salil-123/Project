@@ -124,6 +124,7 @@ root (All land)
 | **4** | **Design only** — the card schema for a model/dataset zoo. | `schema/{dataset,model}_card.schema.json` + `validate.py`, the crosswalk design, worked example cards, slides. No `src/` changes. |
 | **5** | **Implement** the zoo backend + wire the frontend. | `catalogue.py` (the card DB), `zoo_git.py` (git-backed publish), backend endpoints, full-screen Zoo UI (browse, "for this area", card detail, publish). Realistic served as EE **map tiles** (crisp at any zoom, no download). Annotate editor + standard mapping. Class-balance feedback + under/oversample. "Use a model from the zoo" (`/api/apply`). Tea/non-tea proven as a test-only split (AE held-out acc **0.934**). GitHub zoo live. |
 | **6** | Make it **own-and-shareable**: user control over data + scheme. | Op-log (`oplog.py`); adjustable diversity grid (#1); inference-data picker — AE 2017–2024 + Tessera-2024 (#7); contributor on publish (#6); auto recommendations (#2); save/reload hierarchy JSON (#4); **merge** / cross-model relabel (`merges.py`, #9); UI sweep (#3); effective **WorldCover base** + base-class picker (#5). All verified, incl. live GEE. See `week6/plan.md`. |
+| **7** | **Apply + harden** on named stress-test sites. | Temporal robustness (`temporal_eval.py`, `year` threaded through `refine`, #3); **coverage** adequacy metric vs the AOI (`catalogue._coverage`, #4); **pre-execution** JSON validator (`validate_ops.py`, `POST /api/hierarchy/validate`, #5); stress-test sites as presets + acacia ingestion (#7/#9/#11); WorldCover-direct analysis (#2); Tessera-as-choice note (#6). See `week7/plan.md`. |
 
 Per-week detail lives in each `weekN/plan.md` (weeks 5–6 have the fullest changelogs) and the
 `docs/` folder (`pipeline.md`, `model.md`).
@@ -231,3 +232,234 @@ merge placement) · `zoo_git.py` (status counts cards not index; porcelain parse
 `schema/model_card.schema.json` (`merge_relabel`) · `static/{index.html,app.js,style.css}`.
 New data file: `data/catalogue/models/mc_merge_*_v1.json` (per active merge). Plan:
 `week6/ui_revamp_plan.md`; slide walkthrough: `week6/slide_explainer.md`.
+
+---
+
+## 6. Week 7 — apply + harden on stress-test sites
+
+Source: `week7_instructions.txt` (sir's advice, transcribed). This week is mostly *applying and
+strengthening* the framework on named sites, plus three genuine engineering additions. Full log:
+`week7/plan.md`; approved plan: `(internal planning notes)`.
+
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 3 | Temporal robustness | Vegetation drifts year to year, so a split is **trained on a pool of years** (`refine.train(parent, years=[...])`) and checked on years it never saw. `temporal_eval.py` compares a single-year baseline vs a multi-year pooled model, holding out whole polygons and whole eval years, and saves the pooled model. Base stays 2024 (its CSVs have no year column; Tessera is 2024-only), so temporal robustness lives on the example/split path. | `refine.py`, `temporal_eval.py` |
+| 4 | Data adequacy, not raw counts | Report **coverage** = labelled area ÷ AOI area (equal-area, so it's contingent on the size of the area being classified) alongside the existing spatial-spread entropy. | `catalogue._coverage`/`recompute_spread`, `GET /api/cards/{id}/spread`, `app.js` |
+| 5 | Validate a scheme before executing | One upload that **validates then applies**: `POST /api/hierarchy/import` checks the whole envelope first — tree shape (reused `hierarchy.validate`) + op-log well-formedness (new) + missing-classifier scan — and rejects a bad file with 400 before it mutates. No separate validate step. | `validate_ops.py`, `backend.py`, `app.js` |
+| 7·9·11 | Stress-test sites as defaults | Three presets (IIT Delhi + Sanjay Van, Jalpaiguri, Asola Bhatti); `prep_acacia_examples.py` turns 912 confident crowns into `data/examples/{acacia,non_acacia}.geojson`. | `backend.PRESETS`, `scripts/prep_acacia_examples.py` |
+| 2 | WorldCover direct vs mapped-down | Analysis: you can pick WorldCover as a base directly, but India's thin support for its rare classes pushes you to the mapped-down end (base-scheme + merge + split) by default. | `week7/notes/worldcover_direct.md` |
+| 6 | Tessera as a choice | Note on the inference-year picker: Tessera is 2024-only over India; other years can be requested. | `/api/inference-options`, `app.js` |
+
+**Design note (#4):** coverage is **area-based**, not the plan's original grid-cell ratio — that
+ratio collapses to 100% whenever the AOI is smaller than one grid cell, which is the case for
+every one of our small stress-test strips, so it was unusable. Area coverage stays honest at any
+AOI scale.
+
+**Verified:** presets served; acacia prep yields 336+576 example crowns; coverage drops as the AOI
+grows (tea = 0.59% of the Assam box, ~0% of all-India); validator flags unknown ops / missing args
+/ broken trees / missing classifiers correctly and import rejects a bad file before mutating.
+**Multi-year training works and pays off where it should:** a live acacia run (train 2019/2021/2023,
+test unseen 2020/2024) lifts accuracy on the unseen years from 0.635 (single-year) to **0.745
+(+0.110)**. The same protocol on the four **base classes** gives 0.888 → 0.891 (**+0.003**) — coarse
+classes are already temporally stable, so multi-year robustness matters on the *fine* splits, not the
+base. (`temporal_eval.py --from-file` samples any labelled polygon set for this.)
+
+### Site test results (`week7/site_tests.py`, live GEE)
+- **Tea vs non-tea:** 0.957 held-out accuracy. **Acacia vs non-acacia:** 0.745 on unseen years
+  (multi-year) — a hard species split. **Mining detector:** 0.859 accuracy, 0.854 recall on real
+  mines (held-out), 0.139 false-positive rate on non-mining ground truth. **Mining false-positive,
+  active vs reclaimed (same detector):** **Jharia active coalfield 71.2%** flagged vs **Asola reclaimed
+  17.1%** — a 4× gap. The active site is the positive control (the model genuinely finds mines); Asola's
+  17% is a real false-positive tendency on reclaimed mine-like ground, as sir predicted.
+
+### Deferred to a live session (yours)
+- The **Jalpaiguri** base-scheme + split/add operations demo (sir will ask for this live).
+- On-map click-through of the acacia/tea/mining sites.
+- **#8** mining segmentation model and **#1** biomass/GEDI stay out of scope (sir's calls).
+
+---
+
+## 7. Week 8 — UI restructure + zoo/inference fixes (features #2–#11)
+
+Source: `week8_instructions.txt` (26 asks). This block delivers **#2–#11**: mostly a front-end
+restructure into a self-explanatory two-panel layout, plus targeted backend work. Full log:
+`week8/plan.md`; approved plan: `(internal planning notes)`.
+
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 2 | Drop the model-mode choice | Removed the Realistic/Detailed dropdown; Run always classifies Realistic (AE → EE 10 m tiles). The softvote path stays in the backend, just unexposed. | `static/index.html`, `static/app.js` |
+| 3 | Clickable bounding box | A persistent AOI box: draw a rectangle to set it, or in Custom mode click the map to drop a centre and size it live with the Half-size slider (`drawAoi`, `customBbox`). | `static/app.js` |
+| 4 | Export only this session's ops | `/api/tree` returns `op_seq`; `export?since=` slices the op-log to the session the client anchored in `localStorage` (survives refresh). Fixes the whole-history leak. | `backend.py`, `static/app.js` |
+| 5 | Reset the tree on a new area | `POST /api/session/reset` reseeds the current base scheme; the UI offers it **confirm-first**, only when real work exists. `reset` added to the op validator. | `backend.py`, `validate_ops.py`, `static/app.js` |
+| 6·10 | Explanatory, uncluttered | Guidance lives in the contextual panel (heading + one-liner + one hint per action); left hints tightened. | `static/index.html` |
+| 7 | Structural ops before retrain | Right-panel order: Mark data → Split → Add → Merge → Retrain. | `static/index.html` |
+| 8 | Contextual right panel | New `#context` aside holds the actions, driven by `renderContext(cls)` — names the selected class and dims the less-relevant blocks. Left panel keeps Area/Hierarchy/Save/Zoo. | `static/{index.html,app.js,style.css}` |
+| 9 | Zoo shows every model; drop dummy | `DELETE /api/cards/{id}` (orphan-joblib purge + published guard), startup `sync_node_model_cards`, archived badge + Delete button. **tea/non_tea regenerated** as a real archived card (0.963); acacia dummy removed, acacia kept live. | `backend.py`, `catalogue.py`, `static/*`, `scripts/regen_tea_acacia.py` |
+| 11 | Flag incompatible apply | `catalogue.check_apply_compatible`; `/api/apply` gains `target_node`+`force`, returns **409** with a reason on a mismatch; the panel's "Apply to selected class" confirms then forces. | `catalogue.py`, `backend.py`, `static/app.js` |
+
+**Verified** (TestClient + live GEE + real uvicorn): session-scoped export returns only new ops;
+greenery-split→water apply is refused with a readable reason; publishing-guard blocks deleting a
+published card; `session/reset` reseeds root+4 base; a live classify of the IIT box returns
+acacia/non_acacia/built_up/water/barren tiles; the page serves the context panel at `?v=8` with no
+Mode dropdown. The tea/acacia regen leaves the zoo with acacia live + tea archived.
+
+### Block 2 — features #12–#15
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 12 | Flow-gate controls | Balancing + multi-year fields wrapped in `#retrainAdvanced`, shown only when training your own split (not a bare leaf or the base). | `static/{index.html,app.js}` |
+| 13 | Two hierarchy views | `By hierarchy \| By operations` toggle; read-only `GET /api/oplog?since=` feeds an ordered step list; clicking a step selects its class so the right panel drives the action; "Use a model from the Zoo" split path. | `backend.py`, `static/*` |
+| 14 | Standard classes on tiles | `catalogue.std_classes_for_card` + `std_classes` on model index rows; the small tile shows the standard name when mapped (else user classes); detail shows uploader-class → standard name. | `catalogue.py`, `static/app.js` |
+| 15 | Dataset → models cross-ref | `catalogue.models_using_dataset` + `used_by` attached to dataset cards; a "Used in models" block on the detail + a count on the tile. | `catalogue.py`, `backend.py`, `static/app.js` |
+
+### Block 3 — features #16–#27 (+ entropy/water fixes + presentation)
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| — | Fixes | entropy `-0.0 → 0.00` + restored archived examples; water `#2b6cff → #1e88e5` (blue). | `catalogue.py`, `hierarchy/infer/refine`, `data/hierarchy.json` |
+| 21 | Overlay toggle | 👁 hides/shows the classification without reclassifying. | `static/*` |
+| 25 | Selective publish | tile checkboxes + "Publish selected (N)". | `static/*` |
+| 24 | GeoTIFF export | `classify_bbox_geotiff` + `GET /api/classify.tif` + ⬇ button. | `infer.py`, `backend.py`, `static/*` |
+| 27 | Seasonal-water dataset | `prep_seasonal_water.py` → `ds_seasonal_water_v1` (876 polys). | `scripts/`, `catalogue.py` |
+| 17 | Linear bake-off | `train(algo="auto")` LinearSVC/LogReg/Ridge, best by acc; band-math generalised to any linear. | `refine.py`, `infer.py` |
+| 16 | Tessera training | `embedding` through `train`; `TE_COLS`; site-scoped; carded (point-grid only). | `refine.py`, `infer.py`, `backend.py`, `static/*` |
+| 18·23 | Project save/resume | `project.json` = scheme + sequence + aoi/year/base, datasets as links. | `static/*` |
+| 19·20·22·26 | Docs | pipeline/schemas/Tessera-joblib/deployment answered in the deliverables. | `week8/*` |
+
+**Deliverables:** `week8/slides_week8.{tex,pdf}` (Beamer, 12 frames), `week8/slide_explainer.md`
+(covers #22 + #26), `week8/demo.md`. **Verified** live (GEE + Tessera): Ridge bake-off winner 0.731
+renders as tiles; Tessera acacia ~0.73 carded; GeoTIFF downloads as valid TIFF; seasonal-water card
+spread 0.61.
+
+### Not in this block
+Biomass/GEDI (#1) remains; multi-year Tessera + a point-grid render for Tessera splits, a
+seasonal-water split, and deployment hardening (service-account key, Dockerfile) are the roadmap.
+
+---
+
+## 8. Week 9 — rules, provenance, raw-Sentinel water, guardrails
+
+Source: `week9_instructions.txt` (13 asks). Approved subset this phase: **#3, #4, #5, #7, #8, #12,
+#13** (#5/#7 and #12/#13 are paired). Two lab papers drove the design and were read in full:
+**STACD** (`stacd_paper.pdf`) for #4, and **"Beyond Flat Classifiers"** (`beyond_flat_classifier_paper.pdf`,
+Bansal et al.) for #13. Full log: `week9/plan.md`; approved plan:
+`(internal planning notes)`.
+
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 12 | **Rule-based split** | A node's children can be resolved by an *interpretable expression* over an index **registry** (NDVI annual/Kharif/Rabi, NDWI/MNDWI, NDBI/BSI, slope/elevation) instead of a trained model — `if ndvi_annual > 0.3 → dense_veg else sparse_veg`. Indices compute live in EE, so a rule split **rides the crisp tile map**. Expressions are `ast`-checked against a whitelist before touching EE. Stored on the node (travels with the saved scheme), carded as `rule_split`. | `src/rules.py`, `infer.{_refine_idx,_final_label,load_refinements,_sample_rule_labels}`, `backend./api/split/rule` + `/api/rules/registry`, `catalogue.mint_rule_card`, `static/*` "Split by rule" |
+| 13 | **Decision tree via rules** | The crop→shrub move: a rule split's child is a first-class **merge** source, so split + rule-split + merge compose into any finite decision tree (answers the deferred wk6 #10). Maps the "Beyond Flat Classifiers" 12-class tree onto our framework. | `week9/notes/decision_tree.md` (mechanic verified live) |
+| 5·7 | **Water per fortnight (raw Sentinel)** | "On the 14-Jul fortnight, which pixels held water?" A **linear** water/non-water model trained offline on Sentinel-1 SAR + Sentinel-2 optical features (VV/VH, NDWI/MNDWI/BSI) sampled at each seasonal-water polygon's own date, then **replayed as EE band math** for any date — the same interactive path Alpha Earth uses, dodging the memory wall that forced the flood pipeline to batch. | `src/sentinel.py`, `scripts/train_water_fortnight.py`, `infer.{_linear_label,classify_water_tiles}`, `backend./api/water`, `catalogue.mint_water_card` |
+| 4 | **STACD provenance** | Every classified output emits a **stack-spec** (STAC Item: bbox/geometry/assets/class legend) + a **stacd spec** (DAG + Dataset/Algorithm types & instances) per the paper's 5 classes, with the hierarchy+op-log+classifier-refs embedded as the "input set used to produce this". Reuses the zoo cards — no new source of truth. | `src/stacd.py`, `backend./api/stacd`, `static/*` "Provenance (STACD)", `week9/notes/stacd_mapping.md` |
+| 3 | **Bounding-box size cap** | Area guardrails so a huge box can't explode compute/download: generous cap on EE tiles, tighter on GeoTIFF (getDownloadURL is size-capped), a tile-count cap on the Tessera fan-out (~150 MB/tile). Admin-tunable in `config.py`; UI shows the area + disables Run past the cap. | `src/aoi.py`, `config.py` (`AOI_*`), `backend` guards, `infer._sample_tessera`, `static/*` |
+| 8 | **Training-time benchmark** | Profiles EE sampling (per-getInfo-call latency × batches) vs fit (a+b·rows, per algo incl. an RF reference) → `data/benchmark_profile.json` + a server-admin table `week9/benchmarks.md`; `/api/estimate` gives a live estimate. | `scripts/benchmark_training.py`, `backend./api/estimate` |
+| 2 | Answer: LULC on Tessera? | Yes but a poor base — 2024-only (no temporal robustness, the thing that closed our gap), point-grid only, trails AE India-wide. Keep it as an opt-in single-year feature for fine splits. | (answered inline) |
+
+**Verified live (EE):** rule-split greenery by `ndvi_annual > 0.3` renders as crisp tiles with
+dense/sparse counts; rule-child + base leaf merge into one class (both sources gone) — the #13
+composition; the rule survives export→import (it lives in the tree JSON) and mints a valid
+`rule_split` card; `/api/water?date=2024-07-14` returns a fortnight's water tiles; `/api/stacd`
+returns a STAC Item + DAG whose `alg_inputs` embeds the scheme; oversized bbox is refused with a
+readable reason on classify and GeoTIFF; the benchmark writes a monotonic estimate table
+(1 km²≈8 s … 100 km²≈276 s here) and `/api/estimate` reads it. The whole app boots and serves at
+`?v=14`.
+
+### New / changed data files (week 9)
+`data/refine/water_fortnight.joblib` · `data/benchmark_profile.json` ·
+`data/catalogue/models/mc_<node>_rule_v1.json` (per rule split) · `mc_water_fortnight_v1.json`.
+
+### Follow-up block (also this phase): #1, #11, and the answers
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 1 | Link model families to the inference data | The valid model list now follows the chosen source: Alpha Earth is linear-only (band-math), Tessera adds Random Forest (+ XGBoost if installed) and reserves an object-detection slot. Non-linear on AE is refused with a reason. UI algo list repopulates on the embedding pick. | `refine.model_families` + `_NONLINEAR_ALGOS`, `train` guard, `backend./api/model-families`, `static/*` (`refreshModelFamilies`) |
+| 11 | Improve acacia | Enabled lever #2 (non-linear on Tessera). Ranked recipe of runnable levers (data spread, RF on Tessera, hard negatives, NDVI-season rule pre-filter, threshold tuning) + the object-detection ceiling. | `week9/notes/acacia_improvement.md` |
+| 9·10 | Deployment / MVP | Answered: structurally clean + demo-ready; gaps are packaging (service-account key, Dockerfile, pinned deps, API rate-limit, binaries out of git). Covered on the week-9 deck. | (answered; slide 13) |
+| 2 | LULC on Tessera | Confirmed: already supported for *training a new split* (not a base map) — `embedding="tessera"`, carded, acacia ≈ 0.73. | (answered) |
+
+### Deferred / open (week 9)
+- **#6** (mail Ratinder) — external, not code.
+- STACD emitter is the *metadata* half; wiring to the Airflow runtime (selective recomputation,
+  the SQLite instance store) is the next step if we adopt it.
+- Water model: research reconstruction-of-indices-from-embeddings stays out (sir: "not for now").
+- Object-detection family (acacia crowns / mining segmentation) is reserved in the registry but
+  not built.
+
+### Deliverables (week 9)
+`week9/slides_week9.{tex,pdf}` (14 frames, Madrid, same style as prior weeks) ·
+`week9/slide_explainer.md` (line-by-line + 14 Q&A) · `week9/demo.md` (hands-on click-through) ·
+`week9/notes/{decision_tree,stacd_mapping,acacia_improvement}.md` · `week9/benchmarks.md`.
+
+---
+
+## 9. Week 10 — non-linear models, biomass, mining segments, robustness, STACD audit
+
+Source: `week10_instructions.txt` (14 asks). This phase is testing + hardening plus real engineering
+additions. Implemented subset: **#1, #3, #4, #6, #7, #8**. Full log: `week10/plan.md`; approved plan:
+`(internal planning notes)`. Two synergies shaped it — RF-on-
+Alpha-Earth (#7) is the render path biomass (#3) rides; the benchmark regen serves both #7 and #6.
+
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 7 | RF for EE, XGBoost for Tessera | **Random Forest now trains on Alpha Earth** (sir: "the one that typically works"). RF/XGBoost aren't band math, so inference became **algorithm-aware**: a non-linear AE split is dropped from the crisp tile path (like a Tessera split) and the whole area falls back to the **point-grid** render, which runs `model.predict`. XGBoost-on-Tessera enabled (package added). Bundles already carry `algo`; `model_families` offers RF on AE with a point-grid caveat. | `refine.model_families`/`train` guard, `infer.{NONLINEAR_ALGOS,_is_nonlinear,_labelled_bbox}`, `backend.classify` (`grid_live`), `requirements.txt` |
+| 3 | Biomass data collection **+ integrate** | Ratinder's GEDI L4A AGBD collection rebuilt on **our exact Alpha Earth feature space** (+ slope): `prep_gedi_biomass.py` (quality/error/slope masks, stratified-samples present shots over an AOI), `train_biomass.py` (RF **regressor**, spatial cell-holdout). Integrated as a first-class capability: `infer.classify_biomass_grid` → `GET /api/biomass` → a `regression` model card in the zoo → a **🌲 Map biomass** overlay with an AGBD green ramp. Biomass is just a regression target on the same embeddings, so it rides #7's point-grid path. | `scripts/{prep_gedi_biomass,train_biomass}.py`, `infer.{biomass_models,load_biomass,classify_biomass_grid}`, `backend`, `catalogue.mint_biomass_card`, `schema` (`regression`), `static/*` |
+| 4 | Mining segmentation | Pragmatic, framework-consistent **segmentation**: vectorize the existing pixel `mining` prediction into cleaned polygon **objects** in EE (`focalMode` de-speckle + `reduceToVectors` + min-area filter), with per-segment area. Not a learned net (that stays the reserved object-detection slot). | `infer.segment_class`, `GET /api/segment`, `config.SEGMENT_MIN_AREA_HA`, `static/*` (⛏ Segment mining + GeoJSON download) |
+| 6 | Estimate + background notification | `/api/estimate` was correct but unused, and runs are synchronous. Wired the estimate into the retrain **work toast** with a live **elapsed-vs-expected timer** (`fetchEstimate` + `startWorkTimer`); regenerated the benchmark profile so RF/XGBoost estimates are real. Accuracy: within ~2× of a timed run (sampling-dominated). | `static/app.js`, `scripts/benchmark_training.py`, `week10/notes/estimate_check.md` |
+| 8 | Acacia spatial **and** temporal | Crowns now keep their source region (`area`), threaded through `build_training_frame`. `acacia_robustness.py` reports temporal-only / spatial-only (hold out Sanjay-Van strip SV_S4) / **combined region×year** holdout + a per-eval-year aggregate to catch fluke years. | `prep_acacia_examples.py`, `examples.build_training_frame`, `week10/acacia_robustness.py` |
+| 1 | STACD proper? | Audited `stacd.py` against the paper's five classes. Fixed the two real deviations (Algorithm_Instance now has a unique `id`; the output's `alg_name` references an **Instance**, not a Type). Documented the intentional extension (`alg_inputs.hierarchy` = the scheme as the input set) and the metadata-vs-Airflow-runtime gap in a shareable audit. | `src/stacd.py`, `week10/notes/stacd_audit.md` |
+
+**Verified live (EE + TestClient):** RF greenery split is dropped from the tile path (no crash) and
+applied on the point grid; XGBoost/RF appear in `model_families` per source; `/api/biomass` returns a
+graded AGBD grid (Jalpaiguri box) and the biomass card is browsable (`regression`, R²≈0.22 spatial /
+0.33 random on Ratinder's AEZ-8 frame); `/api/segment` returns 9 clean mining polygons over Asola
+Bhatti (speckle filtered, bad class → 400); `/api/estimate` covers RF/XGBoost and is ~2× a real
+retrain (49 s vs 92 s); acacia **combined spatial+temporal 0.673 < spatial-only 0.695 < temporal-only
+0.716**, with 2024 flagged as a possible fluke year (per-year spread 0.234); `stacd.py` smoke test
+passes with instance ids and the app boots at `?v=17`.
+
+### Deferred (week 10)
+- **#2 / #9 / #14** deployment (Dockerize, service account, STACD archiving policy) — sir deferred to
+  next week after end-to-end testing.
+- **#10 / #12** hands-on UI shakeout + visual dense/sparse-vs-canopy-density check — live-session work.
+- **#11** running the water classifier per-fortnight over *all* pixels with augmented non-water
+  samples (greenery/barren) so it works outside water bodies — the bigger water build; step 1
+  (per-fortnight water within water bodies) already exists from week 9.
+- **#13** Raman/Aman IndiaSAT tree-vs-crop / farm-vs-shrub models into the zoo — needs the shared
+  assets; external.
+- A learned mining segmentation net and the STACD Airflow runtime remain future work.
+
+### New / changed files (week 10, batch 1)
+`scripts/{prep_gedi_biomass,train_biomass}.py` · `week10/acacia_robustness.py` ·
+`week10/notes/{stacd_audit,estimate_check,acacia_robustness}.md` · `data/refine/biomass_aez8.joblib`
+· `data/catalogue/models/mc_biomass_aez8_v1.json` · `requirements.txt` (+xgboost) ·
+`config.SEGMENT_MIN_AREA_HA` · regenerated `data/benchmark_profile.json`.
+
+### Batch 2 — points #5, #10, #11, #12, #13, #14
+
+Second week-10 block. Plan: `(internal planning notes)`. The user downloaded the two
+IndiaSAT GitHub scripts sir shared (at repo root), and their training assets turned out to be readable
+from our EE project — which reshaped #13 into a real build.
+
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 13 | Plug the IndiaSAT production models into the zoo | **The big win.** Both of Raman's models train an `ee.Classifier.smileRandomForest` **and classify inside Earth Engine**, so they render **server-side as tiles** like our AE band-math path (no download, no sklearn). Ported both: **tree-vs-crop** (pan-India, 46-band Sentinel-1 SAR 16-day time series, `L2_TrainingData_SAR_TimeSeries_1Year`, class 5/6) and **farm/plantation/scrubland** (per-AEZ, Alpha Earth, trained from `gee_samples_all` filtered to the AOI's agro-ecological region). Each is a runnable overlay + a zoo card (new `ee_rf` topology storing the *recipe*, re-trained on demand — faithful to "trained on the fly, no model saved"). | `src/ee_rf.py`, `backend./api/{treecrop,farmshrub}`, `catalogue.mint_ee_rf_card`/`sync_ee_rf_cards`, `schema` (`ee_rf`), `static/*` |
+| 11 | Water step 1 | Spatial (by water-body) + temporal (by year) **robustness** eval with fluke-year aggregate; **non-water augmentation** (barren/built/greenery negatives) to fix the "calls everything water" problem; **per-pixel fortnight-count** raster (run the model over a year, sum water masks) as a blue-ramp overlay. `sentinel._s1/_s2` hardened so an empty fortnight doesn't crash the sweep. Hierarchy integration stays step 2 (sir's staging). | `week10/water_robustness.py`, `scripts/train_water_fortnight.py --augment`, `infer.water_frequency_tiles`, `backend./api/water-frequency`, `sentinel.py`, `static/*` |
+| 5 | Tessera vs Alpha Earth timing | Real measured benchmark: **AE total ~12 s vs Tessera ~72 s** (sample 31 s, classify 40 s), plus a separately-timed fresh tile **download 151 MB in 29 s (5.2 MB/s)**. AE is server-side round-trips only; Tessera pays a ~30 s/tile download before anything. | `scripts/benchmark_tessera_vs_ae.py`, `week10/notes/tessera_vs_ae.md` |
+| 12 | dense/sparse rule vs CoreStack canopy | Quantitative check vs CoreStack LULC v3 (legend pinned by NDVI: 6=tree dense, 12=scrub sparse). Finding: dense↔tree agrees ~99 %, but a **single annual-NDVI threshold under-detects sparse scrub** (Central India 83 %) — the rule is really tree-vs-non-tree; use `ndvi_rabi`/SAR for true canopy density (editable rule, no code change). | `week10/canopy_compare.py`, `week10/notes/dense_sparse_vs_canopy.md` |
+| 10 | Even out the UI | QA pass: **segment gated to the selected class** (was hard-wired mining); **muted context blocks now disable their inputs**; GeoTIFF double-fire guard; export/annotate/publish busy-toasts + try/catch so a network throw can't strand a "working…" toast; **zoo year change auto-refreshes** the map. | `static/{app.js,index.html}` |
+| 14 | STACD archiving email | Mostly deferred to the deployment week (sir: "no change for now"). Shipped only the cheap hook: an **`archive` flag** on the STACD emit (`/api/stacd?archive=true` → `properties.archive`) so a run can be marked retain-vs-test; the cleanup service itself is deferred. | `src/stacd.py`, `backend`, `week10/notes/stacd_archiving.md` |
+
+**Verified live (EE):** tree/crop paints crop/tree tiles (~10 s); farm/shrub paints
+farm/plantation/scrubland over Punjab (43 s) and gives a clean error on an urban box with no agri
+ground truth; both `ee_rf` cards sync + validate in the zoo; water robustness **spatial+temporal
+0.979** (stable, no fluke year); water-frequency renders a graded count map (mean ≈ 3.9 fortnights
+over a lake box); canopy agreement 99 %/83 % as above; Tessera/AE timings measured; STACD `archive`
+flag round-trips; app boots at `?v=19` with every new route registered.
+
+### Deferred / open (batch 2)
+- Water → hierarchy integration (step 2), and deployment/dockerize (#2/#9/#14) — the deployment week.
+- Full hierarchy *compositing* of the EE-RF models as split nodes (they're runnable overlays + cards now).
+- A canopy-density rule using dry-season NDVI / SAR (the #12 fix is a better rule, not new code).
+
+### New / changed files (week 10, batch 2)
+`src/ee_rf.py` · `scripts/benchmark_tessera_vs_ae.py` · `week10/{water_robustness,canopy_compare}.py`
+· `week10/notes/{water_robustness,dense_sparse_vs_canopy,tessera_vs_ae,stacd_archiving}.md` ·
+`data/catalogue/models/mc_{treecrop,farmshrub}_ee_v1.json` · schema `ee_rf` topology ·
+`data/refine/water_fortnight_augmented.joblib` (on `--augment`).

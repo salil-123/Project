@@ -22,6 +22,7 @@ pyarrow
 numpy
 scikit-learn
 joblib
+xgboost           # non-linear learner for Tessera splits (#7); optional, point-grid render only
 
 # --- Web interface (FastAPI backend + plain HTML/CSS/JS + Leaflet frontend) ---
 fastapi

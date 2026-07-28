@@ -14,8 +14,23 @@ __pycache__/
 *.csv
 *.npy
 
+# machine-local editor settings (permission allowlist)
+.claude/settings.local.json
+
 # scratch / backups
 test_data/
 
 # the model zoo is its OWN git repo (pushed to zoo_database.git); not nested inside this one
 data/catalogue/
+
+# large downloaded / regenerable artifacts that blow past GitHub's 100 MB limit (wk10):
+#   - cod892_biomass: Ratinder's biomass repo (~5 GB of CSVs, keynotes, zips) — reference only
+#   - Tessera tiles / tiff cache: ~150 MB each, re-downloaded on demand
+#   - the two research PDFs (69 MB / <1 MB) live externally; slides stay tracked
+#   - the biomass RF joblib is huge (deep 300-tree forest) — regenerate with scripts/train_biomass.py
+cod892_biomass/
+global_0.1_degree_tiff_all/
+global_0.1_degree_representation/
+beyond_flat_classifier_paper.pdf
+stacd_paper.pdf
+data/refine/biomass_*.joblib

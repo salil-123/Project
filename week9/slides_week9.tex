@@ -1,0 +1,218 @@
+\documentclass[aspectratio=169]{beamer}
+
+\usetheme{Madrid}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\setbeamertemplate{navigation symbols}{}
+
+\title[Rules, provenance, and raw-Sentinel water]{Interpretable rule splits, a STACD provenance proposal, per-fortnight water, and safe defaults}
+\author[Salil Gujar]{Salil Gujar \\ \footnotesize M.Tech CSE \quad Entry No.\ 2025MCS2106}
+\date{July 2026}
+
+\begin{document}
+
+\frame{\titlepage}
+
+% ------------------------------------------------------------------
+\begin{frame}{Where we are, and what week 9 tackled}
+\begin{columns}[T]
+\begin{column}{0.5\textwidth}
+\emph{Done so far}
+\begin{itemize}\small
+  \item A 4-class base map over India at 10\,m with a living hierarchy: split or add a class, mark a
+  few example polygons, and retrain that node on the fly.
+  \item A git-backed zoo of model and dataset cards, with save and resume, merge, base and year
+  selection, a GeoTIFF export, and site testing on acacia, tea, and mining.
+\end{itemize}
+\end{column}
+\begin{column}{0.5\textwidth}
+\emph{This week (a chosen subset)}
+\begin{itemize}\small
+  \item Split a class by an interpretable rule on indices, not only by a trained model.
+  \item Read the STACD paper, and propose how a provenance record for our outputs would look.
+  \item Answer water seasonality on raw Sentinel, one fortnight at a time.
+  \item Add safe defaults: a bounding-box size cap and a training-time benchmark.
+  \item Link the valid model families to the inference data the user picks.
+\end{itemize}
+\end{column}
+\end{columns}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Splitting a class by a rule, not a model}
+\begin{itemize}
+  \item Until now, dividing a class meant marking data and training a classifier. Sometimes the
+  boundary is simply a threshold on a known index, for example dense against sparse vegetation by
+  annual NDVI.
+  \item A rule split lets the user write that directly: if the expression holds the pixel takes one
+  class, otherwise it takes the default. No data to mark, no training.
+  \item The indices come from a fixed registry, so the expressions stay interpretable and safe. We
+  check every expression against a whitelist of variables and operators before it reaches Earth
+  Engine.
+  \item Because the indices are computed in Earth Engine, a rule split renders as the same crisp
+  10\,m tile map as a linear model. It is stored on the node, travels with the saved project, and
+  gets a card in the zoo like any other model.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{The rule variable registry}
+The indices a rule can use, all computed live from Sentinel and SRTM over the chosen area and year.
+
+\vspace{3mm}
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+Group & Variables \\
+\midrule
+Vegetation & ndvi\_annual, ndvi\_kharif, ndvi\_rabi \\
+Water & ndwi, mndwi \\
+Built and soil & ndbi, bsi \\
+Terrain (SRTM) & slope, elevation \\
+\bottomrule
+\end{tabular}
+\end{center}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{STACD: what I understood from the paper}
+This is my reading of the STACD paper, presented so we can confirm it together.
+\begin{itemize}\small
+  \item STAC describes an individual geospatial asset well, but its lineage is shallow: a
+  \texttt{derived\_from} field that names a parent without saying which algorithm, version, or
+  parameters produced it.
+  \item STACD extends STAC with a directed acyclic graph and five classes: a DAG, a Dataset Type
+  and an Algorithm Type as the node kinds, an Algorithm Instance that records a specific version and
+  its code, and a Dataset Instance that extends a STAC Item with the producing algorithm and its
+  inputs.
+  \item The payoff is provenance and selective recomputation: if a model or an input dataset
+  changes, you can see exactly which downstream outputs need to be rebuilt.
+  \item The paper gives a reference implementation on Apache Airflow.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{How our output could map onto STACD}
+Something like this could work for us. A classified output would carry two things.
+\begin{itemize}\small
+  \item A stack specification: a STAC Item for the LULC raster, with the bounding box, the geometry,
+  the class legend with colours, and asset links to the GeoTIFF and tile endpoints.
+  \item A STACD specification: the DAG plus the dataset and algorithm nodes, and one algorithm
+  instance for every live model, rule split, and merge, each pointing at where its artifact lives in
+  the zoo.
+  \item The input set: the class hierarchy, the ordered operations that built it, and the artifact
+  pointers, carried as the inputs of the producing algorithm. This is the JSON we already keep, which
+  would sit inside the STACD record as the input set that produced the output.
+  \item The appeal is that it reuses the cards we already have, so it needs no new source of truth,
+  and it stays a cheap metadata step with no extra Earth Engine work.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Water seasonality, one fortnight at a time}
+\begin{itemize}\small
+  \item The annual embedding is a whole-year signal, so it cannot say which pixels held water on a
+  given fortnight. For that we go back to raw Sentinel: Sentinel-1 radar and Sentinel-2 optical,
+  composited around a target date, with the standard water indices.
+  \item We train a linear water against non-water model offline on the shared seasonal-water
+  polygons, sampled at each polygon's own date, then replay it as Earth-Engine band math for any
+  chosen fortnight. This keeps it interactive, the same trick the base map uses, and avoids the
+  memory limit that pushed the earlier flood pipeline to batch export.
+  \item Early results are good enough to work with for now, and we can tighten them as we add more
+  polygons and dates.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{A size cap on the drawn area}
+\begin{itemize}
+  \item A user can draw any rectangle, and a large one can quietly turn into a very slow request or
+  a large download. We now check the area before running.
+  \item The three paths cost differently, so the caps differ: the Earth-Engine tile map is generous
+  because tiles render on demand, the GeoTIFF export is smaller because that download is size
+  limited, and the Tessera path is capped by tile count because each tile is a large local
+  download.
+  \item The caps are plain environment settings, so a server administrator can tune them for the
+  hardware. The interface reports the area and refuses to run past the hard limit, with a readable
+  reason.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{How long does training take}
+A benchmark separates the two costs so an administrator can size the server. Sampling embeddings
+over Earth Engine is network bound and usually dominant; the linear fit is cheap. Random Forest is a
+local reference only.
+\vspace{3mm}
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Area (km$^2$) & Points at 10\% & Sample (s) & Total, linear (s) \\
+\midrule
+1 & 1{,}000 & 8.1 & 8.1 \\
+4 & 4{,}000 & 16.1 & 16.2 \\
+25 & 25{,}000 & 72.7 & 72.9 \\
+100 & 100{,}000 & 274.5 & 275.7 \\
+\bottomrule
+\end{tabular}
+\vspace{3mm}
+\begin{flushleft}\small
+Measured on a Windows laptop. The numbers feed a saved profile and a live estimate endpoint, and
+they are the reference for setting the area caps above.
+\end{flushleft}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Linking models to the inference data}
+\begin{itemize}
+  \item When a user trains, the valid model families now follow the data they picked. Earth Engine
+  can only run linear models, because only a linear model replays as band math, so the Alpha Earth
+  list is linear only.
+  \item A Tessera run is a local computation, so it is not limited to linear. It adds Random Forest,
+  and XGBoost when installed, and reserves a slot for an object-detection family we have not built
+  yet.
+  \item The training panel reads this list, so the user is only offered models that fit their data,
+  and a non-linear model on Alpha Earth is refused with a clear reason.
+  \item This is the linkage advised earlier: the dataset a user works with determines the models
+  available for it, and the set is easy to extend.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Improving the acacia split}
+Acacia against non-acacia is our hardest split, a species distinction between similar trees. The
+options we have actually measured on it:
+\begin{itemize}
+  \item More labelled crowns across sites and years. Data spread is the proven lever: pooling several
+  years moved this split from 0.635 to 0.745 on years the model had never seen.
+  \item Tessera as the feature source, tested at about 0.73 on the same split. With the linkage
+  above it can now also carry a non-linear model such as Random Forest, which the 64-dimensional
+  Alpha Earth path cannot.
+  \item The automatic bake-off, already run on this split, where Ridge came out ahead at 0.731.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}{Where the product stands}
+\begin{itemize}
+  \item The full loop works: paint a map, grow a scheme with splits, rule splits, adds and merges,
+  retrain, browse and publish the zoo, save and resume a project, and export a GeoTIFF. This is a
+  demo-ready product.
+  \item What stands between a demo and a hosted service is mostly packaging: a service-account key
+  for headless Earth Engine, a container, pinned dependencies, and a basic access limit so the
+  compute is not open to anyone. The code is modular, so these are additions, not rewrites.
+  \item The water model is new and is only lightly wired into the interface so far.
+\end{itemize}
+\end{frame}
+
+% ------------------------------------------------------------------
+\begin{frame}
+\centering
+\vspace{1.5cm}
+{\Large Thank you}
+\vspace{0.5cm}
+
+
+\end{frame}
+
+\end{document}

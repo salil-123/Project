@@ -7,31 +7,65 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="/style.css?v=4" />
+  <link rel="stylesheet" href="/style.css?v=19" />
 </head>
 <body>
   <aside id="sidebar">
     <h1>Core Stack <span>LULC</span></h1>
-    <p class="sub">Alpha&nbsp;Earth base map, with greenery split into crops / trees / shrubs.</p>
+    <p class="sub">Alpha&nbsp;Earth base map, with greenery split into acacia / non-acacia and barren
+      into mining.</p>
 
     <section>
       <label>Area</label>
       <select id="preset"></select>
       <div id="custom" class="hidden">
         <div class="row">
-          <span><label>Lat</label><input id="clat" type="number" step="0.001" value="19.133"></span>
-          <span><label>Lon</label><input id="clon" type="number" step="0.001" value="72.915"></span>
+          <span><label>Lat</label><input id="clat" type="number" step="0.001" value="28.540"></span>
+          <span><label>Lon</label><input id="clon" type="number" step="0.001" value="77.185"></span>
         </div>
         <label>Half-size (deg): <b id="halfval">0.010</b></label>
         <input id="half" type="range" min="0.005" max="0.25" step="0.005" value="0.01">
       </div>
-      <label>Mode</label>
-      <select id="mode">
-        <option value="realistic">Realistic (AE + WorldCover, 10 m raster)</option>
-        <option value="detailed">Detailed (AE + Tessera soft-vote)</option>
-      </select>
-      <p class="hint" id="modehint">Server-side 10 m classification served as Earth Engine map tiles — crisp at any zoom, calibrated to India's prior, no downloads.</p>
-      <button id="run" class="primary">Run classification</button>
+      <p class="hint" id="aoihint">Draw a box on the map (▭ tool), or pick <b>Custom</b> and click
+        the map to drop a centre — the slider sizes the box live.</p>
+      <p class="hint aoi-size" id="aoiSize"></p>
+      <div class="run-row">
+        <button id="run" class="primary">Run classification</button>
+        <button id="eyeToggle" title="Hide / show the classification overlay">👁</button>
+      </div>
+      <div class="run-row">
+        <button id="dlTif" class="ghost" title="Download the classified area as a GeoTIFF">⬇ GeoTIFF</button>
+      </div>
+      <div class="run-row water-row">
+        <span><label>Water on a fortnight</label>
+          <input id="waterDate" type="date" value="2024-07-14"></span>
+        <button id="runWater" class="ghost" title="Water vs non-water on this date, from raw Sentinel-1/2">💧 Map water</button>
+        <button id="runWaterFreq" class="ghost" title="How many fortnights each pixel held water across the year">💧× Water frequency</button>
+      </div>
+      <p class="hint">Water uses a separate model on raw Sentinel for the chosen fortnight (5, 7),
+        so it answers which pixels held water on that date, not the annual map above.
+        <b>Water frequency</b> (#11) runs it over the whole year and counts how many fortnights each
+        pixel was water — darker blue = more persistent water.</p>
+      <div class="run-row">
+        <button id="runBiomass" class="ghost" title="Above-ground biomass (AGBD) regressed from Alpha Earth + GEDI">🌲 Map biomass</button>
+        <span id="biomassRamp" class="biomass-ramp hidden"></span>
+      </div>
+      <p class="hint">Biomass is a regressor on Alpha Earth + slope (trained on GEDI shots, #3), so it
+        renders on the point grid with a green ramp — darker = more biomass.</p>
+      <div class="run-row">
+        <button id="runSegment" class="ghost" title="Vectorize the mining class into cleaned polygon segments">⛏ Segment mining</button>
+        <button id="dlSegment" class="ghost hidden" title="Download the mining segments as GeoJSON">⬇ GeoJSON</button>
+      </div>
+      <p class="hint">Segmentation vectorizes the mining pixels into discrete polygons (#4) — speckle
+        dropped, tiny blobs filtered — so you get mining objects with per-segment area, not confetti.</p>
+      <div class="run-row">
+        <button id="runTreecrop" class="ghost" title="IndiaSAT tree-vs-crop model (Sentinel-1 SAR Random Forest, runs in Earth Engine)">🌾 Tree vs crop</button>
+        <button id="runFarmshrub" class="ghost" title="IndiaSAT farm/plantation/scrubland model (Alpha Earth RF, per agro-ecological region)">🌱 Farm/shrub</button>
+      </div>
+      <p class="hint" id="eeRfLegend"></p>
+      <p class="hint">IndiaSAT production models (#13), plugged straight from the lab: server-side
+        Earth-Engine Random Forests rendered as tiles. Tree/crop is pan-India (SAR); farm/shrub is
+        per agro-ecological region (Alpha Earth).</p>
       <p class="hint">Base classes and the inference year live in the Model Zoo — open it to pick a
         starting scheme or change the Alpha Earth year.</p>
       <div id="status" class="status"></div>
@@ -39,62 +73,27 @@
 
     <section>
       <h3>🌳 Hierarchy</h3>
-      <p class="hint">Click a class to select it. Selected: <b id="selName">root</b></p>
+      <!-- two ways to see the same scheme (#13): the logical tree, or the ordered steps that built it -->
+      <div class="views">
+        <button id="viewHier" class="vtab sel">By hierarchy</button>
+        <button id="viewOps" class="vtab">By operations</button>
+      </div>
+      <p class="hint">Click any class to select it, then use the <b>panel on the right</b> to mark
+        data or grow it. Selected: <b id="selName">root</b></p>
       <div id="tree"></div>
+      <!-- the operations / schema view: the sequence that defines the current scheme -->
+      <div id="ops" class="hidden"></div>
+      <button id="startFresh" class="ghost">↺ Start fresh (reset to base)</button>
     </section>
 
     <section>
-      <h3>✏️ Examples for <span id="exClass">root</span></h3>
-      <p class="hint">Draw a polygon on the map, pick a role, then add. Positive = "this is
-        X" (relabel); negative = "not X" (hard-negative).</p>
-      <label>Role</label>
-      <select id="role">
-        <option value="positive">positive</option>
-        <option value="negative">negative</option>
-      </select>
-      <button id="addDrawn">Add drawn polygon</button>
-      <p class="hint">…or upload a GeoJSON / KML of polygons</p>
-      <input id="upload" type="file" accept=".geojson,.json,.kml">
-      <div id="dataDist" class="datadist"></div>
-    </section>
-
-    <section>
-      <h3>🔧 Operations</h3>
-      <label>Split selected leaf into (comma-separated)</label>
-      <input id="splitNames" type="text" placeholder="e.g. cereal, orchard">
-      <button id="doSplit">Create split</button>
-
-      <label>Add a class under selected node</label>
-      <input id="addName" type="text" placeholder="new class name">
-      <button id="doAdd">Add class</button>
-
-      <label>Class balance (if a split is skewed)</label>
-      <select id="balance">
-        <option value="balanced">balanced — class weights (default)</option>
-        <option value="undersample">undersample the majority</option>
-        <option value="oversample">oversample the minority</option>
-      </select>
-      <button id="doRetrain" class="primary">Retrain selected & apply</button>
-      <pre id="metrics" class="metrics"></pre>
-    </section>
-
-    <section>
-      <h3>🔗 Merge classes</h3>
-      <p class="hint">Tick two or more leaf classes <b>in the Hierarchy above</b> (even from
-        different splits/models), name them, and merge. It's a relabelling layer applied after
-        inference — no retraining. Active merges show in the tree with a ✕ to undo.</p>
-      <label>New class name</label>
-      <input id="mergeName" type="text" placeholder="e.g. extractive land">
-      <label class="mergecolor">Colour <input id="mergeColor" type="color" value="#8e44ad"></label>
-      <button id="doMerge">Create merge</button>
-    </section>
-
-    <section>
-      <h3>💾 Save / load scheme</h3>
-      <p class="hint">Download your class hierarchy and the steps that built it as JSON, to
-        continue later or share it. Load one back to pick up where you left off.</p>
-      <button id="exportHier">Download hierarchy (JSON)</button>
-      <p class="hint">…or load a saved hierarchy</p>
+      <h3>💾 Save / resume project</h3>
+      <p class="hint">Save the whole project as one JSON — the class scheme, the sequence of steps
+        that built it, plus the area, year and base classes. Datasets/models are kept as links, not
+        copied. Load it to resume exactly where you left off.</p>
+      <button id="exportHier">Download project (JSON)</button>
+      <button id="exportStacd" class="ghost" title="STAC Item + DAG provenance for the current output">⬇ Provenance (STACD)</button>
+      <p class="hint">…or resume a saved project (it's checked first; only applied if it's sound)</p>
       <input id="importHier" type="file" accept=".json">
     </section>
 
@@ -111,6 +110,127 @@
   </aside>
 
   <main id="map"></main>
+
+  <!-- right-hand contextual panel: what you can do with the class selected on the left (#8). The
+       blocks are always present (ids kept so handlers bind once) but shown/hidden per selection. -->
+  <aside id="context">
+    <h2 id="ctxHead">Pick a class</h2>
+    <p class="hint" id="ctxWhat">Select a class in the Hierarchy to see what you can do with it.</p>
+
+    <section id="ctxExamples" class="ctx-block">
+      <h3>① Mark example data</h3>
+      <p class="hint">Draw a polygon on the map, pick a role, then add — this is how you teach the
+        model. Positive = "this is <span class="ctxcls">X</span>"; negative = "not it".</p>
+      <label>Role</label>
+      <select id="role">
+        <option value="positive">positive</option>
+        <option value="negative">negative</option>
+      </select>
+      <button id="addDrawn">Add drawn polygon</button>
+      <p class="hint">…or upload a GeoJSON / KML of polygons</p>
+      <input id="upload" type="file" accept=".geojson,.json,.kml">
+      <div id="dataDist" class="datadist"></div>
+    </section>
+
+    <section id="ctxSplit" class="ctx-block">
+      <h3>② Split into finer classes</h3>
+      <p class="hint">Divide <span class="ctxcls">X</span> into sub-classes. Bring your own data and
+        train it, or apply a ready model from the zoo.</p>
+      <input id="splitNames" type="text" placeholder="e.g. cereal, orchard">
+      <button id="doSplit">Create split (mark your own data)</button>
+      <button id="splitFromZoo" class="ghost">Use a model from the Zoo</button>
+    </section>
+
+    <section id="ctxRuleSplit" class="ctx-block">
+      <h3>②′ Split by rule (no training)</h3>
+      <p class="hint">Split <span class="ctxcls">X</span> with an interpretable threshold on an
+        index — <i>if the rule holds → class A, else → class B</i>. Evaluated live in Earth Engine,
+        so it renders as crisp tiles with no data to mark.</p>
+      <label>Index variable</label>
+      <select id="ruleVar"></select>
+      <p class="hint" id="ruleVarDesc"></p>
+      <div class="row">
+        <span><label>is</label>
+          <select id="ruleOp">
+            <option value="&gt;">&gt;</option>
+            <option value="&lt;">&lt;</option>
+            <option value="&gt;=">&ge;</option>
+            <option value="&lt;=">&le;</option>
+          </select></span>
+        <span><label>threshold</label><input id="ruleThresh" type="number" step="0.05" value="0.3"></span>
+      </div>
+      <label>Class when true</label>
+      <input id="ruleTrue" type="text" placeholder="e.g. dense_veg">
+      <label>Class otherwise (default)</label>
+      <input id="ruleFalse" type="text" placeholder="e.g. sparse_veg">
+      <details class="advrule">
+        <summary>Advanced: raw expression</summary>
+        <p class="hint">Combine indices, e.g. <code>ndvi_annual &gt; 0.3 &amp;&amp; slope &lt; 5</code>.
+          Overrides the picker above when non-empty.</p>
+        <input id="ruleExpr" type="text" placeholder="ndvi_annual > 0.3 && slope < 5">
+      </details>
+      <button id="doRuleSplit">Create rule split</button>
+    </section>
+
+    <section id="ctxAdd" class="ctx-block">
+      <h3>③ Add a class</h3>
+      <p class="hint">Add a brand-new class under <span class="ctxcls">X</span>.</p>
+      <input id="addName" type="text" placeholder="new class name">
+      <button id="doAdd">Add class</button>
+    </section>
+
+    <section id="ctxMerge" class="ctx-block">
+      <h3>④ Merge classes</h3>
+      <p class="hint">Tick two or more leaf classes <b>in the Hierarchy</b> (even from different
+        models), name them, and merge. A relabel layer applied after inference — no retraining.
+        Active merges show in the tree with a ✕ to undo.</p>
+      <label>New class name</label>
+      <input id="mergeName" type="text" placeholder="e.g. extractive land">
+      <label class="mergecolor">Colour <input id="mergeColor" type="color" value="#8e44ad"></label>
+      <button id="doMerge">Create merge</button>
+    </section>
+
+    <section id="ctxRetrain" class="ctx-block">
+      <h3>⑤ Retrain this split</h3>
+      <p class="hint">Once <span class="ctxcls">X</span> has children with example data, train the
+        classifier that tells them apart.</p>
+      <!-- balancing + multi-year are training-your-own-model options; shown only in that flow (#12) -->
+      <div id="retrainAdvanced">
+        <label>Algorithm</label>
+        <select id="algo">
+          <option value="linearsvc">LinearSVC (default)</option>
+          <option value="logreg">Logistic Regression</option>
+          <option value="ridge">Ridge</option>
+          <option value="auto">Auto — best linear model</option>
+        </select>
+        <p class="hint">The list depends on your inference data (#1): Alpha Earth is linear only, so
+          the model renders as crisp tiles; Tessera adds Random Forest and other local models.
+          “Auto” bakes off the valid models and keeps the most accurate (#17).</p>
+        <div id="embeddingRow" class="hidden">
+          <label>Feature embedding</label>
+          <select id="embedding">
+            <option value="ae">Alpha Earth (64-d, default)</option>
+            <option value="tessera">Tessera (128-d)</option>
+          </select>
+          <p class="hint">Tessera is available for the 4 requested test sites (#16). A Tessera split is
+            trained + scored + carded, but doesn’t ride the crisp tile map (point-grid only).</p>
+        </div>
+        <label>Class balance (if a split is skewed)</label>
+        <select id="balance">
+          <option value="balanced">balanced — class weights (default)</option>
+          <option value="undersample">undersample the majority</option>
+          <option value="oversample">oversample the minority</option>
+        </select>
+        <label>Train across years (blank = 2024)</label>
+        <input id="trainYears" type="text" placeholder="e.g. 2019, 2021, 2023" />
+        <p class="hint">Pool several Alpha Earth years so the split holds up across years (temporal
+          robustness). Costs more time — one sampling pass per year.</p>
+      </div>
+      <button id="doRetrain" class="primary">Retrain & apply</button>
+      <pre id="metrics" class="metrics"></pre>
+    </section>
+  </aside>
+
   <div id="toast" class="toast hidden"></div>
 
   <!-- first-run: pick the base classes to start from before doing anything else -->
@@ -134,6 +254,7 @@
       </div>
       <label class="zoo-aoi check"><input type="checkbox" id="zooAoi"> only for current view</label>
       <div class="zoo-actions">
+        <button id="zooPublishSel" disabled>Publish selected</button>
         <button id="zooPublishAll">Publish all</button>
         <button id="closeZoo">✕ Close</button>
       </div>
@@ -146,6 +267,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  <script src="/app.js?v=4"></script>
+  <script src="/app.js?v=19"></script>
 </body>
 </html>
