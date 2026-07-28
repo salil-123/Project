@@ -842,6 +842,46 @@ def apply_model(op: ApplyIn):
             "classes": [p["class"] for p in card.get("produces", [])], **_tree_payload()}
 
 
+# ----------------------------- apply an IndiaSAT ee_rf model as a hierarchy refinement (#13) -----------------------------
+class ApplyEeRfIn(BaseModel):
+    card_id: str
+    parent: str = "greenery"      # the base class the model refines
+
+
+@app.post("/api/apply-eerf")
+def apply_eerf(op: ApplyEeRfIn):
+    """Plug an IndiaSAT ee_rf model into the hierarchy: the `parent` class (greenery) gains the
+    model's classes as children and is marked with the model, so the tree shows the change and every
+    Run classification composites it. This is what makes the hierarchy follow the model instead of
+    reusing the old scheme."""
+    import ee_rf
+    card = catalogue.get_card(op.card_id)
+    if not card or card.get("topology") != "ee_rf":
+        raise HTTPException(404, f"{op.card_id!r} is not an IndiaSAT (ee_rf) model card")
+    which = "treecrop" if "treecrop" in card["node"] else "farmshrub"
+    tree = hierarchy.load()
+    if op.parent not in tree:
+        raise HTTPException(400, f"the {op.parent!r} class isn't in the current base scheme — switch "
+                                 "to the IndiaSAT base first")
+    classes = [p["class"] for p in card.get("produces", [])]
+    colmap = ee_rf.model_colors(which)
+    # rebuild the parent's children as the model's classes, mark it with the model
+    for ch in list(tree[op.parent].get("children", [])):
+        _drop_subtree(tree, ch)
+    tree[op.parent]["children"] = []
+    for cls in classes:
+        hierarchy.add_class(tree, cls.replace("_", " ").title(), op.parent, canonical=cls)
+        if cls in tree:
+            tree[cls]["color"] = colmap.get(cls)
+    tree[op.parent]["ee_rf"] = which
+    tree[op.parent]["classifier"] = None          # not a joblib classifier; composited in EE
+    hierarchy.save(tree)
+    _reload()
+    oplog.append("apply_eerf", {"card_id": op.card_id, "node": op.parent, "model": which,
+                                "classes": classes})
+    return {"applied": op.card_id, "node": op.parent, "classes": classes, **_tree_payload()}
+
+
 # ----------------------------- catalogue (the model/dataset zoo) -----------------------------
 @app.get("/api/catalogue")
 def get_catalogue(west: float = None, south: float = None,

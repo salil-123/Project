@@ -740,29 +740,20 @@ $("dlSegment").onclick = () => {
 // they come back as tile layers just like the base map. They are pickable *models* in the Model Zoo
 // (a card with a "Use this model" button), not standalone sidebar buttons — you plug one in to run
 // it on the current view, the same way you'd apply any other model from the zoo.
-async function renderEeRf(urlPrefix, label) {
-  const [w, s, e, n] = currentBbox();
-  setStatus(`${label}…`, "work");
-  drawAoi();
-  try {
-    const d = await getJSON(`${urlPrefix}west=${w}&south=${s}&east=${e}&north=${n}`);
-    if (d.detail) { setStatus(d.detail, "err"); return; }
-    predLayer.clearLayers();
-    if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
-    rasterLayer = L.tileLayer(d.tile_url, { opacity: 0.75, bounds: [[s, w], [n, e]] }).addTo(map);
-    map.fitBounds([[s, w], [n, e]]);
-    overlayVisible = true;
-    if ($("eyeToggle")) { $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off"); }
-    setStatus(`${label}: ${JSON.stringify(d.counts)}`);
-  } catch (err) { setStatus(`${label} error: ` + err, "err"); }
-}
-// run an ee_rf card on the current view (called from the zoo card's "Use this model" button)
+// apply an ee_rf card as a refinement of greenery: it updates the hierarchy (greenery gains the
+// model's classes) and then classifies, so the tree and the map both follow the model (#13).
 async function useEeRfModel(cardId) {
   const c = await getJSON(`/api/cards/${cardId}`);
-  closeZoo();
-  const isTree = (c.node || "").includes("treecrop");
-  await renderEeRf(isTree ? "/api/treecrop?" : `/api/farmshrub?year=${inferYear}&`,
-                   isTree ? "Tree vs crop (SAR)" : "Farm/shrub (AEZ)");
+  setStatus(`Applying "${c.name}" to greenery…`, "work");
+  try {
+    const r = await postJSON("/api/apply-eerf", { card_id: cardId });
+    const d = await r.json();
+    if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
+    closeZoo();
+    await refreshTree(d);                 // the tree now shows greenery -> the model's classes
+    await runClassify();                  // and the map composites the model within greenery
+    setStatus(`Applied "${c.name}" — greenery refined into ${(c.produces||[]).map(p=>p.class).join(" / ")}.`, "ok");
+  } catch (err) { setStatus("Apply error: " + err, "err"); }
 }
 
 // ---------------- overlay eye-toggle (#21) ----------------

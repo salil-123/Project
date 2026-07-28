@@ -345,6 +345,25 @@ def _merge_ee(ee, final, leaf_classes):
 # exact same coloured label image and class histogram — only the final "how do we serve it"
 # step differs. These helpers hold that shared body so the two stay in lockstep.
 
+def _apply_ee_rf(ee, final, final_classes, region, year):
+    """Composite any hierarchy node marked with an IndiaSAT ee_rf model into the label image (#13):
+    that class becomes the model's classes, server-side. Lazy import of ee_rf avoids a module cycle.
+    Returns (final, classes, extra_colors)."""
+    try:
+        tree = hierarchy.load()
+        nodes = [(cls, n["ee_rf"]) for cls, n in tree.items() if n.get("ee_rf")]
+    except Exception:
+        nodes = []
+    if not nodes:
+        return final, final_classes, {}
+    import ee_rf as _eerf
+    extra = {}
+    for cls, which in nodes:
+        final, final_classes = _eerf.composite_into(ee, final, final_classes, region, cls, which, year)
+        extra.update(_eerf.model_colors(which))
+    return final, final_classes, extra
+
+
 def _labelled_bbox(bbox, year, model_bundle, refinements, colors):
     """The coloured label image for a bbox: base map + composited splits + merge relabels,
     visualized with the leaf palette. Returns (ee, final_code_img, final_classes, region, vis)."""
@@ -364,8 +383,9 @@ def _labelled_bbox(bbox, year, model_bundle, refinements, colors):
     bands_img, region = _alpha_image(ee, bbox, year)
     final, final_classes = _final_label(ee, bands_img, region, year, model_bundle, refinements)
     final, final_classes = _merge_ee(ee, final, final_classes)
+    final, final_classes, ee_rf_colors = _apply_ee_rf(ee, final, final_classes, region, year)
 
-    colors = colors or load_colors()
+    colors = {**(colors or load_colors()), **ee_rf_colors}
     palette = [colors.get(c, "#999999") for c in final_classes]
     # clip to the AOI so edge tiles don't paint classification outside the box the user drew (#3);
     # pixels beyond `region` come back masked -> transparent in both the tile and PNG renderers.
@@ -522,7 +542,8 @@ def water_frequency_tiles(bbox, year=2024, n=24, model_bundle=None):
     count = ee.ImageCollection(masks).sum().rename("count").clip(region)
 
     n_used = len(masks)
-    palette = ["f7fbff", "9ecae1", "4292c6", "08519c", "08306b"]   # pale -> deep blue
+    # pale -> deep blue, a touch more contrast: lighter low end, darker high end, punchier mids
+    palette = ["eff6ff", "9ecae1", "3182bd", "08519c", "05224f"]
     vis = count.visualize(min=0, max=n_used, palette=palette).clip(region)
     tile_url = vis.getMapId()["tile_fetcher"].url_format
     mean = None

@@ -193,49 +193,54 @@ def classify_farmshrub_tiles(bbox, year=2024):
     return _render(ee, classified, c2n, FARMSHRUB_COLORS, region)
 
 
-# ============================ plug a model into the hierarchy (refine greenery) ============================
-def classify_composited(bbox, which, year=2024, parent="greenery", start=None, end=None):
-    """Apply an IndiaSAT model as a *refinement of the base `parent` class* (default greenery), served
-    as tiles (#13). Everywhere outside greenery the base map stands; inside greenery the sub-model's
-    classes (tree/crop, or farm/plantation/scrubland) take over. This is how the two models plug into
-    our hierarchy despite bringing their own class scheme, without changing the framework — the base
-    classifies, the sub-model refines one branch, and the two are combined in Earth Engine.
+# ============================ plug a model into the hierarchy (refine a class) ============================
+def model_colors(which):
+    return TREECROP_COLORS if which == "treecrop" else FARMSHRUB_COLORS
 
-    Returns (tile_url, counts, classes). Raises ValueError if `parent` isn't in the current base."""
+
+def composite_into(ee, base_final, base_classes, region, parent, which, year=2024, start=None, end=None):
+    """Refine `parent` in an existing base label image with an ee_rf model's classes, in Earth Engine.
+    Everywhere outside `parent` the base map stands; inside it the sub-model's classes take over.
+    Returns (new_code_image, new_classes). Shared by the standalone composite and the MAIN classify
+    path, so a node marked with an ee_rf model refines that branch on every Run classification (#13)."""
+    if parent not in base_classes:
+        return base_final, base_classes
+    p = base_classes.index(parent)
+    if which == "treecrop":
+        classified, c2n = _treecrop_classified(ee, region, start or f"{year-1}-07-01", end or f"{year}-07-01")
+    else:
+        classified, c2n = _farmshrub_classified(ee, region, year)
+    sub_codes = sorted(c2n)
+    sub_classes = [c2n[c] for c in sub_codes]
+    # sub-model class index 0..K-1, shifted to sit after the base classes; painted only where the base
+    # says `parent`. So the parent class becomes the sub-model's classes; the rest is untouched.
+    sub_idx = ee.Image(0)
+    for i, code in enumerate(sub_codes):
+        sub_idx = sub_idx.where(classified.eq(code), i)
+    new_classes = list(base_classes) + sub_classes
+    new_final = base_final.where(base_final.eq(p), sub_idx.add(len(base_classes)))
+    return new_final, new_classes
+
+
+def classify_composited(bbox, which, year=2024, parent="greenery", start=None, end=None):
+    """Standalone composite: refine `parent` of the base map with an IndiaSAT model, served as tiles
+    (#13). Raises ValueError if `parent` isn't in the current base."""
     import infer
     ee = config.ee_init()
     region = ee.Geometry.Rectangle(list(bbox))
-    # the base map with no splits, so greenery is intact to refine
     _, base_final, base_classes, _, _ = infer._labelled_bbox(bbox, year, infer.load_model(), {}, None)
     if parent not in base_classes:
         raise ValueError(f"this model refines the '{parent}' class, which isn't in the current base "
                          f"scheme (has {base_classes}). Switch to the IndiaSAT base and try again.")
-    p = base_classes.index(parent)
-
-    if which == "treecrop":
-        classified, c2n = _treecrop_classified(ee, region, start or "2023-07-01", end or "2024-07-01")
-        sub_colors = TREECROP_COLORS
-    else:
-        classified, c2n = _farmshrub_classified(ee, region, year)
-        sub_colors = FARMSHRUB_COLORS
-    sub_codes = sorted(c2n)
-    sub_classes = [c2n[c] for c in sub_codes]
-
-    # sub-model class index 0..K-1, then shifted to sit after the base classes; paint it only where
-    # the base map says `parent`. So greenery becomes tree/crop (or farm/shrub); the rest is untouched.
-    sub_idx = ee.Image(0)
-    for i, code in enumerate(sub_codes):
-        sub_idx = sub_idx.where(classified.eq(code), i)
-    all_classes = list(base_classes) + sub_classes
-    composited = base_final.where(base_final.eq(p), sub_idx.add(len(base_classes)))
-
-    colors = {**infer.load_colors(), **sub_colors}
+    new_final, all_classes = composite_into(ee, base_final, base_classes, region, parent, which,
+                                            year, start, end)
+    colors = {**infer.load_colors(), **model_colors(which)}
     palette = [colors.get(c, "#999999") for c in all_classes]
-    vis = composited.visualize(min=0, max=len(all_classes) - 1, palette=palette).clip(region)
+    vis = new_final.visualize(min=0, max=len(all_classes) - 1, palette=palette).clip(region)
     tile_url = vis.getMapId()["tile_fetcher"].url_format
     counts = {}
     try:
-        hist = (composited.rename("c").reduceRegion(reducer=ee.Reducer.frequencyHistogram(),
+        hist = (new_final.rename("c").reduceRegion(reducer=ee.Reducer.frequencyHistogram(),
                 geometry=region, scale=60, maxPixels=int(1e8), bestEffort=True).getInfo().get("c") or {})
         for k, v in hist.items():
             counts[all_classes[int(float(k))]] = int(v)

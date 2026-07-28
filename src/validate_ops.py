@@ -25,6 +25,7 @@ KNOWN_OPS = {
     "merge":            ["target"],
     "merge_remove":     ["target"],
     "apply":            ["card_id"],
+    "apply_eerf":       ["card_id"],
     "import_hierarchy": [],
 }
 
