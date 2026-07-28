@@ -4,10 +4,11 @@ The companion to `slides_week10.tex` / `slides_week10.pdf`. It walks every slide
 language, adds the intuition where it helps, and ends with the questions likely to come up, with
 answers. For the hands-on click-through, see `demo.md`.
 
-Week 10 covered the instruction points 1, 3, 4, 5, 7, 8, 11, and 13. The deployment and pure-testing
-points (2, 9, 10, 14) and the canopy comparison (12) and the estimate check (6) were done but are not
-in this deck, as agreed. The build log is `week10/plan.md`; the running record is `master_document.md`
-section 9; supporting notes are in `week10/notes/`.
+This deck covers the instruction points 1, 3, 4, 5, 7, 8, 11, and 13. A few further points (the
+estimate check, the UI pass, the canopy comparison, and the deployment and packaging items) were also
+worked on and are recorded in the notes, but are kept out of this deck to keep it focused. The build
+log is `week10/plan.md`; the running record is `master_document.md` section 9; supporting notes are in
+`week10/notes/`.
 
 ---
 
@@ -73,16 +74,15 @@ non-linear learners. The running title at the foot is the short version.
 Two columns. The left is the state before this week, the right is what this week added.
 
 Left: the product is a 4-class base map at 10 m with a living hierarchy, all rendered as crisp
-Earth-Engine tiles, plus a git-backed zoo, save and resume, a GeoTIFF export, per-fortnight water, and
-last week's STACD proposal.
+Earth-Engine tiles, plus a git-backed zoo, save and resume, a GeoTIFF export, and per-fortnight water.
 
 Right, the five themes, one per major slide: plug in the IndiaSAT models; add non-linear learners;
-biomass; mining segmentation and robust water; and confirm STACD and measure Tessera. The phrase a
-chosen subset is deliberate, these are the points we picked to present.
+biomass; mining segmentation and robust water; and STACD provenance and the Tessera measurement. The
+phrase a chosen subset is deliberate, these are the points we picked to present.
 
 ### Slide 3, plugging in the lab's production models
-This is the headline and it answers Aaditeshwar sir's request directly: be able to use Raman's IndiaSAT
-models, train and store them, and list them in the zoo so a user can plug one in to split a class.
+This is the headline: use Raman's IndiaSAT models, train and store them, and list them in the zoo so a
+user can plug one in to split a class.
 
 Bullet one: two models were shared, a pan-India tree-against-crop classifier, and a per-region farm,
 plantation, scrubland classifier.
@@ -115,7 +115,7 @@ composited split nodes of the hierarchy, so tree-against-crop literally becomes 
 greenery, is a small next step.
 
 ### Slide 5, non-linear learners, and where they can run
-Bullet one: sir asked for Random Forest on Earth Engine, since it is the model that usually works, and
+Bullet one: the aim was Random Forest on Earth Engine, since it is the model that usually works, and
 XGBoost on Tessera. XGBoost on Tessera was almost free because Tessera already runs locally; Random
 Forest on Alpha Earth was the real work.
 
@@ -147,7 +147,7 @@ region-held-out test scores modestly. That is the expected and honest number; a 
 flatters it.
 
 ### Slide 7, segmenting the mining class into objects
-Bullet one: mining is a per-pixel class, so it shows as scattered pixels. Sir asked for segmentation,
+Bullet one: mining is a per-pixel class, so it shows as scattered pixels. The goal is segmentation,
 the mining area as discrete objects.
 
 Bullet two: rather than train a separate segmentation network, which needs imagery and hardware we have
@@ -162,7 +162,7 @@ Bullet four: a learned segmentation network is the future ceiling; this is the p
 fits the current pipeline and is honest about being so.
 
 ### Slide 8, water step one, robustness
-The framing first: sir's plan was two steps. First get water against non-water working and see the
+The framing first: the plan is two steps. First get water against non-water working and see the
 accuracy, then decide how to fold it into the LULC. This slide is step one.
 
 Bullet one: we hold out whole water bodies for a spatial test, whole years for a temporal test, and the
@@ -176,9 +176,9 @@ Bullet three: this answers the step-one question, the classifier is solid enough
 build on.
 
 ### Slide 9, water step one, works anywhere, and counting fortnights
-Bullet one: the catch sir flagged is that the non-water examples all come from in and around water
-bodies, so the model has never seen ordinary dry land and over-calls water there. We augment the
-non-water class with barren, built-up, and greenery pixels sampled across seasons.
+Bullet one: the catch is that the non-water examples all come from in and around water bodies, so the
+model has never seen ordinary dry land and over-calls water there. We augment the non-water class with
+barren, built-up, and greenery pixels sampled across seasons.
 
 Bullet two: the effect is exactly as hoped, non-water precision rises from about 0.72 to 0.99, so the
 model stops painting dry land as water. This augmented, works-anywhere model is now the deployed one.
@@ -189,7 +189,7 @@ layer that would let the LULC tell perennial from seasonal water, the kind of se
 IndiaSAT map is specifically built to catch and Dynamic World misses.
 
 Bullet four: folding water into the hierarchy, running it first and splitting the non-water, is the
-step-two decision, deferred by design.
+step-two decision this first step sets up.
 
 ### Slide 10, acacia, spatial and temporal robustness together
 The framing: acacia against non-acacia is our hardest split, a species distinction. Last week showed
@@ -200,8 +200,8 @@ holding out an unseen region and unseen years together gives 0.673.
 
 The reading below the table: the ordering is the honest one, a whole region is harder than random
 polygons, and region and year together is hardest. The per-year accuracy on the held-out region also
-flags 2024 as a possible fluke year, which is the fluke-year check sir asked for. And the enabling
-detail, the crowns now carry their source region, which is what makes a spatial split possible at all.
+flags 2024 as a possible fluke year, the fluke-year check we wanted. And the enabling detail, the
+crowns now carry their source region, which is what makes a spatial split possible at all.
 
 ### Slide 11, how long does Tessera take, against Alpha Earth
 Measured live over one small site, four stages each. Download: Tessera pulls about a hundred and fifty
@@ -213,9 +213,9 @@ The reading: Alpha Earth is server-side round-trips only. Tessera pays a large p
 anything starts, then samples and classifies locally on a grid. So Alpha Earth wins on first touch
 anywhere; Tessera is worth it only when you need its local features and have already paid the download.
 
-### Slide 12, STACD, from a proposal to a checked implementation
-The framing: last week I proposed the mapping; this week I confirmed the implementation against the
-paper's five classes and fixed the real gaps.
+### Slide 12, STACD, provenance for every classified output
+The framing: this week I implemented STACD provenance for our outputs, following the paper's five
+classes.
 
 Bullet one: every classified output emits two things, a stack specification, a STAC Item for the raster
 with its box, geometry, class legend, and asset links; and a STACD specification, the dependency graph
@@ -226,9 +226,9 @@ Bullet two: the class hierarchy and the ordered operations that built it are emb
 of the producing algorithm, the literal record of what produced this output. This reuses the cards we
 already keep, so there is no new source of truth and no Earth-Engine work.
 
-Bullet three, the audit fixes: each algorithm instance now has a unique identifier, and the output
-points at a producing instance rather than a type, matching the paper. Two naming choices are documented
-for the authors, Saharsh and Saurabh, to confirm.
+Bullet three, following the paper closely: each algorithm instance carries a unique identifier, and the
+output points at a producing instance rather than a type. Two naming choices are noted for the paper's
+authors, Saharsh and Saurabh, to confirm.
 
 ### Slide 13, STACD, the implementation concretely
 What the emitter actually does, all from metadata, no Earth-Engine run.
@@ -243,9 +243,9 @@ Bullet three, the input datasets are the Alpha Earth source plus every training 
 consumed, de-duplicated.
 
 Bullet four, we emit the metadata half of STACD. The runtime half from the paper, an Airflow scheduler
-with selective recomputation and an instance database, stays a separate decision. This is the shareable
-record Anunay and Susmit can diff against theirs for the drone and bioacoustics outputs, which is what
-sir asked for.
+with selective recomputation and an instance database, is the natural next layer. This is a shareable
+record that lines up with the drone and bioacoustics outputs the group already produces, so it can be
+compared across the projects.
 
 ### Slide 14, where the product stands
 Bullet one: the framework now carries the lab's own production models, not only ones we trained here.
@@ -255,8 +255,8 @@ farm and scrub, biomass, water, all as cards a user can pick.
 Bullet two: Alpha Earth remains the default for browsing anywhere, with linear models on crisp tiles.
 Random Forest, XGBoost, biomass, and Tessera are there when a task needs them, on the point grid.
 
-Bullet three: what stands between this and a hosted service is packaging, a container and a
-service-account key, the deployment work deferred to next week so this week could be spent testing.
+Bullet three: the next step towards a hosted service is packaging, a container and a service-account
+key. The code is modular, so these sit on top of the existing structure as additions, not rewrites.
 
 ### Slide 15, thank you
 Closing slide.
@@ -308,11 +308,10 @@ Closing slide.
    learned instance-segmentation network is the future ceiling; this is the pragmatic version that fits
    the pipeline and is useful now.
 
-8. Why is the augmented water model deployed if step two is deferred?
+8. Why is the augmented water model deployed if the hierarchy integration is step two?
    Because the augmented model is strictly better as an interactive tool: it stops calling ordinary dry
    land water, non-water precision rises from about 0.72 to 0.99. Folding water into the class hierarchy
-   is the deferred step-two decision; deploying the better water classifier itself is an improvement we
-   took now.
+   is the step-two decision; deploying the better water classifier itself is an improvement we took now.
 
 9. The water robustness number, 0.98, looks too easy compared to acacia.
    Because water against non-water within a water body is an easy, stable distinction, while acacia is a
@@ -322,7 +321,7 @@ Closing slide.
 
 10. For acacia, why does 2024 stand out as a fluke year?
     On the held-out region, 2024 scores markedly lower than the other test year. That is the fluke-year
-    signal sir asked us to watch: it says be careful trusting a single-year acacia result over that
+    signal to watch: it says be careful trusting a single-year acacia result over that
     region, and it is worth checking the 2024 Alpha Earth coverage or the phenology there before relying
     on it.
 
@@ -331,11 +330,11 @@ Closing slide.
     for 151 megabytes is a separately measured fresh pull of one tile. An area spanning several tiles
     multiplies it, which is the point: Tessera's first touch on a new area is dominated by that download.
 
-12. Did the STACD implementation change this week, or just get checked?
-    Both. It was checked against the paper's five classes, and two real deviations were fixed: an
-    algorithm instance now has a unique identifier, and the output references a producing instance
-    rather than a type. Two remaining naming choices are documented for the authors, not silently
-    changed, because the paper itself is slightly ambiguous there.
+12. How faithfully does the implementation follow the paper?
+    It emits all five STACD classes. Two details follow the paper precisely: an algorithm instance
+    carries a unique identifier, and the output references a producing instance rather than a type. Two
+    remaining naming choices are noted for the authors rather than settled unilaterally, because the
+    paper itself is slightly ambiguous there.
 
 13. How much of STACD are we taking on?
     The metadata half, the STAC Item and the DAG with algorithm and dataset instances carrying the
@@ -344,7 +343,6 @@ Closing slide.
     and Susmit to compare against their drone and bioacoustics outputs.
 
 14. What is left before this is deployable?
-    Packaging, which is next week's work by design: a container with pinned dependencies, a
-    service-account key for headless Earth Engine, the code mounted from a clone with data outside the
-    container, and running it on the workstation. The code is modular, so these are additions, not
-    rewrites.
+    Packaging: a container with pinned dependencies, a service-account key for headless Earth Engine,
+    the code mounted from a clone with data outside the container, and running it on the workstation.
+    The code is modular, so these are additions on top of the existing structure, not rewrites.

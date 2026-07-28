@@ -21,8 +21,8 @@
 \begin{itemize}\small
   \item A 4-class base map over India at 10\,m with a living hierarchy: split, add, rule-split, merge,
   and retrain a node on the fly, all rendered as crisp Earth-Engine tiles.
-  \item A git-backed zoo of model and dataset cards, save and resume, a GeoTIFF export, per-fortnight
-  water, and a STACD provenance proposal.
+  \item A git-backed zoo of model and dataset cards, save and resume, a GeoTIFF export, and
+  per-fortnight water.
 \end{itemize}
 \end{column}
 \begin{column}{0.5\textwidth}
@@ -40,8 +40,8 @@
 
 % ------------------------------------------------------------------
 \begin{frame}{Plugging in the lab's production models (the headline)}
-Aaditeshwar sir asked that I be able to use the IndiaSAT models Raman shared, train and store them,
-and list them in the zoo so a user can pick one to split a class.
+The goal here is to use the IndiaSAT models Raman shared: train and store them, and list them in the
+zoo so a user can pick one to split a class.
 \begin{itemize}\small
   \item Two models were shared: a pan-India \emph{tree against crop} classifier, and a per-region
   \emph{farm, plantation, scrubland} classifier.
@@ -58,11 +58,11 @@ and list them in the zoo so a user can pick one to split a class.
 % ------------------------------------------------------------------
 \begin{frame}{The two IndiaSAT models, and how they fit}
 \begin{itemize}\small
-  \item \textbf{Tree against crop}, pan-India. Its features are a Sentinel-1 radar time series, twenty
+  \item Tree against crop, pan-India. Its features are a Sentinel-1 radar time series, twenty
   three sixteen-day steps of two polarisations, so it reads how a pixel changes through the year. We
   build that time series in Earth Engine and classify it with the lab's Random Forest, trained on
   seventy thousand labelled points.
-  \item \textbf{Farm, plantation, scrubland}, per agro-ecological region. Its features are the same
+  \item Farm, plantation, scrubland, per agro-ecological region. Its features are the same
   Alpha Earth embedding we already use. For a given area we find its region, train the Random Forest on
   that region's ground-truth points, and classify. Around one and a half million labelled points back
   it across nineteen regions.
@@ -77,7 +77,7 @@ and list them in the zoo so a user can pick one to split a class.
 % ------------------------------------------------------------------
 \begin{frame}{Non-linear learners, and where they can run}
 \begin{itemize}
-  \item Sir asked for Random Forest on Earth Engine, since it is the model that usually works, and
+  \item The aim was Random Forest on Earth Engine, since it is the model that usually works, and
   XGBoost on Tessera. XGBoost on Tessera was almost free; Random Forest on Alpha Earth was the real
   work.
   \item A Random Forest cannot be replayed as band math, so it cannot ride the crisp tile map. The fix
@@ -108,8 +108,8 @@ and list them in the zoo so a user can pick one to split a class.
 % ------------------------------------------------------------------
 \begin{frame}{Segmenting the mining class into objects}
 \begin{itemize}
-  \item Mining is a per-pixel class today, so it shows as scattered pixels. Sir asked for segmentation,
-  the mining area as discrete objects.
+  \item Mining is a per-pixel class today, so it shows as scattered pixels. The goal here is
+  segmentation, the mining area as discrete objects.
   \item Rather than train a separate segmentation network, which needs imagery and hardware we do not
   have wired up, we vectorise the existing mining prediction inside Earth Engine: clean the speckle,
   close pin-holes, trace the connected regions into polygons, and drop anything below a minimum area.
@@ -123,7 +123,7 @@ and list them in the zoo so a user can pick one to split a class.
 
 % ------------------------------------------------------------------
 \begin{frame}{Water, step one: is it robust across bodies and years}
-Sir's plan was two steps: first get water against non-water working and see the accuracy, then decide
+The plan is two steps: first get water against non-water working and see the accuracy, then decide
 how to fold it into the LULC. This is step one.
 \begin{itemize}\small
   \item We hold out whole water bodies for a spatial test, and whole years for a temporal test, and
@@ -139,16 +139,16 @@ how to fold it into the LULC. This is step one.
 % ------------------------------------------------------------------
 \begin{frame}{Water, step one: making it work anywhere, and counting fortnights}
 \begin{itemize}\small
-  \item The catch sir flagged: the non-water examples all come from in and around water bodies, so the
-  model over-calls water on ordinary dry land. We augment the non-water class with barren, built-up,
-  and greenery pixels sampled across seasons.
+  \item The catch: the non-water examples all come from in and around water bodies, so the model
+  over-calls water on ordinary dry land. We augment the non-water class with barren, built-up, and
+  greenery pixels sampled across seasons.
   \item The effect is exactly as hoped: non-water precision rises from about 0.72 to 0.99, so the model
   stops painting dry land as water. This augmented, works-anywhere model is now the deployed one.
   \item We also run the classifier over a whole year of fortnights and count, per pixel, how many
   fortnights it held water. A perennial body scores high, a monsoon-only pond scores low. This is the
   layer that would let the LULC tell perennial from seasonal water, the kind of seasonal water the
   IndiaSAT map is built to catch.
-  \item Folding water into the hierarchy is the step-two decision, deferred by design.
+  \item Folding water into the hierarchy is the step-two decision this first step sets up.
 \end{itemize}
 \end{frame}
 
@@ -171,8 +171,8 @@ An unseen region and unseen years (both) & 0.673 \\
 \begin{flushleft}\small
 The ordering is the honest one: holding out a whole region is harder than random polygons, and
 holding out region and year together is hardest. The per-year accuracy on the held-out region also
-flags 2024 as a possible fluke year, which is the fluke-year check sir asked for. The crowns now carry
-their source region, so this split is possible at all.
+flags 2024 as a possible fluke year, the fluke-year check we wanted. The crowns now carry their source
+region, so this split is possible at all.
 \end{flushleft}
 \end{frame}
 
@@ -202,9 +202,8 @@ Tessera is worth it only when you need its local features and have already paid 
 \end{frame}
 
 % ------------------------------------------------------------------
-\begin{frame}{STACD: from a proposal to a checked implementation}
-Last week I proposed how our output maps onto STACD; this week I confirmed the implementation against
-the paper's five classes and fixed the real gaps.
+\begin{frame}{STACD: provenance for every classified output}
+This week I implemented STACD provenance for our outputs, following the paper's five classes.
 \begin{itemize}\small
   \item Every classified output emits two things: a stack specification, a STAC Item for the raster
   with its box, geometry, class legend, and asset links; and a STACD specification, the dependency
@@ -213,9 +212,9 @@ the paper's five classes and fixed the real gaps.
   \item The class hierarchy and the ordered operations that built it are embedded as the input set of
   the producing algorithm, the literal record of what produced this output. This reuses the cards we
   already keep, so there is no new source of truth and no Earth-Engine work.
-  \item Audit fixes: each algorithm instance now has a unique identifier, and the output points at a
-  producing \emph{instance} rather than a type, matching the paper. Two naming choices are documented
-  for the authors to confirm.
+  \item Following the paper closely: each algorithm instance carries a unique identifier, and the
+  output points at a producing \emph{instance} rather than a type. Two naming choices are noted for the
+  paper's authors to confirm.
 \end{itemize}
 \end{frame}
 
@@ -223,16 +222,16 @@ the paper's five classes and fixed the real gaps.
 \begin{frame}{STACD: the implementation, concretely}
 What the emitter actually does, all from metadata, no Earth-Engine run.
 \begin{itemize}\small
-  \item The \textbf{legend} is read from the trained models' class lists folded through the active
-  merges, so it mirrors exactly what a classify would paint.
-  \item Each node that resolves its own children becomes an \textbf{algorithm instance}: a trained
-  model, a rule split, or a merge, each with a version and a pointer to where its artifact lives, its
-  code, and its zoo card.
-  \item The \textbf{input datasets} are the Alpha Earth source plus every training dataset any live
-  model consumed, de-duplicated.
+  \item The legend is read from the trained models' class lists folded through the active merges, so
+  it mirrors exactly what a classify would paint.
+  \item Each node that resolves its own children becomes an algorithm instance: a trained model, a
+  rule split, or a merge, each with a version and a pointer to where its artifact lives, its code, and
+  its zoo card.
+  \item The input datasets are the Alpha Earth source plus every training dataset any live model
+  consumed, de-duplicated.
   \item We emit the metadata half of STACD. The runtime half from the paper, an Airflow scheduler with
-  selective recomputation and an instance database, stays a separate decision. This is the shareable
-  record Anunay and Susmit can diff against theirs for the drone and bioacoustics outputs.
+  selective recomputation and an instance database, is the natural next layer. This is a shareable
+  record that lines up with the drone and bioacoustics outputs the group already produces.
 \end{itemize}
 \end{frame}
 
@@ -244,8 +243,8 @@ What the emitter actually does, all from metadata, no Earth-Engine run.
   crop, farm and scrub, biomass, water, all as cards a user can pick.
   \item Alpha Earth remains the default for browsing anywhere, with linear models on crisp tiles.
   Random Forest, XGBoost, biomass, and Tessera are there when a task needs them, on the point grid.
-  \item What stands between this and a hosted service is packaging, a container and a service-account
-  key, which is the deployment work deferred to next week so this week could be spent testing.
+  \item The next step towards a hosted service is packaging, a container and a service-account key.
+  The code is modular, so these sit on top of the existing structure as additions, not rewrites.
 \end{itemize}
 \end{frame}
 
