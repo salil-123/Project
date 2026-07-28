@@ -463,3 +463,9 @@ flag round-trips; app boots at `?v=19` with every new route registered.
 · `week10/notes/{water_robustness,dense_sparse_vs_canopy,tessera_vs_ae,stacd_archiving}.md` ·
 `data/catalogue/models/mc_{treecrop,farmshrub}_ee_v1.json` · schema `ee_rf` topology ·
 `data/refine/water_fortnight_augmented.joblib` (on `--augment`).
+
+### Deliverables (week 10)
+`week10/slides_week10.{tex,pdf}` (Beamer Madrid, 15 frames, same style as prior weeks, covering points
+1, 3, 4, 5, 7, 8, 11, 13 with the STACD implementation explained) · `week10/slide_explainer.md`
+(foundations + slide-by-slide + 14 Q&A) · `week10/demo.md` (hands-on click-through) ·
+`week10/notes/{stacd_audit,estimate_check,acacia_robustness,water_robustness,dense_sparse_vs_canopy,tessera_vs_ae,stacd_archiving}.md`.
