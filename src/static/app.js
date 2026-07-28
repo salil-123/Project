@@ -253,22 +253,19 @@ function renderContext(cls) {
   document.querySelectorAll("#context .ctxcls").forEach((s) => (s.textContent = n.name));
 
   // relevance: leaves emphasise Split/Add; a node with children emphasises Retrain; Merge is for
-  // leaves. We dim (not hide) the less-relevant blocks so everything stays discoverable.
-  // dim AND gate: a muted block also gets its inputs disabled, so a dimmed action can't fire on the
-  // wrong selected class (#10 — muting alone left the buttons live).
-  const dim = (id, off) => {
-    $(id).classList.toggle("muted", off);
-    $(id).querySelectorAll("button, input, select").forEach((el) => (el.disabled = off));
-  };
+  // leaves. We dim (not hide) the less-relevant blocks so everything stays discoverable — visual
+  // only, we do NOT disable the inputs (that made the model options unreachable).
+  const dim = (id, off) => $(id).classList.toggle("muted", off);
   dim("ctxSplit", !isLeaf);                 // only a leaf splits into new children
   dim("ctxRuleSplit", !isLeaf);             // a rule split also acts on a leaf (#12)
   dim("ctxAdd", false);                     // add is always available
   dim("ctxMerge", cls === "root");          // root itself isn't a merge source
   dim("ctxRetrain", isLeaf && !hasClf);     // nothing to retrain until it has a split
 
-  // flow-gate the balancing / multi-year fields (#12): they only make sense when the user is
-  // training their own split (a node with children, not a bare leaf or the base pooled model).
-  const ownTraining = !isLeaf && cls !== "root";
+  // show the model options (algorithm + embedding, incl. Random Forest on Alpha Earth) for any
+  // class you might train — a leaf you're about to split as well as a node with children. Only the
+  // base map (root) has no per-node model to configure.
+  const ownTraining = cls !== "root";
   $("retrainAdvanced").classList.toggle("hidden", !ownTraining);
   updateTesseraAvailability();
 }
@@ -740,21 +737,15 @@ $("dlSegment").onclick = () => {
 
 // ---------------- IndiaSAT EE-native RF models (#13 wk10) ----------------
 // tree/crop (SAR) and farm/shrub (Alpha Earth, per-AEZ) both train + classify in Earth Engine, so
-// they come back as tile layers just like the base map. A small colour legend shows under the buttons.
-function eeRfLegend(colors, counts) {
-  return Object.keys(colors).map((c) =>
-    `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px">
-       <i style="width:12px;height:12px;border-radius:2px;background:${colors[c]};display:inline-block"></i>
-       ${c}${counts && counts[c] ? ` (${counts[c]})` : ""}</span>`).join("");
-}
-async function runEeRf(btnId, url, label) {
-  const btn = $(btnId);
+// they come back as tile layers just like the base map. They are pickable *models* in the Model Zoo
+// (a card with a "Use this model" button), not standalone sidebar buttons — you plug one in to run
+// it on the current view, the same way you'd apply any other model from the zoo.
+async function renderEeRf(urlPrefix, label) {
   const [w, s, e, n] = currentBbox();
   setStatus(`${label}…`, "work");
-  btn.disabled = true;
   drawAoi();
   try {
-    const d = await getJSON(`${url}&west=${w}&south=${s}&east=${e}&north=${n}`);
+    const d = await getJSON(`${urlPrefix}west=${w}&south=${s}&east=${e}&north=${n}`);
     if (d.detail) { setStatus(d.detail, "err"); return; }
     predLayer.clearLayers();
     if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
@@ -762,13 +753,17 @@ async function runEeRf(btnId, url, label) {
     map.fitBounds([[s, w], [n, e]]);
     overlayVisible = true;
     if ($("eyeToggle")) { $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off"); }
-    $("eeRfLegend").innerHTML = eeRfLegend(d.colors, d.counts);
     setStatus(`${label}: ${JSON.stringify(d.counts)}`);
   } catch (err) { setStatus(`${label} error: ` + err, "err"); }
-  finally { btn.disabled = false; }
 }
-$("runTreecrop").onclick = () => runEeRf("runTreecrop", "/api/treecrop?", "Tree vs crop (SAR)");
-$("runFarmshrub").onclick = () => runEeRf("runFarmshrub", `/api/farmshrub?year=${inferYear}`, "Farm/shrub (AEZ)");
+// run an ee_rf card on the current view (called from the zoo card's "Use this model" button)
+async function useEeRfModel(cardId) {
+  const c = await getJSON(`/api/cards/${cardId}`);
+  closeZoo();
+  const isTree = (c.node || "").includes("treecrop");
+  await renderEeRf(isTree ? "/api/treecrop?" : `/api/farmshrub?year=${inferYear}&`,
+                   isTree ? "Tree vs crop (SAR)" : "Farm/shrub (AEZ)");
+}
 
 // ---------------- overlay eye-toggle (#21) ----------------
 // hide/show the classification layer(s) without reclassifying, so the user can see the basemap under it
@@ -1201,6 +1196,11 @@ function modelDetail(c) {
     <div class="blk"><span class="k">Artifact</span><code>${(c.artifact || {}).path || "—"}</code></div>
     ${c.topology === "merge_relabel"
       ? `<div class="prose">Already live as a relabel layer — undo it from the Hierarchy tree.</div>`
+      : c.topology === "ee_rf"
+      ? `<button id="useEeRfBtn" class="primary">Use this model on the current view</button>
+         <p class="hint">Runs this IndiaSAT model (Earth-Engine Random Forest) on the area on screen
+           and shows its classes as an overlay. It plugs in as a standalone map for now, not yet
+           composited into the base hierarchy.</p>`
       : `<button id="applyBtn" class="primary">${
           c.base_scheme === "worldcover" ? "Use WorldCover base (7 classes)"
           : c.topology === "base_pooled" ? "Use IndiaSAT base (4 classes)"
@@ -1544,6 +1544,7 @@ $("zoo-detail").addEventListener("click", async (e) => {
   else if (id === "annotateToggle") { $("annotateForm").classList.toggle("hidden"); }
   else if (id === "annotateSave") { await saveAnnotation(zooSelected); }
   else if (id === "applyBtn") { await applyModel(zooSelected); }
+  else if (id === "useEeRfBtn") { await useEeRfModel(zooSelected); }             // #13 IndiaSAT model overlay
   else if (id === "applyHereBtn") { await applyModel(zooSelected, selected); }   // #11 target = selected class
   else if (id === "delBtn") { await deleteCardUI(zooSelected); }                 // #9 drop a card
   else if (id === "pubBtn") { await publishCard(zooSelected); }

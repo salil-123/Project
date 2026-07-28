@@ -18,25 +18,27 @@ which.
 ---
 
 ## 1. Plug in the IndiaSAT tree-against-crop model (13)
+The IndiaSAT models are picked from the Model Zoo, like any other model, not from sidebar buttons.
 1. Pick a rural area with fields and trees. A good one is the Assam tea belt preset, or draw a box over
    farmland. Urban Delhi is a poor choice here.
-2. Press the "Tree vs crop" button. After a few seconds the map paints two classes, cropland and tree,
-   as crisp tiles with a small colour legend under the buttons and counts in the status line.
+2. Open the Model Zoo, find the card `mc_treecrop_ee_v1` (topology `ee_rf`), and press "Use this model
+   on the current view". After a few seconds the map paints two classes, cropland and tree, as crisp
+   tiles, with counts in the status line.
 3. This is Raman's pan-India model, a Random Forest on a Sentinel-1 radar time series, trained and
    classified entirely inside Earth Engine. Nothing was downloaded and we did not re-implement it; we
    rebuilt the radar feature series and handed it his training asset.
-4. Open the Model Zoo: a card `mc_treecrop_ee_v1` is there, topology `ee_rf`, recording the training
-   asset, the feature source, and the classes. It carries no file, because the model is re-trained on
-   demand in Earth Engine.
+4. The card records the training asset, the feature source, and the classes. It carries no file,
+   because the model is re-trained on demand in Earth Engine. It runs as its own overlay for now, not
+   yet composited into the base hierarchy.
 
 ## 2. Plug in the per-region farm, plantation, scrubland model (13)
-1. Still over farmland, press "Farm/shrub". The tool first works out which agro-ecological region the
-   box falls in, trains the lab's Random Forest on that region's ground-truth points, and classifies.
-   It paints farm, plantation, and scrubland as tiles.
+1. Still over farmland, open the zoo, pick `mc_farmshrub_ee_v1`, and "Use this model on the current
+   view". The tool first works out which agro-ecological region the box falls in, trains the lab's
+   Random Forest on that region's ground-truth points, and classifies. It paints farm, plantation, and
+   scrubland as tiles.
 2. Try it over a city box instead. It refuses with a clear message that there is no agricultural ground
    truth near the area, because this is a rural model, rather than failing opaquely.
-3. Its card `mc_farmshrub_ee_v1` is in the zoo, same `ee_rf` topology, on the Alpha Earth feature
-   source, the very embedding our base map uses.
+3. The card is `ee_rf` topology on the Alpha Earth feature source, the very embedding our base map uses.
 
 ## 3. Random Forest on Alpha Earth, and where it renders (7)
 1. Select a leaf class, open the Retrain block, and in the Algorithm list you will now see Random Forest
@@ -48,21 +50,26 @@ which.
    This is the algorithm-aware render, the model type now decides the path. XGBoost is available on the
    Tessera source, on a Tessera site, since it is installed.
 
-## 4. Biomass as a colour ramp (3)
-1. This needs a biomass model at `data/refine/biomass_aez8.joblib`. If it is missing, build one with
-   `python scripts/train_biomass.py --csv cod892_biomass/cod892_biomass/biomass_data/gedi_8_2022_merged_final.csv --name aez8`.
-2. Press "Map biomass". The map fills with a green ramp of above-ground biomass in tonnes per hectare,
-   pale for low, dark for high, with a min-to-max legend under the button.
-3. This is a Random Forest regressor on the same Alpha Earth embedding as everything else, plus slope,
-   trained on GEDI lidar shots. It rides the same point-grid path as the Random Forest split above,
-   because a regressor is not band math either. Its card in the zoo has topology `regression`.
+## 4. Biomass, understood from the scripts (3)
+Biomass is not surfaced in the interface yet, on purpose: this round was about understanding the
+scripts and reproducing the data collection, pending a decision on how to fold it into the framework.
+1. Collect the data over an area: `python scripts/prep_gedi_biomass.py --bbox 88.5 26.4 88.9 26.8
+   --year 2022 --out data/inputs/gedi_biomass.csv`. It samples GEDI above-ground-biomass shots and
+   pairs each with the same Alpha Earth embedding we classify on, plus slope.
+2. Train the regressor: `python scripts/train_biomass.py --csv <the CSV> --name aez`. It reports a
+   spatial-holdout R2 and saves a Random Forest regressor. This is the piece we can wire in once we
+   know how biomass should appear in the LULC.
 
 ## 5. Segment the mining class into objects (4)
 1. Segmentation needs the mining class live. If it is not, add it once with
-   `python week3\scripts\add_mining.py`, which splits barren into barren and mining.
+   `python week3\scripts\add_mining.py`, which splits barren into barren-other and mining. Important:
+   this script writes to disk, so if the app was already running, **restart the server** afterwards —
+   a running server keeps the class tree in memory and will not see a script-made split until it
+   reloads (create the split from the UI instead and it updates live).
 2. Go to the Asola Bhatti preset, select the mining leaf in the hierarchy, and press "Segment". The
    scattered mining pixels are traced into a handful of clean orange polygons, each with a hover tooltip
-   of its area in hectares, and the status line reports the count and total area.
+   of its area in hectares, and the status line reports the count and total area (about nine segments,
+   6.8 hectares on that box).
 3. Press the GeoJSON button that appears to download the segments. Note the button segments whichever
    leaf class you have selected, not only mining.
 

@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="/style.css?v=19" />
+  <link rel="stylesheet" href="/style.css?v=20" />
 </head>
 <body>
   <aside id="sidebar">
@@ -46,26 +46,19 @@
         so it answers which pixels held water on that date, not the annual map above.
         <b>Water frequency</b> (#11) runs it over the whole year and counts how many fortnights each
         pixel was water — darker blue = more persistent water.</p>
-      <div class="run-row">
+      <!-- biomass hidden for now: kept in code + zoo, awaiting how to fold it into the framework (#3) -->
+      <div class="run-row hidden">
         <button id="runBiomass" class="ghost" title="Above-ground biomass (AGBD) regressed from Alpha Earth + GEDI">🌲 Map biomass</button>
         <span id="biomassRamp" class="biomass-ramp hidden"></span>
       </div>
-      <p class="hint">Biomass is a regressor on Alpha Earth + slope (trained on GEDI shots, #3), so it
-        renders on the point grid with a green ramp — darker = more biomass.</p>
       <div class="run-row">
         <button id="runSegment" class="ghost" title="Vectorize the mining class into cleaned polygon segments">⛏ Segment mining</button>
         <button id="dlSegment" class="ghost hidden" title="Download the mining segments as GeoJSON">⬇ GeoJSON</button>
       </div>
       <p class="hint">Segmentation vectorizes the mining pixels into discrete polygons (#4) — speckle
         dropped, tiny blobs filtered — so you get mining objects with per-segment area, not confetti.</p>
-      <div class="run-row">
-        <button id="runTreecrop" class="ghost" title="IndiaSAT tree-vs-crop model (Sentinel-1 SAR Random Forest, runs in Earth Engine)">🌾 Tree vs crop</button>
-        <button id="runFarmshrub" class="ghost" title="IndiaSAT farm/plantation/scrubland model (Alpha Earth RF, per agro-ecological region)">🌱 Farm/shrub</button>
-      </div>
-      <p class="hint" id="eeRfLegend"></p>
-      <p class="hint">IndiaSAT production models (#13), plugged straight from the lab: server-side
-        Earth-Engine Random Forests rendered as tiles. Tree/crop is pan-India (SAR); farm/shrub is
-        per agro-ecological region (Alpha Earth).</p>
+      <!-- the IndiaSAT tree/crop + farm/shrub models are pickable from the Model Zoo (Use this model),
+           not standalone buttons — they are models you plug in, like any other card (#13) -->
       <p class="hint">Base classes and the inference year live in the Model Zoo — open it to pick a
         starting scheme or change the Alpha Earth year.</p>
       <div id="status" class="status"></div>
@@ -267,6 +260,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  <script src="/app.js?v=19"></script>
+  <script src="/app.js?v=20"></script>
 </body>
 </html>
