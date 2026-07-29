@@ -39,7 +39,7 @@
 \end{frame}
 
 % ------------------------------------------------------------------
-\begin{frame}{Plugging in the lab's production models (the headline)}
+\begin{frame}{Plugging in the lab's production models}
 Use the IndiaSAT models shared with us: train and store them, and list them in the zoo so a user can
 pick one to split a class.
 \begin{itemize}\small
@@ -95,15 +95,15 @@ It is not surfaced in the interface.
 \end{frame}
 
 % ------------------------------------------------------------------
-\begin{frame}{Segmenting the mining class (an interim)}
+\begin{frame}{Segmenting the mining class}
 \begin{itemize}
   \item The mining class is per-pixel, so it shows as scattered pixels; the ask was mining as discrete
   objects.
   \item This is \emph{not} the object-detection model intended for this: that needs imagery, masks, and
   GPU we have not wired up. As an interim that reuses the existing tile path, we vectorise the mining
   prediction in Earth Engine: de-speckle, close holes, trace polygons, drop tiny blobs.
-  \item Result: clean mining polygons with a per-object area, downloadable, instead of pixel confetti
-  --- useful now. The learned object-detection model is the real next step.
+  \item Result: clean mining polygons with a per-object area, downloadable, instead of pixel confetti,
+  useful now. The learned object-detection model is the real next step.
 \end{itemize}
 \end{frame}
 
@@ -128,7 +128,7 @@ into the LULC. This is step one.
   \item The effect: non-water precision rises from about 0.72 to 0.99, so it stops painting dry land as
   water. This works-anywhere model is now deployed.
   \item We also run the model over a year of fortnights and count, per pixel, how many fortnights held
-  water --- perennial bodies score high, monsoon-only ponds low. This is the seasonal-water signal the
+  water, so perennial bodies score high and monsoon-only ponds low. This is the seasonal-water signal the
   LULC would use, deferred to step two.
 \end{itemize}
 \end{frame}
@@ -152,7 +152,7 @@ An unseen region \emph{and} unseen years & 0.679 \\
 \vspace{2mm}
 \begin{flushleft}\small
 The ordering is what it should be: a whole region is harder than random polygons, and region-and-year
-together is hardest. That gap is the value --- it shows how much a single-site, single-year acacia
+together is hardest. That gap is the value, since it shows how much a single-site, single-year acacia
 number would over-promise. Reassuringly, across the two test years the accuracy is stable (spread
 $\sim$0.002), so there is no fluke year: the split travels consistently, just modestly, because it is a
 hard species distinction.
@@ -192,7 +192,7 @@ STACD provenance was implemented for every classified output, following the pape
   STACD graph: a node per input dataset and algorithm, one instance per live model, rule, and merge,
   and the output instance.
   \item The class hierarchy and the ordered operations that built it are embedded as the producing
-  algorithm's input set --- reusing the zoo cards, so there is no new source of truth and no
+  algorithm's input set, reusing the zoo cards, so there is no new source of truth and no
   Earth-Engine run.
   \item We emit the metadata half; the paper's Airflow runtime is the next layer. The record lines up
   with the drone and bioacoustics outputs, so it can be compared across the projects.

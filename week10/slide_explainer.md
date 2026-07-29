@@ -81,179 +81,213 @@ understand the biomass data collection; mining segmentation and robust water; an
 the Tessera measurement.
 
 ### Slide 3, plugging in the lab's production models
-This is the headline: use the IndiaSAT models shared with us, train and store them, and list them in the zoo so a
-user can plug one in to split a class.
+Why this is the centrepiece of the week. Until now every model in the tool was one trained here from a
+handful of example polygons. But the group already has mature LULC classifiers in production, and the
+brief was to make those usable inside this framework instead of reinventing them. So the real task on
+this slide is not a new model, it is turning two existing IndiaSAT classifiers into things a user can
+pick from the zoo and apply, the same way they would apply a model they trained themselves.
 
-Bullet one: two models were shared, a pan-India tree-against-crop classifier, and a per-region farm,
-plantation, scrubland classifier.
+The two models answer different questions. One tells tree from crop across all of India. The other,
+built separately for each agro-ecological region, tells farm from plantation from scrubland. These are
+exactly the fine vegetation distinctions our four-class base map cannot make on its own, which is why
+they are worth plugging in.
 
-Bullet two: we found that both train a Random Forest and classify entirely inside Earth
-Engine, so, like our base map, they render server-side as crisp tiles with nothing downloaded and no
-re-implementation. This is the point from foundation 3.
+The part that actually made this feasible, and it was not obvious at the outset, is how these models
+are built. Both train a Random Forest and run it end to end on Google's servers, through Earth Engine's
+own classifier, rather than in Python on our machine. That one fact is what let them slot in: their
+output is a finished image on the server, just like our base map's band-math tiles, so they ride the
+same tile path with nothing downloaded to us and no re-coding. Had they instead been a deep network in
+PyTorch, none of that would hold and we would have needed a separate serving pipeline first.
 
-Bullet three: their training data is readable from our Earth-Engine project, so we reproduce the models
-faithfully rather than copying weights. That matches how the lab runs them, trained on the fly from a
-stored ground-truth asset with no saved binary.
-
-Bullet four: each is now a card in the zoo, applied from there (the next slide covers how it plugs into
-the hierarchy).
+The last choice worth explaining is that we reproduce the models rather than lift any weights. The
+ground-truth points they train on are readable from our Earth-Engine project, so on each request we
+retrain the Random Forest in Earth Engine from that data and classify. That sounds wasteful, but it is
+exactly how the lab runs them (they keep no model file either), the training is quick server-side, and
+it keeps us faithful to the source: the zoo card stores the recipe, not a frozen binary that could
+drift away from the data it came from.
 
 ### Slide 4, the two models, and how they plug in
-Bullet one, tree vs crop, pan-India. Its features are a Sentinel-1 radar time series, foundation 4,
-twenty three sixteen-day steps of two polarisations. We build that series in Earth Engine and classify
-it with the model's Random Forest, trained on about seventy thousand labelled points.
+The two models are worth contrasting, because they use different signals for different reasons. Tree
+versus crop leans on radar, not the annual embedding, and that is a deliberate choice: a crop field
+changes dramatically through its growing season while a forest stays roughly constant, and radar
+(Sentinel-1) sees that structural change through cloud. So the feature is a year of radar sampled every
+sixteen days, twenty three snapshots of two polarisations. Reading how a pixel moves over the year is
+what lets the model separate the two. Farm, plantation, and scrubland, by contrast, is built per
+agro-ecological region on the Alpha Earth embedding we already use, because those categories mean
+different things in different climates and soils, so one pan-India model would blur them; instead, for a
+given area, we find its region and train on that region's own ground truth.
 
-Bullet two, farm, plantation, scrubland, per region, foundation 5. The features are the same Alpha Earth
-embedding we already use. For an area we find its region, train the Random Forest on that region's
-points, and classify. About one and a half million labelled points across nineteen regions back it.
+Both are stored as a new kind of card, tagged \texttt{ee\_rf}. The reason it is a new kind is that it
+holds no model file. A normal card points at a trained joblib; these point at a recipe, the training
+asset plus the feature spec and class map, and the model is rebuilt in Earth Engine when needed. This
+is not a shortcut, it is what keeps the card honest to a model that is, by design, never saved.
 
-Bullet three: both are cards with a new topology, ee\_rf. The card stores the recipe, the training
-asset, the feature source, and the class mapping, not a file, because the model is re-trained in Earth
-Engine on demand. This is faithful to how the lab runs them, with no saved model.
-
-Bullet four, the integration, which is the real result here: these models bring their own class scheme,
-so they cannot reuse the base tree. Applying one rewrites the hierarchy — greenery gains the model's
-classes as children and is marked with the model — and every Run classification then refines only the
-greenery pixels with the model in Earth Engine, keeping the rest of the base map (built-up, water,
-barren). So the tree and the map both follow the model, rendered as crisp tiles. A bare, standalone
-version that labels the whole box also exists, but that mislabels non-vegetation, which is why the
-greenery refinement is the default.
+The fourth point is the real result of the week and the thing the previous version got wrong. Because
+these models carry their own class scheme, they cannot simply reuse the base four-class tree; and if you
+run one on its own it labels the whole box, calling built-up and water "cropland" too, which is nonsense
+over a mixed area. The fix is to treat the model as a refinement of one branch. Applying it rewrites the
+hierarchy so greenery gains the model's classes as children and is marked with the model; from then on
+every classification runs the base map first, then replaces only the greenery pixels with the model's
+output, in Earth Engine, keeping built-up, water, and barren untouched. So the tree in the sidebar and
+the map on screen both change to follow the model, and it still renders as crisp tiles. The bare
+whole-box version is kept only as a way to inspect the model alone.
 
 ### Slide 5, non-linear learners, and where they can run
-Bullet one: the aim was Random Forest on Earth Engine, since it is the model that usually works, and
-XGBoost on Tessera. XGBoost on Tessera was almost free because Tessera already runs locally; Random
-Forest on Alpha Earth was the real work.
+The tension this slide resolves is between accuracy and the crisp map. Random Forest is often the
+stronger classifier, so the request was to allow it; but our whole reason the base map is fast and
+sharp is that a linear model can be rewritten as simple arithmetic on the embedding image and run on
+Google's servers as tiles. A Random Forest is a tree of thresholds, not a weighted sum, so there is no
+way to express it as that arithmetic. It cannot ride the tile map, full stop.
 
-Bullet two: a Random Forest is not linear, so it cannot be replayed as band math and cannot ride the
-crisp tile map. The fix was to make inference algorithm-aware. A non-linear split on Alpha Earth is
-dropped from the tile path, and the whole area falls back to the point-grid render, the same path a
-Tessera split already uses. Intuition: the render path is now chosen by the model type, not assumed.
+Rather than forbid it, we made the renderer aware of which kind of model each split is. The key change
+in thinking: before, the code assumed every Alpha Earth split was linear and tried to replay it as
+tiles, which would crash on a Random Forest. Now a non-linear Alpha Earth split is recognised and the
+area is drawn on the coarse point grid instead, the same fallback a downloaded-Tessera split already
+uses. So the choice is surfaced honestly, use Random Forest and accept a grid, or stay linear and keep
+the sharp tiles, and the interface labels the trade in the option itself.
 
-Bullet three: so the user can choose Random Forest on Alpha Earth; it renders on the coarser point grid
-instead of tiles, and the interface says so in the option's note. Linear models still give the crisp
-map.
-
-Bullet four: this same non-linear point-grid path is what biomass would use, which is the next slide.
+XGBoost on Tessera came nearly for free, because Tessera already runs locally on the grid where a
+non-linear model is fine; the genuinely new work was letting a Random Forest live on Alpha Earth at all.
+And this same grid path is what the next slide's biomass needs, since a regressor is no more expressible
+as band math than a forest is.
 
 ### Slide 6, biomass from GEDI: the data collection, and findings
-The framing: this slide is a study of the biomass scripts we were given, to understand them and see how they
-would fit, not a feature surfaced in the interface.
+Set expectations first: this is deliberately not a shipped feature. The task was to understand the
+biomass scripts we were given, reproduce the data collection, and report what we learned, so that when
+the group decides how biomass should sit in the LULC we are ready. So the slide is findings, not a demo.
 
-Bullet one, what the scripts do: they sample GEDI, foundation 7, pair each shot with the exact Alpha
-Earth embedding we already classify on plus slope, and fit a Random Forest that predicts biomass
-everywhere from that embedding.
+The mechanism is worth understanding because it is what makes biomass easy for us. GEDI is a lidar on
+the space station that fires laser shots and measures how much vegetation, by mass, is under each shot.
+It is sparse, a scatter of measured points, not a wall-to-wall map. The scripts take those shots and
+pair each one with the very same Alpha Earth embedding we already classify land cover on, plus terrain
+slope, then fit a model that predicts biomass from the embedding, which lets you fill in the gaps
+between shots everywhere the embedding exists.
 
-Bullet two, the key finding: biomass is not a new pipeline for us, it is a regression target,
-foundation 6, on our own feature space, which is why it slots in naturally, the same features, a
-Random Forest regressor, and the same point-grid render a non-linear model uses.
+That leads to the finding that matters: biomass is not a new pipeline for us at all, it is just a
+different question asked of features we already have. Land cover asks "which class", biomass asks "how
+much", and both read the same 64-number vector per pixel. So it needs no new data path, only a Random
+Forest regressor instead of a classifier, and it rides the same point-grid render as any non-linear
+model. We reran the collection over a test region and got numbers in the same range the original work
+reports, which is the confirmation we were after. The one caveat to be honest about is that predicting a
+continuous biomass value from a once-a-year embedding is inherently noisy, so a strict held-out test
+scores modestly; a looser random split looks better but is less trustworthy. None of this is wired into
+the interface, and it does not need to be until the group decides how the layer should appear.
 
-Bullet three: we reproduced the data collection over an area and year, with the same quality, error, and
-slope masks, and confirmed it reaches the expected ballpark on the AEZ-8 frame. Biomass from an annual embedding
-is inherently noisy, so a strict region-held-out test scores modestly, which is the honest number; a
-plain random split flatters it.
+### Slide 7, segmenting the mining class
+The honest starting point, and the thing to say clearly to sir, is that this is not the segmentation
+model that was actually asked for. What was intended is an object-detection or instance-segmentation
+model, a network that looks at imagery and outputs mines as discrete objects, distinct in kind from the
+per-pixel classifier we have. That model needs image patches, hand-drawn mask labels, GPU training, and
+a way to serve results outside Earth Engine, none of which is set up. So rather than claim we built it,
+this slide presents a deliberate stand-in and is upfront about it.
 
-Bullet four: it is kept out of the interface for now, and a biomass layer can be enabled later once we
-know how it should appear in the LULC.
+The stand-in reasons through what we do have. The mining classifier already marks which pixels are
+mining; the gap is only that pixels are scattered, not grouped into objects. So we take that existing
+prediction and, inside Earth Engine, tidy it and trace it into shapes: remove lone speckle pixels, close
+small holes, follow the connected regions into polygons, and discard anything too small to be a real
+site. The two reasons this was worth doing now are that it needs no new infrastructure at all, it reuses
+the same tile machinery, and it converts a classifier we already trust into objects with real areas that
+someone can actually use, today.
 
-### Slide 7, segmenting the mining class (an interim)
-Bullet one: mining is a per-pixel class, so it shows as scattered pixels. The ask was mining as discrete
-objects.
-
-Bullet two, said plainly: this is not the object-detection model intended for this. A real one needs
-imagery, mask labels, and GPU we have not wired up, and a render path outside Earth Engine. We did the
-interim for two concrete reasons: it reuses the existing tile path with no new infrastructure, and it
-turns the classifier we already have into usable objects today. So we vectorise the mining prediction
-inside Earth Engine: clean the speckle, close pin-holes, trace connected regions into polygons, and
-drop anything below a minimum area.
-
-Bullet three: the result is clean mining polygons, each with an area, downloadable as GeoJSON, instead
-of pixel confetti. Over a real active coalfield (Jharia) it returns genuine mining objects; over a
-reclaimed site (Asola) the few polygons are false positives, so we demo on Jharia. The learned
-object-detection model is the real next step, not this.
+Where it matters to be careful is the choice of demo site, which also doubles as a warning about the
+classifier. Over Jharia, a genuinely active coalfield, the polygons are real mines. Over Asola, whose
+mines were reclaimed into scrub and built-up years ago, anything flagged mining is a false positive, so
+it is the wrong place to show the feature and we use it instead as a probe of the model's error rate.
+The real object-detection model remains the next step; this is a bridge to it, not a substitute.
 
 ### Slide 8, water step one, robustness
-The framing first: the plan is two steps. First get water against non-water working and see the
-accuracy, then decide how to fold it into the LULC. This slide is step one.
+The staging is the important framing, and it was a deliberate call rather than a hedge. The full water
+feature is a big build, so instead of shipping something half-trusted, we split it: first prove the
+core classifier is reliable, then decide how it enters the LULC. This slide is only the first half,
+proving reliability, so a low number here would have stopped the whole thing.
 
-Bullet one: we hold out whole water bodies for a spatial test, whole years for a temporal test, and the
-combination for the honest worst case, foundation 8. The seasonal-water polygons already carry a
-water-body identity and a date, so this needs no new data.
-
-Bullet two: the within-water-body task is strong and stable. The combined spatial-and-temporal hold-out
-scores about 0.98, and the year-to-year spread is small, so there is no fluke year.
-
-Bullet three: this answers the step-one question, the classifier is solid enough within water bodies to
-build on.
+What makes the test honest is that it stresses the two ways a model can secretly overfit. A model can
+look good simply because it saw the same water body, or the same year, in training. So we hold out
+entire water bodies (has it learned water, or just these lakes?) and entire years (does it survive a
+year it never saw?), and then both together, which is the true worst case. We can do this for free
+because the polygons already record which water body and which date they came from. The answer is
+reassuring: even the both-held-out score is about 0.98, and it barely moves year to year, so there is no
+lucky year propping it up. That is what lets us say the within-water-body classifier is solid enough to
+build the rest on.
 
 ### Slide 9, water step one, works anywhere, and counting fortnights
-Bullet one: the catch is that the non-water examples all come from in and around water bodies, so the
-model has never seen ordinary dry land and over-calls water there. We augment the non-water class with
-barren, built-up, and greenery pixels sampled across seasons.
+There is a catch hiding behind that 0.98, and this slide is about facing it. All the non-water training
+examples come from in and around water bodies, dry lake beds and their edges, so the model has literally
+never been shown a city or a farm. Run it there and it over-calls water, because "not water" to it means
+"the dry parts near a lake", not "dry land in general". The fix is to feed it that missing negative: we
+add barren, built-up, and greenery pixels, sampled across seasons, as extra non-water examples. The
+effect is large and specific, its precision on non-water climbs from about 0.72 to 0.99, meaning it
+stops painting ordinary ground as water, and that better model is now the one deployed.
 
-Bullet two: the effect is exactly as hoped, non-water precision rises from about 0.72 to 0.99, so the
-model stops painting dry land as water. This augmented, works-anywhere model is now the deployed one.
-
-Bullet three: we also run the classifier over a whole year of fortnights and count, per pixel, how many
-fortnights it held water. A perennial body scores high, a monsoon-only pond scores low. This is the
-layer that would let the LULC tell perennial from seasonal water, the kind of seasonal water the
-IndiaSAT map is specifically built to catch and Dynamic World misses.
-
-Bullet four: folding water into the hierarchy, running it first and splitting the non-water, is the
-step-two decision this first step sets up.
+The second idea on this slide is what makes water useful to the LULC rather than just a yes/no layer.
+We run the classifier not once but across a whole year of fortnights and count, per pixel, how many of
+them held water. A permanent lake scores near the maximum; a pond that only fills in the monsoon scores
+low. That single count separates perennial from seasonal water, which is exactly the distinction the
+IndiaSAT map is built to make and that a simpler product like Dynamic World tends to miss. Actually
+folding this into the class hierarchy, running water first and splitting the rest, is the step-two
+decision this groundwork sets up.
 
 ### Slide 10, acacia, measuring spatial and temporal robustness
-The framing to lead with: this slide is about the measurement method, not a headline accuracy. Acacia
-against non-acacia is a genuinely hard split, telling two similar tree species apart, so the absolute
-numbers are modest by nature. What is new and useful is that the crowns now carry their source region,
-so for the first time we can hold out a whole region and whole years at the same time.
+Read this slide as a measurement result, not an accuracy boast, and it stops being disappointing.
+Acacia against non-acacia is telling two similar tree species apart from a satellite, which is genuinely
+hard, so no honest method will make it a high number. What is new is not the model but the test: because
+the tree crowns now carry which region they came from, we can, for the first time, hold out a whole
+region and whole years at once and ask whether an acacia model actually travels to unseen ground in an
+unseen year.
 
-The table (pooling three train years, testing two unseen years, with ten pixels per crown): unseen
-years only gives 0.749; an unseen region only gives 0.695; an unseen region and unseen years together
-gives 0.679.
+The three numbers are one model scored three ways. Hold out only the years and it gets 0.749. Hold out
+only a region and it drops to 0.695, which already tells you geography matters more than time here. Hold
+out both a region and the years, the situation a real deployment faces, and it lands at 0.679. The value
+of the slide is precisely that downward staircase: it puts a number on how much a single-site,
+single-year acacia result over-promises, roughly seven points from the easy test to the honest one. So
+the message to take away is not "acacia scores 0.68", it is "here is how to tell whether an acacia model
+will hold up elsewhere, and it says treat a single-site number with caution".
 
-The reading: the ordering is exactly what an honest test should show — a whole region is harder than
-random polygons, and region and year together is hardest. That gap is the point of the slide: it
-quantifies how much a single-site, single-year acacia number would over-promise. So the takeaway is not
-"acacia is 0.68", it is "here is a way to measure whether an acacia model will travel". And across the
-two test years the accuracy is stable (spread about 0.002), so there is no fluke year — the split
-generalises consistently, just at a modest level because it is a hard species distinction. (An earlier,
-smaller run with fewer pixels per crown looked like it had a fluke year; more pixels showed that was
-sampling noise, not a real one.)
+One more thing worth pointing out, because it corrects an earlier draft. A smaller run, with fewer
+pixels sampled per crown, appeared to show one bad test year and we nearly reported a fluke year. With
+more pixels the two test years sit within 0.002 of each other, so that apparent fluke was just sampling
+noise. The real picture is a split that generalises consistently across years, just at a modest level,
+which is the honest and more useful conclusion.
 
 ### Slide 11, how long does Tessera take, against Alpha Earth
-Measured live over one small site, four stages each. Download: Tessera pulls about a hundred and fifty
-megabytes per tile, around twenty nine seconds; Alpha Earth downloads nothing. Sample: 31 seconds
-against 4. Train: under a second either way once features are in hand. Classify: 40 seconds on the
-Tessera point grid against 8 for Alpha Earth tiles. Totals, about 72 seconds against about 12.
+The question behind this slide is practical: we have two embeddings, and someone has to know when to
+reach for which. So we timed the whole loop on one small area, and the table exists to make one
+structural difference visible rather than to celebrate exact seconds. The numbers, download, sample,
+train, classify, come to about 72 seconds for Tessera against about 12 for Alpha Earth.
 
-The reading: Alpha Earth is server-side round-trips only. Tessera pays a large per-tile download before
-anything starts, then samples and classifies locally on a grid. So Alpha Earth wins on first touch
-anywhere; Tessera is worth it only when you need its local features and have already paid the download.
+The reason for the gap is the important part, and it is not that one model is slower to fit; training is
+under a second either way. It is where the work happens. Alpha Earth lives inside Earth Engine, so
+everything is a server round-trip and nothing lands on our disk. Tessera is a set of downloaded tiles,
+about 150 megabytes each, so before any classification can start you pay a large one-time download,
+around 29 seconds per tile here, and then sampling and classifying happen locally on a coarse grid. The
+practical rule that falls out: for browsing anywhere, Alpha Earth wins because its first touch on a new
+area costs nothing extra, whereas Tessera only earns its keep once you genuinely need its richer local
+features and have already paid to bring the tiles down.
 
 ### Slide 12, STACD provenance for every output
-The framing: this is a claim of work done, not a re-explanation of STACD. STACD provenance was
-implemented for every classified output, following the paper's five classes. (The two STACD slides
-from the earlier draft are merged into this one.)
+The framing to hold onto is that this is a claim of work done, not a lesson on STACD, which sir already
+knows. So the slide should read as "we made our outputs describe themselves in the STACD format", and
+the explanation here is about what that self-description actually contains and why building it cost us
+almost nothing.
 
-Bullet one: every classified output emits two things — a stack specification, a STAC Item for the
-raster with its box, geometry, class legend, and asset links; and a STACD specification, the dependency
-graph with a dataset and algorithm node per input, one algorithm instance for each live model, rule,
-and merge, and the output dataset instance. Everything is read from metadata we already keep (the
-trained models' class lists, the zoo cards), so there is no new source of truth and no Earth-Engine run.
+Every classified output now carries two things. The first is an ordinary STAC Item for the raster: its
+box, its geometry, the class legend with colours, and links to the actual data. The second is the STACD
+part, which is the dependency graph, a node for each input dataset and each algorithm, an instance for
+every live model, rule, and merge that took part, and the output itself. The reason this was cheap is
+that we invented no new record for it. Everything it needs already exists in the tool: the class list
+comes from the trained models, the algorithm instances come from the nodes of the hierarchy, and the
+input datasets come from the zoo cards. So emitting the whole thing is pure metadata assembly, with no
+extra Earth-Engine run.
 
-Bullet two: the class hierarchy and the ordered operations that built it are embedded as the producing
-algorithm's input set — the literal record of what produced this output. Concretely: the legend comes
-from the model class lists folded through the merges; each resolving node (model, rule, merge) becomes
-an algorithm instance with a version and a pointer to its artifact, code, and card; the input datasets
-are the Alpha Earth source plus every training dataset any live model consumed.
-
-Bullet three, following the paper closely: each algorithm instance carries a unique identifier, and the
-output points at a producing instance rather than a type. Two naming choices are noted for the paper's
-authors, Saharsh and Saurabh, to confirm.
-
-Bullet four: we emit the metadata half of STACD. The paper's Airflow runtime, with selective
-recomputation and an instance database, is the natural next layer. The record lines up with the drone
-and bioacoustics outputs the group already produces, so it can be compared across the projects.
+The genuinely useful move is what we embed as the producing algorithm's inputs: the entire class
+hierarchy and the ordered list of operations that built it. That is the literal answer to "what produced
+this map", and it is the same envelope the project's save-and-resume already uses, so a STACD record and
+a reproducible project are the same object. Two small details follow the paper precisely, an algorithm
+instance carries a unique id and the output points at a producing instance rather than a type, and two
+naming choices we were unsure about are flagged for the paper's authors rather than settled quietly.
+Finally, to be honest about scope: we emit the description half of STACD, not the paper's Airflow
+execution engine, which is the natural next layer; but the description already lines up with the drone
+and bioacoustics outputs, so the same provenance can be compared across all three projects.
 
 ### Slide 13, thank you
 Closing slide.
