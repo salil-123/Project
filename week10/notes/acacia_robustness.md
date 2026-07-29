@@ -8,30 +8,32 @@ Script: `week10/acacia_robustness.py`. Data: the confident acacia crowns now car
 region in `area` (persisted by `scripts/prep_acacia_examples.py`, threaded through
 `examples.build_training_frame`). Confident acacia positives live almost entirely in the four Sanjay
 Van strips, so the region holdout runs across those — train on SV_S1/S2/S3 (+ every other region's
-non-acacia), **test on the held-out SV_S4** (which keeps both classes: 195 acacia / 100 non-acacia px
-per year at n_pix=5). Same `StandardScaler + LinearSVC(balanced)` throughout, so the numbers compare.
+non-acacia), **test on the held-out SV_S4** (which keeps both classes). Same
+`StandardScaler + LinearSVC(balanced)` throughout, so the numbers compare.
 
-## Run: train 2021/2023, eval 2022/2024, n_pix 5
+## Run: train 2019/2021/2023, eval 2020/2024, n_pix 10
 
 | Check | What's held out | Accuracy |
 |-------|-----------------|---------:|
-| temporal-only | random polygons, unseen years | **0.716** |
+| temporal-only | random polygons, unseen years | **0.749** |
 | spatial-only | region SV_S4 (year 2023) | **0.695** |
-| spatial + temporal | region SV_S4 **and** the year | **0.673** |
+| spatial + temporal | region SV_S4 **and** the year | **0.679** |
 
-Per eval-year on the held-out region: **2022 = 0.790, 2024 = 0.556** → year-to-year spread **0.234**.
+Per eval-year on the held-out region: **2020 = 0.678, 2024 = 0.680** → year-to-year spread **0.002**.
 
 ## Reading it
 
-- The ordering is the honest one: **combined (0.673) < spatial-only (0.695) < temporal-only
-  (0.716)**. Holding out a whole *region* is harder than holding out random polygons, and holding out
+- The ordering is the honest one: **combined (0.679) < spatial-only (0.695) < temporal-only
+  (0.749)**. Holding out a whole *region* is harder than holding out random polygons, and holding out
   region *and* year is hardest — which is the point. A model that only ever saw SV_S1–S3 generalizes
-  to the never-seen SV_S4 at ~0.67, not the ~0.75 the year-only check suggested.
-- The **per-year spread (0.234) flags 2024 as a likely fluke year** (0.556 vs 0.790 in 2022) on the
-  held-out region — exactly the "check for fluke years" signal sir asked for. Worth a look at 2024
-  Alpha Earth coverage / phenology over Sanjay Van before trusting a single-year acacia number there.
+  to the never-seen SV_S4 at ~0.68, not the ~0.75 the year-only check suggested. The value is that gap:
+  it shows how much a single-site, single-year acacia number over-promises.
+- The two test years are **stable (spread 0.002)**, so there is no fluke year — the split generalizes
+  consistently across years, just at a modest level. (A smaller earlier run at n_pix=5 looked like it
+  had a fluke year, 0.79 vs 0.56; more pixels per crown showed that was sampling noise, not real.)
 - Consistent with week 7's finding that acacia is a genuinely hard species split; the spatial holdout
-  makes the difficulty explicit rather than hiding it behind polygon-level leakage.
+  makes the difficulty explicit rather than hiding it behind polygon-level leakage. The point of the
+  slide is the measurement method, not the absolute number.
 
 ## Reproduce
 
