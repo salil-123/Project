@@ -18,9 +18,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# deps first so this layer caches across code edits
+# deps first so this layer caches across code edits. Slim the layer in-place: drop any stray CUDA
+# libs (nothing should pull them once xgboost is out) and the compiled-bytecode caches.
 COPY deploy/requirements-docker.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y nvidia-nccl-cu12 2>/dev/null || true \
+    && find /usr/local/lib/python3.11 -name '__pycache__' -type d -prune -exec rm -rf {} + \
+    && find /usr/local/lib/python3.11 -name '*.pyc' -delete
 
 # the app + its runtime data (heavy/secret files excluded via .dockerignore)
 COPY config.py README.md ./

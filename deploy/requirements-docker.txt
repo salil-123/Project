@@ -16,4 +16,6 @@ fastapi
 python-multipart   # FastAPI needs this for the file-upload (UploadFile) endpoints
 uvicorn[standard]
 python-dotenv
-xgboost            # non-linear Tessera splits (#7); light enough to keep
+# xgboost is intentionally OUT of the image: its wheel drags in nvidia-nccl-cu12 (~300 MB of GPU
+# libs unused on CPU), and sklearn RandomForest already covers the non-linear case. refine._has_xgb()
+# degrades gracefully (the Tessera+XGBoost option just shows as unavailable). Re-add if truly needed.

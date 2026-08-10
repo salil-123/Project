@@ -7,7 +7,7 @@ Susmit's plan and the `drone_docker` reference structure.
 | # | Advice | Status |
 |---|--------|--------|
 | 1 | Make all paths relative | **Done.** Anchored to the project root via `config.project_path` (env-overridable `CORESTACK_ROOT`/`CORESTACK_DATA_DIR`); runs from any CWD. Frontend uses relative `/api/...`; STACD emits relative hrefs — nothing points at `localhost`. |
-| 2 | Model weights → Drive | Our deployed weights are tiny `.joblib`s and ship **inside the image**. Only huge/derived artifacts (biomass RF 528 MB, CSV caches) are excluded — those go to Drive/EE if ever needed. |
+| 2 | Model weights → Drive | **Not needed right now.** Every deployed LULC model is a *linear* `.joblib` (largest tracked = **36 KB**; they replay as EE band math), so none approach GitHub's 100 MB limit — they ship in git + the image. The only >100 MB model (biomass RF, 528 MB) was decoupled in wk11 and is gitignored. The Drive hook is ready for a large *future* model: upload it, register its Drive file-id in `deploy/fetch_models.sh`, and run it on a fresh box. |
 | 3 | Reset path from localhost | **Done.** No hardcoded host anywhere in the frontend or STACD output (all relative). Behind nginx at a sub-path, see the nginx note below. |
 | 4 | Airflow for heavy compute | Optional. Our classify path is server-side Earth Engine (light), so Airflow isn't required to run. Scaffold + hook in `airflow/dags/` for when a batch/STACD pipeline is wanted. |
 | 5 | Dockerise → push to hub.docker.com, pull from there | **Done.** Image published: `salil2003/corestack-lulc:latest`. Pull-and-run with `docker-compose.hub.yml`. |
