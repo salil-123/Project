@@ -14,8 +14,9 @@ __pycache__/
 *.csv
 *.npy
 
-# machine-local editor settings (permission allowlist)
-.claude/settings.local.json
+# machine-local editor / tool settings + project notes (kept out of the repo)
+.claude/
+CLAUDE.md
 
 # scratch / backups
 test_data/

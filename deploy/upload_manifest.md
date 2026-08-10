@@ -57,7 +57,7 @@ Regenerable from Earth Engine, so an alternative is to **not** ship them and pul
 |------|------|--------|
 | `.env` | — | **secrets** (see above) |
 | `.venv/`, `__pycache__/`, `*.pyc` | big | rebuilt from `requirements.txt` in the image |
-| `.git/`, `.claude/`, `.cph/` | — | local tooling |
+| `.git/`, local editor caches | — | local tooling |
 | `data/master_tessera.csv` | 139M | only the (unexposed) Tessera/Detailed path; re-downloadable |
 | `data/refine/*_train.csv`, `data/refine/*_te_train.csv` | ~470M | sampling **caches** — regenerate on demand |
 | `data/refine/biomass_aez8.joblib`, `data/catalogue/artifacts/` | 528M each | biomass was **decoupled from LULC in wk11**; not part of this app |

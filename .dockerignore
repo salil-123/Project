@@ -64,8 +64,10 @@ data/seasonal_water_ground_truth_polygons/
 data/selected_polygons.geojson
 data/hierarchy.demo_backup.json
 
-# the deploy scripts + plans don't belong in the image
-deploy/
+# the deploy scripts + plans don't belong in the image — but the Dockerfile COPYs
+# deploy/requirements-docker.txt, so keep just that one file in the build context.
+deploy/*
+!deploy/requirements-docker.txt
 Dockerfile
 .dockerignore
 docker-compose.yml
