@@ -24,8 +24,13 @@ Mirrors the conventions in contributions.py (relative data/ path, run from repo 
 import json
 import os
 import re
+import sys
+from pathlib import Path
 
-HIERARCHY_PATH = "data/hierarchy.json"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
+import config
+
+HIERARCHY_PATH = config.project_path("data/hierarchy.json")  # anchored to root, CWD-independent
 
 ROOT = "root"
 

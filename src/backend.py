@@ -51,7 +51,6 @@ if not catalogue.INDEX_PATH.exists():
     catalogue.backfill()
 catalogue.sync_merge_cards()        # any active merge gets a local model card, even older ones (#9)
 catalogue.sync_node_model_cards()   # every live split node gets a card so nothing trained is hidden (#9)
-catalogue.sync_biomass_cards()      # any biomass regressor on disk gets a card too (#3 wk10)
 catalogue.sync_ee_rf_cards()        # the two ported IndiaSAT EE-RF models get cards (#13 wk10)
 
 # The IIT Delhi strip is our home turf and the default area: IIT built-up, Sanjay Van trees + a
@@ -322,6 +321,13 @@ def classify_geotiff(west: float, south: float, east: float, north: float, year:
         url, classes = infer.classify_bbox_geotiff((west, south, east, north), year=year,
                                                    model_bundle=_model, refinements=_refinements)
     except Exception as e:
+        # getDownloadURL builds the whole label image at once and is memory-capped by Earth Engine;
+        # a composited IndiaSAT SAR model (tree/crop) or a large box blows that limit. Say so plainly.
+        if "memory" in str(e).lower():
+            raise HTTPException(400, "GeoTIFF export hit Earth Engine's memory limit: the classified "
+                                     "image is too heavy to export at 10 m over this area. Draw a "
+                                     "smaller box — and note that an applied IndiaSAT tree/crop (SAR) "
+                                     "model makes the export especially heavy.")
         raise HTTPException(400, f"GeoTIFF export failed (try a smaller area): {e}")
     return {"url": url, "classes": classes, "year": year}
 
@@ -428,31 +434,6 @@ def segment(west: float, south: float, east: float, north: float,
     return {"geojson": fc, "summary": summary, "year": year}
 
 
-# ----------------------------- biomass (GEDI AGBD) (#3 wk10) -----------------------------
-@app.get("/api/biomass")
-def classify_biomass(west: float, south: float, east: float, north: float,
-                     year: int = 2022, n: int = 30):
-    """Above-ground biomass (AGBD, Mg/ha) over a bbox on a point grid (#3). A Random Forest
-    regressor on Alpha Earth (+ slope), so it can't ride the crisp tile map — same point-grid path
-    as a non-linear split. Needs a biomass model trained (scripts/train_biomass.py)."""
-    bbox = (west, south, east, north)
-    guard = aoi.check(bbox, "tiles")
-    if not guard["ok"]:
-        raise HTTPException(400, guard["reason"])
-    if not infer.biomass_models():
-        raise HTTPException(400, "no biomass model trained yet — run scripts/train_biomass.py")
-    n = max(8, min(n, 60))
-    year = min(max(year, AE_YEARS[0]), AE_YEARS[-1])
-    try:
-        df, cw, ch, ramp = infer.classify_biomass_grid(bbox, year=year, n=n)
-    except Exception as e:
-        raise HTTPException(400, f"biomass classify failed (try another area/year): {e}")
-    cells = [{"lat": float(r.lat), "lon": float(r.lon), "val": None if r.val != r.val else float(r.val)}
-             for r in df.itertuples()]
-    return {"render": "biomass", "cells": cells, "cell_w": cw, "cell_h": ch,
-            "year": year, "ramp": ramp}
-
-
 # ----------------------------- per-pixel water frequency over a year (#11 wk10) -----------------------------
 @app.get("/api/water-frequency")
 def water_frequency(west: float, south: float, east: float, north: float,
@@ -473,6 +454,11 @@ def water_frequency(west: float, south: float, east: float, north: float,
         raise HTTPException(400, f"water-frequency failed (try a smaller area/year): {e}")
     return {"render": "tiles", "tile_url": tile_url, "bounds": [west, south, east, north],
             "stats": stats, "colors": {"ramp": ["#f7fbff", "#08306b"]}}
+
+
+# NB: the >=N-fortnight spurious-water filter (#13) is NOT a UI feature — it's a code-level correction
+# on the water output (infer.annual_water_mask), to be applied when the fortnight water model produces
+# an annual water layer for the LULC (the deferred water->LULC step). So there's no endpoint for it.
 
 
 # ----------------------------- training-time estimate (#8) -----------------------------
@@ -546,6 +532,9 @@ def add_example(ex: ExampleIn):
         total = examples.add_examples(ex.node, ex.geometry, role=ex.role)
     except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
+    except Exception as e:
+        # a malformed geometry dict makes shapely raise its own error type; keep it a clean 400.
+        raise HTTPException(400, f"couldn't read that geometry ({type(e).__name__}).")
     return {"node": ex.node, "role": ex.role, "total": total,
             "dataset": _mint_dataset(ex.node, ex.role)}
 
@@ -562,6 +551,11 @@ def upload_examples(node: str = Form(...), role: str = Form("positive"),
         total = examples.add_examples(node, path, role=role)
     except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
+    except Exception as e:
+        # a corrupt / unsupported file makes pyogrio raise its own error (not KeyError/ValueError);
+        # that's bad user input, not a server fault, so answer 400 with a readable reason instead of a 500.
+        raise HTTPException(400, f"couldn't read {file.filename or 'the file'} as GeoJSON/KML "
+                                 f"polygons — check the format ({type(e).__name__}).")
     return {"node": node, "role": role, "total": total, "file": file.filename,
             "dataset": _mint_dataset(node, role)}
 
@@ -865,6 +859,12 @@ def apply_eerf(op: ApplyEeRfIn):
                                  "to the IndiaSAT base first")
     classes = [p["class"] for p in card.get("produces", [])]
     colmap = ee_rf.model_colors(which)
+    # the model's class names must be free (they key the flat tree) — if this model is already applied
+    # on another node its classes collide, so refuse cleanly instead of blowing up mid-rewrite (#5)
+    clash = [c for c in classes if c in tree and tree[c].get("parent") != op.parent]
+    if clash:
+        raise HTTPException(400, f"this model's classes {clash} are already in the tree (it's applied "
+                                 "elsewhere) — remove that instance first, then apply it here.")
     # rebuild the parent's children as the model's classes, mark it with the model
     for ch in list(tree[op.parent].get("children", [])):
         _drop_subtree(tree, ch)
@@ -875,6 +875,7 @@ def apply_eerf(op: ApplyEeRfIn):
             tree[cls]["color"] = colmap.get(cls)
     tree[op.parent]["ee_rf"] = which
     tree[op.parent]["classifier"] = None          # not a joblib classifier; composited in EE
+    tree[op.parent].pop("rule", None)             # a node can't carry both a rule split and an ee_rf model
     hierarchy.save(tree)
     _reload()
     oplog.append("apply_eerf", {"card_id": op.card_id, "node": op.parent, "model": which,
@@ -947,6 +948,17 @@ def get_card_geometry(card_id: str):
     """The card's actual polygons (for polygon datasets / a model's polygon training data) so the
     map shows the real footprint instead of a country-sized box. Feature sources -> drawable:false."""
     return catalogue.card_geometry(card_id)
+
+
+@app.get("/api/cards/{card_id}/regions")
+def get_card_regions(card_id: str):
+    """The districts / states the card's polygons fall in (#7 wk11) — for a model, where its training
+    data (its strong region) is. Names them via FAO GAUL in Earth Engine. {available:false} if the
+    card has no polygon footprint (a pure feature-source model)."""
+    try:
+        return catalogue.named_regions(card_id)
+    except Exception as e:
+        raise HTTPException(400, f"couldn't resolve regions: {e}")
 
 
 class AnnotateIn(BaseModel):

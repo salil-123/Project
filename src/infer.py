@@ -26,10 +26,11 @@ CLASS_COLORS = {
     "nodata":   "#999999",
 }
 
-MODEL_PATH = "data/model_pooled.joblib"                     # realistic mode: AE + WorldCover
-SOFTVOTE_PATH = "data/model_softvote_reconciled.joblib"     # detailed mode: prior-aware AE + Tessera
-REFINE_DIR = "data/refine"
-ACTIVE_BASE_PATH = "data/active_base.json"                  # which base scheme is live (#5)
+# all anchored to the project root (config.project_path) so inference runs from any CWD
+MODEL_PATH = config.project_path("data/model_pooled.joblib")            # realistic mode: AE + WorldCover
+SOFTVOTE_PATH = config.project_path("data/model_softvote_reconciled.joblib")  # detailed: AE + Tessera
+REFINE_DIR = config.project_path("data/refine")
+ACTIVE_BASE_PATH = config.project_path("data/active_base.json")         # which base scheme is live (#5)
 
 
 def active_base():
@@ -49,8 +50,9 @@ def set_active_base(scheme, model_path):
 
 
 def load_model(path: str = None):
-    """Load the live base model. With no path, follows the active base scheme (#5)."""
-    return joblib.load(path or active_base().get("model_path", MODEL_PATH))
+    """Load the live base model. With no path, follows the active base scheme (#5). The stored
+    model_path may be relative (older active_base.json), so resolve it against the root either way."""
+    return joblib.load(config.project_path(path or active_base().get("model_path", MODEL_PATH)))
 
 
 def load_softvote(path: str = SOFTVOTE_PATH):
@@ -487,7 +489,7 @@ def segment_class(bbox, year: int = 2024, cls: str = "mining", min_area_ha: floa
 
 
 # ----------------- per-fortnight water (raw Sentinel, linear -> band math) (#5, #7) -----------------
-WATER_FORTNIGHT_PATH = "data/refine/water_fortnight.joblib"
+WATER_FORTNIGHT_PATH = config.project_path("data/refine/water_fortnight.joblib")
 _WATER_COLORS = {"water": "#1e88e5", "non_water": "#c2a05a"}
 
 
@@ -514,24 +516,13 @@ def classify_water_tiles(bbox, date, model_bundle=None):
     return tile_url, _class_counts(ee, idx.rename("c"), region, classes)
 
 
-def water_frequency_tiles(bbox, year=2024, n=24, model_bundle=None):
-    """How many fortnights each pixel held water over a year (#11 wk10), served as EE tiles.
-
-    Runs the linear water band-math on ~`n` evenly-spaced fortnight composites across `year` and sums
-    the water masks into a per-pixel count (0..n). This is the layer that makes water seasonality
-    legible for LULC integration: a perennial water body scores near n, a monsoon-only pond scores
-    low. All server-side, no download. Returns (tile_url, stats)."""
+def _water_count_image(ee, region, year, n, model_bundle):
+    """Per-pixel count of how many of `n` evenly-spaced fortnights across `year` read water. The
+    shared core of the frequency map and the persistence filter. Returns (count_image, n_used)."""
     import sentinel
-    ee = config.ee_init()
-    if model_bundle is None:
-        model_bundle = joblib.load(WATER_FORTNIGHT_PATH)
-    w, s, e, nth = bbox
-    region = ee.Geometry.Rectangle([w, s, e, nth])
     bands = model_bundle["feature_bands"]
     classes = list(_svc_steps(model_bundle)[1].classes_)
     water_code = classes.index("water") if "water" in classes else 1
-
-    # evenly spaced fortnight centres across the year
     step = max(1, 365 // n)
     masks = []
     for d in range(0, 365, step):
@@ -539,9 +530,23 @@ def water_frequency_tiles(bbox, year=2024, n=24, model_bundle=None):
         feat = sentinel.feature_image(ee, region, date.format("YYYY-MM-dd"))
         idx = _linear_label(ee, feat, model_bundle, bands)     # 0/1 per the water model
         masks.append(idx.eq(water_code).unmask(0).rename("w"))
-    count = ee.ImageCollection(masks).sum().rename("count").clip(region)
+    return ee.ImageCollection(masks).sum().rename("count").clip(region), len(masks)
 
-    n_used = len(masks)
+
+def water_frequency_tiles(bbox, year=2024, n=24, model_bundle=None):
+    """How many fortnights each pixel held water over a year (#11 wk10), served as EE tiles.
+
+    Runs the linear water band-math on ~`n` evenly-spaced fortnight composites across `year` and sums
+    the water masks into a per-pixel count (0..n). This is the layer that makes water seasonality
+    legible for LULC integration: a perennial water body scores near n, a monsoon-only pond scores
+    low. All server-side, no download. Returns (tile_url, stats)."""
+    ee = config.ee_init()
+    if model_bundle is None:
+        model_bundle = joblib.load(WATER_FORTNIGHT_PATH)
+    w, s, e, nth = bbox
+    region = ee.Geometry.Rectangle([w, s, e, nth])
+    count, n_used = _water_count_image(ee, region, year, n, model_bundle)
+
     # pale -> deep blue, a touch more contrast: lighter low end, darker high end, punchier mids
     palette = ["eff6ff", "9ecae1", "3182bd", "08519c", "05224f"]
     vis = count.visualize(min=0, max=n_used, palette=palette).clip(region)
@@ -556,76 +561,24 @@ def water_frequency_tiles(bbox, year=2024, n=24, model_bundle=None):
                       "mean": round(mean, 1) if mean is not None else None}
 
 
-# ----------------- biomass (GEDI AGBD regression on Alpha Earth) (#3 wk10) -----------------
-# Biomass is a Random Forest *regressor* on the same 64-d Alpha Earth features every classifier
-# here uses (+ slope), so it can't be band math — it rides the point grid, like #7's RF split. The
-# output is a continuous AGBD value per cell (Mg/ha), drawn with a ramp instead of class colours.
-BIOMASS_GLOB = "data/refine/biomass_*.joblib"
+def annual_water_mask(ee, region, year=2024, min_fortnights=None, n=24, model_bundle=None):
+    """The spurious-water filter (#13 wk11) as a CODE-LEVEL correction on the water output, not a UI
+    feature: an annual water/non-water mask that HOLDS a pixel as water only if it read water in at
+    least `min_fortnights` of the year's fortnights.
 
-
-def biomass_models():
-    """The trained biomass models on disk -> {name: path}. Empty until one is trained."""
-    import glob
-    out = {}
-    for p in sorted(glob.glob(BIOMASS_GLOB)):
-        out[os.path.basename(p)[len("biomass_"):-len(".joblib")]] = p
-    return out
-
-
-def load_biomass(name=None):
-    """Load a biomass regressor bundle by short name (else the first one on disk). None if none."""
-    models = biomass_models()
-    if not models:
-        return None
-    path = models.get(name) or next(iter(models.values()))
-    return joblib.load(path)
-
-
-def _sample_ae_slope(pts, bbox, year, use_slope=True):
-    """Alpha Earth 64-d (+ slope) at each grid point, in the biomass model's feature order. Returns
-    (X, valid_mask). Same server-side sampling as _sample_alpha, one extra band for slope."""
-    ee = config.ee_init()
-    w, s, e, nth = bbox
-    region = ee.Geometry.Rectangle([w, s, e, nth])
-    ae = (ee.ImageCollection("GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL")
-          .filterDate(f"{year}-01-01", f"{year+1}-01-01").filterBounds(region).mosaic()).select(BANDS)
-    img, cols = ae, list(BANDS)
-    if use_slope:
-        dem = ee.ImageCollection("COPERNICUS/DEM/GLO30").filterBounds(region).select("DEM").mosaic()
-        slope = ee.Terrain.slope(dem.setDefaultProjection("EPSG:3857")).rename("slope")
-        img, cols = ae.addBands(slope), list(BANDS) + ["slope"]
-    feats = [ee.Feature(ee.Geometry.Point([x, y]), {"i": i}) for i, (x, y) in enumerate(pts)]
-    samp = img.sampleRegions(collection=ee.FeatureCollection(feats), scale=10).getInfo()["features"]
-    X = np.full((len(pts), len(cols)), np.nan, dtype=np.float32)
-    for f in samp:
-        p = f["properties"]
-        X[p["i"]] = [p.get(c, np.nan) for c in cols]
-    return X, ~np.isnan(X).any(axis=1)
-
-
-def classify_biomass_grid(bbox, year: int = 2022, n: int = 30, bundle=None):
-    """Predict above-ground biomass (AGBD, Mg/ha) over the bbox on a point grid (#3 wk10).
-
-    Samples Alpha Earth (+ slope) at each cell and runs the biomass regressor. Returns
-    (df[lat, lon, val], cell_w, cell_h, ramp) where `ramp` is the {min,max,mean} used to colour the
-    overlay. A cell with no embedding comes back NaN (drawn transparent)."""
-    if bundle is None:
-        bundle = load_biomass()
-    if bundle is None:
-        raise ValueError("no biomass model trained yet — run scripts/train_biomass.py")
-    w, s, e, nth = bbox
-    pts = _grid(bbox, n)
-    X, valid = _sample_ae_slope(pts, bbox, year, use_slope=bundle.get("use_slope", True))
-    vals = np.full(len(pts), np.nan, dtype=np.float32)
-    if valid.any():
-        vals[valid] = bundle["model"].predict(X[valid])
-    df = pd.DataFrame({"lat": [p[1] for p in pts], "lon": [p[0] for p in pts], "val": vals})
-    good = df.val.dropna()
-    ramp = {"min": float(good.min()) if len(good) else 0.0,
-            "max": float(good.max()) if len(good) else 1.0,
-            "mean": float(good.mean()) if len(good) else 0.0,
-            "units": bundle.get("units", "Mg/ha")}
-    return df, (e - w) / (n - 1), (nth - s) / (n - 1), ramp
+    Sir's ask (point 13) was exactly this — "a filter that only over two fortnights and those we hold,
+    or some kinda threshold" — to stop the per-fortnight model's transient over-calls (a road with
+    monsoon water-logging, a wet field, S1 speckle, which flicker water for a fortnight or two) from
+    surviving into the water layer. It's the correction applied when the fortnight water model produces
+    an annual water layer for the LULC — the deferred water->LULC step — so it takes an `ee`/`region`
+    and returns an `ee.Image` (1 = water), to composite like any other band-math layer. Threshold
+    defaults to `config.WATER_MIN_FORTNIGHTS`."""
+    if model_bundle is None:
+        model_bundle = joblib.load(WATER_FORTNIGHT_PATH)
+    if min_fortnights is None:
+        min_fortnights = getattr(config, "WATER_MIN_FORTNIGHTS", 2)
+    count, _ = _water_count_image(ee, region, year, n, model_bundle)
+    return count.gte(min_fortnights).rename("water")       # 1 = held (persistent) water, 0 = filtered
 
 
 def _grid(bbox, n):

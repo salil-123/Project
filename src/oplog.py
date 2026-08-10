@@ -12,9 +12,14 @@ conventions of hierarchy.py / examples.py.
 """
 import json
 import os
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-OPLOG_PATH = "data/op_log.json"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
+import config
+
+OPLOG_PATH = config.project_path("data/op_log.json")  # anchored to root, CWD-independent
 
 
 def load() -> list:

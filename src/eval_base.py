@@ -20,10 +20,12 @@ import pandas as pd
 import joblib
 from sklearn.metrics import accuracy_score, f1_score, precision_recall_fscore_support
 
+import config
+
 AE = [f"ae_{i:03d}" for i in range(64)]
 C4 = ["barren", "built_up", "greenery", "water"]   # the real classes we score on
-FULL_CSV = "data/master_alpha_full.csv"
-RANDOM_CSV = "data/random_te_eval.csv"
+FULL_CSV = config.project_path("data/master_alpha_full.csv")
+RANDOM_CSV = config.project_path("data/random_te_eval.csv")
 
 
 def random_india():
@@ -54,7 +56,7 @@ def score(name, model, X, y):
 
 
 def evaluate(model_path="data/model_pooled.joblib"):
-    model = joblib.load(model_path)["model"]
+    model = joblib.load(config.project_path(model_path))["model"]
     print(f"=== {model_path} ===")
     Xr, yr = random_india()
     Xb, yb = balanced_holdout()

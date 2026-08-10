@@ -30,13 +30,14 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import LinearSVC
 from sklearn.metrics import f1_score, accuracy_score
 
+import config
 import eval_base
 from eval_base import AE, C4
 
-FULL_CSV = "data/master_alpha_full.csv"
-WATER_CSV = "data/water_extra.csv"
-WC_CSV = "data/worldcover_train.csv"
-OUT = "data/model_pooled.joblib"
+FULL_CSV = config.project_path("data/master_alpha_full.csv")
+WATER_CSV = config.project_path("data/water_extra.csv")
+WC_CSV = config.project_path("data/worldcover_train.csv")
+OUT = config.project_path("data/model_pooled.joblib")
 
 
 def load_sources():
@@ -115,7 +116,7 @@ def main():
         print("\n=== deploy: refit on ALL data (best wc_weight, +water, drop 'other') ===")
         full = fit(df, best_w)
         if os.path.exists(OUT):
-            joblib.dump(joblib.load(OUT), "data/model_pooled.bak.joblib")
+            joblib.dump(joblib.load(OUT), config.project_path("data/model_pooled.bak.joblib"))
             print("  backed up old model -> data/model_pooled.bak.joblib")
         joblib.dump({"model": full, "features": AE,
                      "classes": list(full.named_steps["linearsvc"].classes_),

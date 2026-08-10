@@ -27,10 +27,12 @@ For a classified bbox we return `{stack, stacd}`:
 ## "The input set used to produce this"
 
 Sir's framing: *the JSON we produce is a property inside STACD saying this is the input set used to
-produce the output.* We put exactly that at `stacd.dataset_instances[0].alg_inputs.hierarchy` — the
-**same envelope the project export ships**: `{hierarchy, op_log, classifier_refs}` (the class tree,
-the ordered ops that built it, and each node's artifact/card pointer). So the provenance record
-carries the full recipe, and `session`-scoping (`since=`) keeps it to the current run's ops.
+produce the output.* We put exactly that at `stacd.dataset_instances[0].alg_inputs.input_set` — a
+close cousin of the project export: `{hierarchy, op_sequence, classifier_refs}` (the class tree, the
+*effective* sequence of ops that built it, and each node's artifact/card pointer). So the provenance
+record carries the recipe. `session`-scoping (`since=`) keeps it to the current run's ops, and
+`op_sequence` is trimmed to what actually stuck (dead ends like reset / undone merges dropped) — the
+sequence, not the raw click history.
 
 ## Fidelity + open items
 

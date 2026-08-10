@@ -13,8 +13,13 @@ inference is a plain membership test. Mirrors hierarchy.py's data/ + run-from-ro
 import json
 import os
 import re
+import sys
+from pathlib import Path
 
-MERGE_PATH = "data/merge_rules.json"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
+import config
+
+MERGE_PATH = config.project_path("data/merge_rules.json")  # anchored to root, CWD-independent
 
 # fallback colours for merge targets that don't bring their own (kept off the base palette)
 _PALETTE = ["#8e44ad", "#16a085", "#e67e22", "#c0392b", "#2980b9", "#d35400"]

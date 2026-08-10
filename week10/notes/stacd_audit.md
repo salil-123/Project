@@ -15,7 +15,7 @@ The emitter produces all five STACD classes (Dataset_Type, Algorithm_Type, DAG, 
 Dataset_Instance) and matches the reference YAML's flattened shape. This week we fixed the two real
 deviations (Algorithm_Instance had no `id`; the output's `alg_name` pointed at an Algorithm_*Type*
 instead of an *Instance*). What remains different is **intentional**: (a) one extra field —
-`alg_inputs.hierarchy` — that embeds our whole class scheme as "the input set used to produce this",
+`alg_inputs.input_set` — that embeds our whole class scheme as "the input set used to produce this",
 exactly as sir framed it; and (b) we emit only the **metadata half**, not the Airflow runtime +
 SQLite instance store. Open question for the authors is in the last section.
 
@@ -27,7 +27,7 @@ SQLite instance store. Open question for the authors is in the last section.
 | **Algorithm_Type** | id, name, inputs{params, input_datasets}, outputs | `algorithm_types: [{id, name, params, input_datasets, outputs}]` — flattened | ✅ matches the reference **YAML** (Listing 3), which also flattens `params`/`input_datasets`/`outputs` to top level (the prose nests them under `inputs`) |
 | **DAG** | id, name, version, description, params, alg_type_nodes, dataset_type_nodes | `dag: {id, name, version, description, params, alg_type_nodes, dataset_type_nodes}` | ✅ match |
 | **Algorithm_Instance** | version, type (→Algorithm_Type), assets | `{id, version, type, role, assets}` | ✅ fixed this week — added a unique `id`; `type` now correctly references the Algorithm_Type (`CoreStack_LULC`), with our kind+node detail kept in `role`. `assets` links code (STACD repo) + the joblib + the zoo card |
-| **Dataset_Instance** *(extends Item)* | inherits Item; + version, type (→Dataset_Type), params, alg_name (→Algorithm_Instance), alg_inputs{params, input_datasets} | full STAC Item + `{version, dataset_type, params, alg_name, alg_inputs{params, input_datasets, hierarchy}}` | ⚠️ two notes below |
+| **Dataset_Instance** *(extends Item)* | inherits Item; + version, type (→Dataset_Type), params, alg_name (→Algorithm_Instance), alg_inputs{params, input_datasets} | full STAC Item + `{version, dataset_type, params, alg_name, alg_inputs{params, input_datasets, input_set}}` | ⚠️ two notes below |
 | **STAC Item** (stack-spec) | stac_version, extensions, type=Feature, id, bbox, geometry, properties, assets, links, derived_from | all present; `properties.classes` = the code→name→colour legend; `assets` = our GeoTIFF + tile endpoints | ✅ match |
 
 ### The two Dataset_Instance notes
@@ -40,17 +40,18 @@ SQLite instance store. Open question for the authors is in the last section.
    you intend `type` to be overloaded and STAC-validity waived?*
 2. **`alg_name`** now references a real Algorithm_Instance **id** (`"base::root"`, the root LULC
    producer) instead of the Algorithm_Type id it used before. The full multi-model hierarchy that
-   actually produced the raster is carried in `alg_inputs.hierarchy` (see below), since a single
+   actually produced the raster is carried in `alg_inputs.input_set` (see below), since a single
    `alg_name` can't express a composite of per-node models.
 
 ## Intentional extensions / simplifications
 
-- **`alg_inputs.hierarchy` (our addition).** Beyond the paper's `alg_inputs.{params,
-  input_datasets}`, we embed the entire scheme — the hierarchy tree, the ordered op-log, and each
-  node's classifier/artifact refs — as the literal "input set used to produce this output". This is
-  the whole point for us: an LULC raster is only reproducible if you also ship the class tree and the
-  sequence of split/rule/merge ops that built it. It's the same envelope `/api/hierarchy/export`
-  ships.
+- **`alg_inputs.input_set` (our addition).** Beyond the paper's `alg_inputs.{params,
+  input_datasets}`, we embed the entire scheme — the hierarchy tree, the effective op *sequence*
+  (`op_sequence`), and each node's classifier/artifact refs — as the literal "input set used to
+  produce this output". This is the whole point for us: an LULC raster is only reproducible if you
+  also ship the class tree and the sequence of split/rule/merge ops that built it. `op_sequence` is
+  the trimmed recipe — the raw click log's dead ends (a `reset` that reseeds the tree, a
+  `merge_remove` that undoes a merge) are dropped, so it's the sequence, not the full history.
 - **`alg_inputs.input_datasets` are Dataset_Type ids**, not per-run Dataset_Instance references. At
   our scale (one AE inference source + a few training polygon sets) instance-level input tracking
   adds noise without new information; the types + the embedded scheme already pin down the run. Easy
@@ -77,4 +78,5 @@ that lives in the data-management service, not the emitter).
   `type == "CoreStack_LULC"`, and that the output's `alg_name` resolves to one of those instance
   ids).
 - `GET /api/stacd?west=..&south=..&east=..&north=..&year=2024` — the live record for a classified
-  box; `dataset_instances[0].alg_inputs.hierarchy` carries the scheme.
+  box; `dataset_instances[0].alg_inputs.input_set` carries the scheme (`{hierarchy, op_sequence,
+  classifier_refs}`).

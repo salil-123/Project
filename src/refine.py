@@ -94,15 +94,17 @@ def model_families(source="alphaearth"):
          "note": "runs on Alpha Earth but renders on the point grid, not crisp tiles"},
     ]
 
+import config
 import hierarchy
 import examples
 import sampling                    # YEAR default + interior-point/alpha sampling
 
-REFINE_DIR = "data/refine"
-WC_CSV = "data/worldcover_train.csv"
-FULL_CSV = "data/master_alpha_full.csv"
-BASE_MODEL_PATH = "data/model_pooled.joblib"
-WORLDCOVER_BASE_PATH = "data/model_worldcover_base.joblib"
+# all anchored to the project root so training/loading works from any CWD (Docker/Airflow)
+REFINE_DIR = config.project_path("data/refine")
+WC_CSV = config.project_path("data/worldcover_train.csv")
+FULL_CSV = config.project_path("data/master_alpha_full.csv")
+BASE_MODEL_PATH = config.project_path("data/model_pooled.joblib")
+WORLDCOVER_BASE_PATH = config.project_path("data/model_worldcover_base.joblib")
 AE_COLS = [f"ae_{i:03d}" for i in range(64)]
 TE_COLS = [f"te_{i:03d}" for i in range(128)]      # Tessera embedding columns (#16)
 RESIDUAL_CAP = 8000              # max residual rows, so a split stays roughly balanced
@@ -407,6 +409,15 @@ def split_op(parent, children, examples_srcs=None, n_pix=30, do_train=True):
     (e.g. trees -> acacia/non-acacia); inference recurses into it automatically.
     """
     tree = hierarchy.load()
+    # guard the same way rule_split_op does: a split makes a leaf into a >=2-way choice. Splitting a
+    # node that already has children would just append to them, silently desyncing the class set from
+    # the trained classifier; a 0/1-child "split" is a no-op that still logs an op. Refuse both.
+    if parent not in tree:
+        raise KeyError(f"unknown parent {parent!r}")
+    if tree[parent].get("children"):
+        raise ValueError(f"'{parent}' already has sub-classes; split a leaf (or retrain/apply to change it).")
+    if len(children) < 2:
+        raise ValueError("a split needs at least two children.")
     hierarchy.split_class(tree, parent, children)
     for cid in tree[parent]["children"]:
         if tree[cid].get("source") is None:

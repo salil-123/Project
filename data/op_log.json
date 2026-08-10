@@ -407,5 +407,266 @@
         "ds_mining_polygons_v1"
       ]
     }
+  },
+  {
+    "seq": 28,
+    "ts": "2026-07-28T20:00:40.035791+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "acacia",
+        "mining",
+        "non_acacia"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 29,
+    "ts": "2026-07-28T20:01:38.524899+00:00",
+    "op": "split",
+    "args": {
+      "parent": "barren",
+      "children": [
+        {
+          "name": "mining"
+        },
+        {
+          "name": "non_mining"
+        }
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 30,
+    "ts": "2026-07-28T21:37:54.795742+00:00",
+    "op": "apply_eerf",
+    "args": {
+      "card_id": "mc_treecrop_ee_v1",
+      "node": "greenery",
+      "model": "treecrop",
+      "classes": [
+        "cropland",
+        "tree"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 31,
+    "ts": "2026-07-28T21:39:57.074936+00:00",
+    "op": "apply_eerf",
+    "args": {
+      "card_id": "mc_treecrop_ee_v1",
+      "node": "greenery",
+      "model": "treecrop",
+      "classes": [
+        "cropland",
+        "tree"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 32,
+    "ts": "2026-07-28T21:45:08.701011+00:00",
+    "op": "apply_eerf",
+    "args": {
+      "card_id": "mc_treecrop_ee_v1",
+      "node": "greenery",
+      "model": "treecrop",
+      "classes": [
+        "cropland",
+        "tree"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 33,
+    "ts": "2026-08-04T14:49:21.731677+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "acacia",
+        "barren",
+        "mining",
+        "non_acacia"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 34,
+    "ts": "2026-08-04T15:44:55.622082+00:00",
+    "op": "split",
+    "args": {
+      "parent": "barren",
+      "children": [
+        {
+          "name": "mining"
+        },
+        {
+          "name": "non_mining"
+        }
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 35,
+    "ts": "2026-08-04T15:48:15.947750+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "acacia",
+        "barren",
+        "mining",
+        "non_acacia"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 36,
+    "ts": "2026-08-04T15:48:23.718267+00:00",
+    "op": "add",
+    "args": {
+      "parent": "barren",
+      "name": "mining",
+      "color": null
+    },
+    "result": null
+  },
+  {
+    "seq": 37,
+    "ts": "2026-08-04T15:54:04.015175+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "barren",
+        "mining"
+      ]
+    },
+    "result": null
+  },
+  {
+    "seq": 38,
+    "ts": "2026-08-04T15:56:27.612470+00:00",
+    "op": "add",
+    "args": {
+      "parent": "barren",
+      "name": "mining",
+      "color": null
+    },
+    "result": null
+  },
+  {
+    "seq": 39,
+    "ts": "2026-08-04T19:38:08.284532+00:00",
+    "op": "retrain",
+    "args": {
+      "node": "barren",
+      "balance": "balanced",
+      "years": null,
+      "algo": "linearsvc",
+      "embedding": "ae"
+    },
+    "result": {
+      "model": "mc_barren_v1",
+      "datasets": [
+        "ds_master_alpha_full_v1",
+        "ds_mining_polygons_v1"
+      ]
+    }
+  },
+  {
+    "seq": 40,
+    "ts": "2026-08-04T19:40:07.162398+00:00",
+    "op": "rule_split",
+    "args": {
+      "parent": "greenery",
+      "rule": {
+        "clauses": [
+          {
+            "when": "ndvi_annual>0.3&&slope<5",
+            "class": "dense_veg"
+          }
+        ],
+        "default": "sparse_veg"
+      },
+      "classes": [
+        "dense_veg",
+        "sparse_veg"
+      ]
+    },
+    "result": {
+      "model": "mc_greenery_rule_v1"
+    }
+  },
+  {
+    "seq": 41,
+    "ts": "2026-08-04T19:41:13.050880+00:00",
+    "op": "merge",
+    "args": {
+      "target": "my_bros",
+      "name": "my_bros",
+      "sources": [
+        "sparse_veg",
+        "built_up"
+      ]
+    },
+    "result": {
+      "model": "mc_merge_my_bros_v1"
+    }
+  },
+  {
+    "seq": 42,
+    "ts": "2026-08-04T19:41:30.021899+00:00",
+    "op": "merge_remove",
+    "args": {
+      "target": "my_bros"
+    },
+    "result": null
+  },
+  {
+    "seq": 43,
+    "ts": "2026-08-04T19:41:45.547028+00:00",
+    "op": "merge",
+    "args": {
+      "target": "my_bros",
+      "name": "my_bros",
+      "sources": [
+        "sparse_veg",
+        "built_up"
+      ]
+    },
+    "result": {
+      "model": "mc_merge_my_bros_v1"
+    }
+  },
+  {
+    "seq": 44,
+    "ts": "2026-08-04T20:10:26.832170+00:00",
+    "op": "reset",
+    "args": {
+      "scheme": "indiasat",
+      "cleared": [
+        "acacia",
+        "barren",
+        "crops",
+        "mining",
+        "non_acacia",
+        "non_tea",
+        "tea",
+        "trees"
+      ]
+    },
+    "result": null
   }
 ]

@@ -9,8 +9,8 @@ lab), every geospatial output should be self-describing: not just *what* it is (
     assets, class legend).
   - **stacd spec**  -> the DAG + `Dataset_Type`/`Algorithm_Type` nodes + `Algorithm_Instance`s
     (each live model/rule/merge with where its artifact lives) + the output `Dataset_Instance`
-    whose `alg_inputs` embeds our hierarchy scheme — literally "the input set used to produce
-    this", as sir framed it.
+    whose `alg_inputs.input_set` embeds our class scheme — the tree, the effective op *sequence*,
+    and the classifier refs — literally "the input set used to produce this", as sir framed it.
 
 Everything here reuses metadata we already keep (hierarchy tree, op-log, zoo cards) — no new
 source of truth. All offline: the legend comes from the joblib class lists, not a live EE run, so
@@ -28,8 +28,9 @@ import infer
 import oplog
 import catalogue
 
-STAC_VERSION = "1.0.0"
+STAC_VERSION = "1.1.0"               # match the lab's items (Susmit's tree-crown STAC is 1.1.0) — #15
 STACD_REF = "https://github.com/SaharshLaud/STACD-Airflow"
+COLLECTION = "corestack_lulc_runs"   # our STAC collection id (the run parent), mirrors their tree_crown_runs
 AE_DATASET = "ds_alphaearth_annual_v1"
 ALG_TYPE_ID = "CoreStack_LULC"      # the one Algorithm_Type every per-node model is an instance of
 
@@ -41,12 +42,17 @@ def _leaf_legend(colors):
     refs = infer.load_refinements()
     leaves = infer._leaf_classes(model, refs)
     s2t = merges.source_to_target()
+    # the model's colour map only covers its own leaf classes; intermediate tree classes (e.g.
+    # greenery) live on the hierarchy node, so fall back there before the grey default.
+    tree_colors = {c: n.get("color") for c, n in hierarchy.load().items() if n.get("color")}
     display = []
     for c in leaves:                       # fold merge sources into their target, in order
         nc = s2t.get(c, c)
+        if nc == "other":                  # junk catch-all, dropped from the base model — keep it out
+            continue                       # of a legend we hand to another lab
         if nc not in display:
             display.append(nc)
-    return [{"code": i, "class": c, "color": colors.get(c, "#999999")}
+    return [{"code": i, "class": c, "color": colors.get(c) or tree_colors.get(c) or "#999999"}
             for i, c in enumerate(display)]
 
 
@@ -108,6 +114,29 @@ def _input_datasets(resolvers):
     return sorted(dsets)
 
 
+def _effective_ops(ops):
+    """Trim the raw op-log down to the *sequence that actually produced the current output* (#14).
+
+    The full log is an audit trail — it keeps every click, including dead ends (a `reset` reseeds the
+    tree from scratch, a `merge_remove` undoes an earlier merge). STACD wants the input set, not the
+    history, so we:
+      - drop everything up to and including the last `reset` (nothing before it survives into the tree);
+      - drop `merge_remove` ops and any `merge` whose target isn't a live merge anymore.
+    The current active merges (`merges.load`) are the ground truth for what stuck."""
+    last_reset = max((i for i, o in enumerate(ops) if o.get("op") == "reset"), default=-1)
+    seq = ops[last_reset + 1:]
+    active = {r["target"] for r in merges.load()}
+    out = []
+    for o in seq:
+        op = o.get("op")
+        if op == "merge_remove":
+            continue                                    # an undo, not part of the forward recipe
+        if op == "merge" and o.get("args", {}).get("target") not in active:
+            continue                                    # this merge was later removed
+        out.append(o)
+    return out
+
+
 def build_stack_item(bbox, year, base_scheme=None, archive=False):
     """The stack-spec: a STAC Item / Dataset_Instance describing the LULC raster over `bbox`.
 
@@ -119,19 +148,30 @@ def build_stack_item(bbox, year, base_scheme=None, archive=False):
     base_scheme = base_scheme or infer.active_base().get("scheme", "indiasat")
     geom = {"type": "Polygon", "coordinates": [[[w, s], [e, s], [e, n], [w, n], [w, s]]]}
     q = f"west={w}&south={s}&east={e}&north={n}"
+    item_id = f"lulc_{w:.4f}_{s:.4f}_{e:.4f}_{n:.4f}_{year}"
+    dt = f"{year}-01-01T00:00:00Z"
     return {
         "stac_version": STAC_VERSION,
         "stac_extensions": [STACD_REF],
         "type": "Feature",
-        "id": f"lulc_{w:.4f}_{s:.4f}_{e:.4f}_{n:.4f}_{year}",
+        "id": item_id,
+        "collection": COLLECTION,                          # #15: their items carry a collection; ours now too
         "bbox": [w, s, e, n],
         "geometry": geom,
         "properties": {
-            "datetime": f"{year}-01-01T00:00:00Z",
+            # a temporal *range* alongside the point datetime, matching the lab's start/end fields (#15)
+            "datetime": dt,
+            "start_datetime": dt,
+            "end_datetime": f"{year}-12-31T23:59:59Z",
             "title": f"Core Stack LULC {year}",
             "description": "10 m land-use / land-cover, Alpha Earth linear models composited over a "
                            "user-grown class hierarchy (with any rule splits + merges).",
+            "keywords": ["lulc", "land-cover", "alpha-earth", "india", "10m"],
             "base_scheme": base_scheme,
+            # our run configuration, the analogue of their `input_parameters` (#15)
+            "input_parameters": {"region": [w, s, e, n], "year": year, "base_scheme": base_scheme},
+            "min_longitude": w, "min_latitude": s, "max_longitude": e, "max_latitude": n,
+            "center_longitude": (w + e) / 2, "center_latitude": (s + n) / 2,
             # #14 wk10: a user-set archive/sharable signal. Most runs are test runs; only the ones
             # flagged here are meant to be retained. The data-management service would use this to
             # clean up unflagged (test) STAC items later — sir's "checkbox to archive". Emit-only for
@@ -145,7 +185,14 @@ def build_stack_item(bbox, year, base_scheme=None, archive=False):
             "tiles": {"href": f"/api/classify?{q}&year={year}", "type": "application/json",
                       "roles": ["visual"], "title": "XYZ tile endpoint"},
         },
-        "links": [],
+        # real STAC catalog links (self / root / collection), matching their item — was an empty list (#15)
+        "links": [
+            {"rel": "self", "href": f"/api/stacd?{q}&year={year}", "type": "application/json"},
+            {"rel": "root", "href": "catalog.json", "type": "application/json",
+             "title": "Core Stack LULC catalog"},
+            {"rel": "collection", "href": "collection.json", "type": "application/json", "title": COLLECTION},
+            {"rel": "parent", "href": "collection.json", "type": "application/json", "title": COLLECTION},
+        ],
     }
 
 
@@ -160,12 +207,14 @@ def build_stacd(bbox, year, since=0, archive=False):
     stack = build_stack_item(bbox, year, archive=archive)
     tree = hierarchy.load()
 
-    # the input set: exactly what the export ships — tree + the ordered ops + artifact pointers.
+    # the input set: the tree + the effective op *sequence* (not the raw click history, #14) + artifact
+    # pointers. `since` scopes to the current session first; `_effective_ops` then strips dead ends.
     classifier_refs = {cls: {"artifact": f"data/refine/{n['classifier']}.joblib",
                              "card": f"mc_{n['classifier']}_v1"}
                        for cls, n in tree.items() if n.get("classifier")}
+    session_ops = [op for op in oplog.load() if op.get("seq", 0) > since]
     input_set = {"hierarchy": tree,
-                 "op_log": [op for op in oplog.load() if op.get("seq", 0) > since],
+                 "op_sequence": _effective_ops(session_ops),
                  "classifier_refs": classifier_refs}
 
     dataset_types = ([{"id": AE_DATASET, "name": "Alpha Earth (annual embedding)"}]
@@ -192,7 +241,7 @@ def build_stacd(bbox, year, since=0, archive=False):
         "alg_inputs": {
             "params": {"region": list(bbox), "year": year},
             "input_datasets": input_dsets,
-            "hierarchy": input_set,                    # <- "the input set used to produce this"
+            "input_set": input_set,                    # <- "the input set used to produce this"
         },
     }
 
@@ -220,7 +269,8 @@ if __name__ == "__main__":
     assert doc["dag"]["id"] and doc["algorithm_instances"]
     assert all(a["id"] and a["type"] == "CoreStack_LULC" for a in doc["algorithm_instances"])
     assert doc["dataset_instances"][0]["alg_name"] in {a["id"] for a in doc["algorithm_instances"]}
-    assert doc["dataset_instances"][0]["alg_inputs"]["hierarchy"]["hierarchy"]
+    assert doc["dataset_instances"][0]["alg_inputs"]["input_set"]["hierarchy"]
+    assert "op_sequence" in doc["dataset_instances"][0]["alg_inputs"]["input_set"]
     print("stack classes:", [c["class"] for c in item["properties"]["classes"]])
     print("algorithm instances:", [a["id"] for a in doc["algorithm_instances"]])
     print("input datasets:", doc["algorithm_types"][0]["input_datasets"])

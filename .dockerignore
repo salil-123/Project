@@ -1,0 +1,71 @@
+# Keep the build context small + the image lean + secrets out. Only src/, config.py, schema/,
+# README.md and the *small* runtime files under data/ should reach the image (see the COPYs in
+# Dockerfile). Everything below is either secret, regenerable, dev-only, or huge.
+
+# --- secrets / local config ---
+.env
+.claude/
+.venv/
+.git/
+.cph/
+
+# --- python caches ---
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# --- dev notes, slides, papers, notebooks, reference repos (not the serving app) ---
+week2/
+week3/
+week4/
+week5/
+week6/
+week7/
+week8/
+week9/
+week10/
+week11/
+week12/
+docs/
+test_data/
+cod892_biomass/
+floodMappingPipelines/
+global_0.1_degree_representation/
+global_0.1_degree_tiff_all/
+*.pdf
+*.ipynb
+*.png
+*.aux
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+master_document.md
+week*_instructions.txt
+entire_test.txt
+"3_store_embeddings_run_lulcv4 (temporal multi year sampling).py"
+tessera_fast.py
+
+# --- heavy / regenerable data (the server never loads these) ---
+# big embedding tables + sampling caches — pulled from Earth Engine on demand
+data/*.csv
+!data/worldcover_train.csv
+!data/water_extra.csv
+data/refine/*.csv
+data/refine/biomass_*.joblib
+data/refine/archive/
+data/examples/archive/
+data/catalogue/artifacts/
+data/raw_polygons/
+data/inputs/
+data/seasonal_water_ground_truth_polygons/
+data/selected_polygons.geojson
+data/hierarchy.demo_backup.json
+
+# the deploy scripts + plans don't belong in the image
+deploy/
+Dockerfile
+.dockerignore
+docker-compose.yml

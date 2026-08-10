@@ -6,30 +6,21 @@
     "color": null,
     "classifier": null,
     "children": [
-      "greenery",
-      "water",
+      "bare",
       "built_up",
-      "barren"
+      "cropland",
+      "grassland",
+      "shrubland",
+      "tree",
+      "water"
     ],
     "source": null
   },
-  "greenery": {
-    "class": "greenery",
-    "name": "Greenery",
+  "bare": {
+    "class": "bare",
+    "name": "Bare / sparse",
     "parent": "root",
-    "color": "#2e8b2e",
-    "classifier": "greenery",
-    "children": [
-      "acacia",
-      "non_acacia"
-    ],
-    "source": null
-  },
-  "water": {
-    "class": "water",
-    "name": "Water",
-    "parent": "root",
-    "color": "#1e88e5",
+    "color": "#c2a05a",
     "classifier": null,
     "children": [],
     "source": null
@@ -43,61 +34,49 @@
     "children": [],
     "source": null
   },
-  "barren": {
-    "class": "barren",
-    "name": "Barren",
+  "cropland": {
+    "class": "cropland",
+    "name": "Cropland",
     "parent": "root",
-    "color": "#c2a05a",
-    "classifier": "barren",
-    "children": [
-      "barren_other",
-      "mining"
-    ],
-    "source": null
-  },
-  "acacia": {
-    "class": "acacia",
-    "name": "Acacia",
-    "parent": "greenery",
-    "color": "#6a8f3c",
+    "color": "#f0c14b",
     "classifier": null,
     "children": [],
-    "source": {
-      "type": "examples"
-    }
+    "source": null
   },
-  "non_acacia": {
-    "class": "non_acacia",
-    "name": "Non-acacia",
-    "parent": "greenery",
+  "grassland": {
+    "class": "grassland",
+    "name": "Grassland",
+    "parent": "root",
+    "color": "#a3c585",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "shrubland": {
+    "class": "shrubland",
+    "name": "Shrubland",
+    "parent": "root",
+    "color": "#b8860b",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "tree": {
+    "class": "tree",
+    "name": "Tree cover",
+    "parent": "root",
     "color": "#2e8b2e",
     "classifier": null,
     "children": [],
-    "source": {
-      "type": "examples"
-    }
+    "source": null
   },
-  "barren_other": {
-    "class": "barren_other",
-    "name": "Barren",
-    "parent": "barren",
-    "color": "#c2a05a",
+  "water": {
+    "class": "water",
+    "name": "Water",
+    "parent": "root",
+    "color": "#1e88e5",
     "classifier": null,
     "children": [],
-    "source": {
-      "type": "residual",
-      "of": "barren"
-    }
-  },
-  "mining": {
-    "class": "mining",
-    "name": "Mining",
-    "parent": "barren",
-    "color": "#8e5a3c",
-    "classifier": null,
-    "children": [],
-    "source": {
-      "type": "examples"
-    }
+    "source": null
   }
 }

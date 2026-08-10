@@ -38,8 +38,10 @@ TREECROP_COLORS = {"cropland": "#f0c14b", "tree": "#2e8b2e"}
 FARMSHRUB_COLORS = {"farm": "#f0c14b", "plantation": "#8e5a2e", "scrubland": "#b8a04b"}
 FARMSHRUB_MAP = {1: "farm", 2: "plantation", 3: "scrubland"}   # .py mapping at :1046
 
-SAMPLE_CAP = 5000         # AE points to train the farm/shrub RF on (kept light for interactive tiles)
-SAMPLE_BUFFER_M = 40000   # train on samples within this radius of the AOI, not the whole AEZ
+# Raman's production farm/shrub model trains pan-AEZ (all ground-truth in the agro-ecological zone),
+# not just near the user's box — so we do too (#1 wk11). We cap per class to stay interactive; a
+# balanced cap keeps a rare class (scrubland) from being drowned by farm in a big AEZ.
+FARMSHRUB_CAP_PER_CLASS = 3000
 
 
 # ============================ tree vs crop (SAR) ============================
@@ -167,17 +169,22 @@ def _aez_for(ee, region):
 
 
 def _farmshrub_classified(ee, region, year):
-    """The per-AEZ farm/shrub RF's class image over the region (labels 1/2/3) + its code map."""
+    """The per-AEZ farm/shrub RF's class image over the region (labels 1/2/3) + its code map.
+
+    Trains pan-AEZ to match Raman's production model (#1 wk11): every ground-truth sample in the
+    AOI's agro-ecological zone, not just those near the drawn box. The AEZ is the model's scope, so
+    the user always gets the fully-trained model regardless of how small their box is."""
     regcode = _aez_for(ee, region)
-    buf = region.buffer(SAMPLE_BUFFER_M)
-    near = (ee.FeatureCollection(FARMSHRUB_SAMPLES)
-            .filter(ee.Filter.eq("aez_no", regcode)).filterBounds(buf))
-    if near.size().getInfo() < 100:
-        raise ValueError("no farm/shrub ground truth near this area — it's a rural/agricultural "
-                         "model; try a farmland box (e.g. Punjab, Assam tea belt).")
-    samples = near.randomColumn("r", 42).sort("r").limit(SAMPLE_CAP)
+    aez = ee.FeatureCollection(FARMSHRUB_SAMPLES).filter(ee.Filter.eq("aez_no", regcode))
+    if aez.size().getInfo() < 100:
+        raise ValueError("no farm/shrub ground truth in this agro-ecological zone — it's a rural/"
+                         "agricultural model; try a farmland box (e.g. Punjab, Assam tea belt).")
+    # balanced per-class cap across the whole AEZ (deterministic seed), then merge back
+    parts = [aez.filter(ee.Filter.eq("label", code)).randomColumn("r", 42).sort("r")
+             .limit(FARMSHRUB_CAP_PER_CLASS) for code in FARMSHRUB_MAP]
+    samples = ee.FeatureCollection(parts).flatten()
     ae_col = ee.ImageCollection(AE_COLLECTION).filterDate(f"{year}-01-01", f"{year+1}-01-01")
-    ae_train = ae_col.filterBounds(buf).mosaic()          # covers the training points, not just the AOI
+    ae_train = ae_col.filterBounds(samples.geometry().bounds()).mosaic()   # covers all training points
     training = ae_train.sampleRegions(collection=samples, properties=["label"], scale=10, tileScale=4)
     model = ee.Classifier.smileRandomForest(numberOfTrees=100, seed=42).train(
         features=training, classProperty="label", inputProperties=ae_train.bandNames())

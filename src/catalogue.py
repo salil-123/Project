@@ -262,6 +262,16 @@ def recommend_placement(card):
                 "note": f"Cross-model relabel: applied after inference, over {', '.join(srcs) or 'its sources'}."}
     if card.get("topology") == "base_pooled" or card.get("node") == hierarchy.ROOT:
         return {"apply_after": None, "note": "Base map: the starting point."}
+    # an ee_rf model's `node` is the model id (treecrop/farmshrub), not a hierarchy class, so key the
+    # hint off its suggested parent_class instead. It's a *suggestion* only — the user can attach it to
+    # any node (#5 wk11); we just say where it normally goes.
+    if card.get("topology") == "ee_rf":
+        parent = card.get("parent_class") or "greenery"
+        tree = hierarchy.load()
+        pname = tree[parent]["name"] if parent in tree else parent
+        return {"apply_after": parent, "apply_after_name": pname,
+                "worldcover": _worldcover_for_class(parent),
+                "note": f"Normally refines {pname}, but you can apply it to any node."}
     node = card.get("node")
     tree = hierarchy.load()
     node_name = tree[node]["name"] if node in tree else node
@@ -351,6 +361,50 @@ def card_geometry(card_id, max_features=8):
              for geom in gdf.geometry]
     return {"drawable": True, "total": total, "shown": len(feats),
             "type": "FeatureCollection", "features": feats}
+
+
+def named_regions(card_id, max_points=400):
+    """Name the districts / states a card's polygons fall in (#7 wk11), by intersecting their
+    centroids with FAO GAUL level-2 boundaries in Earth Engine. For a model card this uses its
+    polygon *training* data — i.e. where the model is strongest. Returns
+    {available, states[], districts[]} or {available: False} for a card with no polygon footprint."""
+    card = get_card(card_id)
+    if not card:
+        return {"available": False}
+    paths = _polygon_paths_for(card)
+    if not paths:
+        return {"available": False}
+    import geopandas as gpd
+    cents = []
+    for p in paths:
+        fp = ROOT / p
+        if not fp.exists():
+            continue
+        g = gpd.read_file(fp).to_crs(4326)
+        if "role" in g.columns:
+            g = g[g["role"].fillna("positive") == "positive"]
+        c4326 = g.to_crs(32643).geometry.centroid.to_crs(4326)   # centroid in metric CRS, then back
+        cents += [(float(c.x), float(c.y)) for c in c4326]
+    if not cents:
+        return {"available": False}
+    import random                                    # cap the points fed to EE so the lookup is quick
+    if len(cents) > max_points:
+        random.Random(0).shuffle(cents)
+        cents = cents[:max_points]
+    import config
+    ee = config.ee_init()
+    pts = ee.FeatureCollection([ee.Feature(ee.Geometry.Point(list(c))) for c in cents])
+    gaul = ee.FeatureCollection("FAO/GAUL/2015/level2")   # districts (ADM2) with their state (ADM1)
+    joined = ee.Join.saveFirst(matchKey="g").apply(
+        pts, gaul, ee.Filter.intersects(leftField=".geo", rightField=".geo"))
+    tagged = joined.map(lambda f: f.set("st", ee.Feature(f.get("g")).get("ADM1_NAME"))
+                                   .set("di", ee.Feature(f.get("g")).get("ADM2_NAME")))
+    junk = {"administrative unit not available", "name unknown", "water body", ""}
+    def clean(names):
+        return sorted({n for n in (names or []) if n and n.strip().lower() not in junk})
+    states = clean(tagged.aggregate_array("st").distinct().getInfo())
+    districts = clean(tagged.aggregate_array("di").distinct().getInfo())
+    return {"available": True, "states": states, "districts": districts, "n_points": len(cents)}
 
 
 def _polygon_paths_for(card):
@@ -724,47 +778,6 @@ def mint_water_card(bundle, extent_bbox=None, metrics=None, card_id="mc_water_fo
     return card_id
 
 
-def mint_biomass_card(name, bundle, artifact_path):
-    """Mint the Model Card for a biomass (AGBD) regressor (#3 wk10): a Random Forest *regression* on
-    the same Alpha Earth features the classifiers use (+ slope), trained on GEDI L4A shots. It
-    produces a continuous quantity, not classes, so it carries the `regression` topology and renders
-    on the point grid (no band math)."""
-    extent = bundle.get("extent") or INDIA_BBOX
-    m = bundle.get("metrics") or {}
-    card_id = f"mc_biomass_{name}_v1"
-    write_card({
-        "id": card_id,
-        "name": f"Biomass AGBD ({name}, Alpha Earth + GEDI)",
-        "node": f"biomass_{name}",
-        "parent_class": "greenery",
-        "topology": "regression",
-        "produces": [{"class": "agbd", "quantity": "above-ground biomass",
-                      "units": bundle.get("units", "Mg/ha")}],
-        "training": {"datasets": [], "embedding": {"source": "alphaearth+slope",
-                                                   "dim": bundle.get("n_features", 65)},
-                     "algo": bundle.get("algo", "randomforest"), "target": "agbd (GEDI L4A)"},
-        "inference": {"dataset": None, "embedding": {"source": "alphaearth+slope",
-                                                     "dim": bundle.get("n_features", 65)}},
-        "extent": {"spatial": {"type": "bbox", "value": extent},
-                   "temporal": {"note": "GEDI L4A shots; Alpha Earth year is a run param"}},
-        "metrics": {"r2_spatial": m.get("r2"), "rmse": m.get("rmse"), "mae": m.get("mae"),
-                    "n_test": m.get("n_test"), "note": "spatial (cell-held-out) holdout"},
-        "artifact": {"path": artifact_path, "format": "sklearn-joblib"},
-        "deployment": {"ee_asset": None, "tile_url": None, "expressible_as_bandmath": False},
-        "lineage": {"base_model": None, "derived_from": None},
-        "about": {"description": "Above-ground biomass (AGBD, Mg/ha) regressed from Alpha Earth "
-                                 "embeddings + slope, trained on GEDI L4A footprints.",
-                  "intended_use": "A continuous biomass layer over the same feature space as the LULC "
-                                  "classes — e.g. read biomass inside the greenery/tree class.",
-                  "limitations": "Regression is noisy (GEDI shots vary widely); renders on the point "
-                                 "grid, not crisp tiles; trained per region, not pan-India yet.",
-                  "evidence": ""},
-        "zoo": {"published": False, "valid_region_label": "India", "contributor": ""},
-        "version": 1, "created": _now(),
-    })
-    return card_id
-
-
 def mint_ee_rf_card(card_id, name, node, parent_class, classes, training_asset, feature_kind,
                     extent=None):
     """Mint a Model Card for an EE-native Random Forest ported from IndiaSAT (#13 wk10). Unlike our
@@ -819,20 +832,6 @@ def sync_ee_rf_cards():
             continue
         try:
             mint_ee_rf_card(cid, name, node, parent, classes, asset, kind)
-        except Exception:
-            pass
-
-
-def sync_biomass_cards():
-    """Card any biomass model on disk that isn't carded yet (#3 wk10) — mirrors sync_merge_cards, so
-    a model trained from the CLI still shows up in the zoo at startup."""
-    import infer
-    for name, path in infer.biomass_models().items():
-        cid = f"mc_biomass_{name}_v1"
-        if get_card(cid):
-            continue
-        try:
-            mint_biomass_card(name, joblib.load(path), path)
         except Exception:
             pass
 

@@ -403,7 +403,7 @@ Alpha-Earth (#7) is the render path biomass (#3) rides; the benchmark regen serv
 | 4 | Mining segmentation | Pragmatic, framework-consistent **segmentation**: vectorize the existing pixel `mining` prediction into cleaned polygon **objects** in EE (`focalMode` de-speckle + `reduceToVectors` + min-area filter), with per-segment area. Not a learned net (that stays the reserved object-detection slot). | `infer.segment_class`, `GET /api/segment`, `config.SEGMENT_MIN_AREA_HA`, `static/*` (⛏ Segment mining + GeoJSON download) |
 | 6 | Estimate + background notification | `/api/estimate` was correct but unused, and runs are synchronous. Wired the estimate into the retrain **work toast** with a live **elapsed-vs-expected timer** (`fetchEstimate` + `startWorkTimer`); regenerated the benchmark profile so RF/XGBoost estimates are real. Accuracy: within ~2× of a timed run (sampling-dominated). | `static/app.js`, `scripts/benchmark_training.py`, `week10/notes/estimate_check.md` |
 | 8 | Acacia spatial **and** temporal | Crowns now keep their source region (`area`), threaded through `build_training_frame`. `acacia_robustness.py` reports temporal-only / spatial-only (hold out Sanjay-Van strip SV_S4) / **combined region×year** holdout + a per-eval-year aggregate to catch fluke years. | `prep_acacia_examples.py`, `examples.build_training_frame`, `week10/acacia_robustness.py` |
-| 1 | STACD proper? | Audited `stacd.py` against the paper's five classes. Fixed the two real deviations (Algorithm_Instance now has a unique `id`; the output's `alg_name` references an **Instance**, not a Type). Documented the intentional extension (`alg_inputs.hierarchy` = the scheme as the input set) and the metadata-vs-Airflow-runtime gap in a shareable audit. | `src/stacd.py`, `week10/notes/stacd_audit.md` |
+| 1 | STACD proper? | Audited `stacd.py` against the paper's five classes. Fixed the two real deviations (Algorithm_Instance now has a unique `id`; the output's `alg_name` references an **Instance**, not a Type). Documented the intentional extension (`alg_inputs.input_set` = the scheme as the input set) and the metadata-vs-Airflow-runtime gap in a shareable audit. | `src/stacd.py`, `week10/notes/stacd_audit.md` |
 
 **Verified live (EE + TestClient):** RF greenery split is dropped from the tile path (no crash) and
 applied on the point grid; XGBoost/RF appear in `model_families` per source; `/api/biomass` returns a
@@ -471,3 +471,70 @@ flag round-trips; app boots at `?v=19` with every new route registered.
 1, 3, 4, 5, 7, 8, 11, 13 with the STACD implementation explained) · `week10/slide_explainer.md`
 (foundations + slide-by-slide + 14 Q&A) · `week10/demo.md` (hands-on click-through) ·
 `week10/notes/{stacd_audit,estimate_check,acacia_robustness,water_robustness,dense_sparse_vs_canopy,tessera_vs_ae,stacd_archiving}.md`.
+
+---
+
+## 10. Week 11 — review fixes: sampling parity, any-node models, biomass split-out, pan-India eval
+
+Source: `week11_instructions.txt` (sir's review, 14 points). This block delivers the **STACD send-ready
+fixes** plus **#1, #5, #7, #9, #10**. Full log: `week11/plan.md`; approved plan:
+`(internal planning notes)`.
+
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 14 + STACD | Op-log naming + send-ready spec | The STACD output embeds the input set at `alg_inputs.input_set` (renamed from the confusing `alg_inputs.hierarchy.hierarchy`), and the op-log becomes `op_sequence` — the **effective** sequence, not the raw click log: everything up to the last `reset` and any undone `merge` are dropped (`_effective_ops`). Legend drops the junk `other` class and paints greenery green (tree-color fallback). Now clean to mail Susmit/Anunay. | `src/stacd.py`, `week10/notes/stacd_audit.md` |
+| 7 | Biomass isn't LULC | **Decoupled** the GEDI biomass regressor from the LULC app entirely — removed `/api/biomass`, the 🌲 overlay, the `regression` topology + zoo card + startup sync, and cut `train_biomass.py`'s card mint. Biomass stays a standalone mini-project (`scripts/*`, `cod892_biomass/`). Shared `_grid`/`_sample_alpha` (RF-on-AE #7 path) kept. | `backend.py`, `infer.py`, `catalogue.py`, `schema`, `static/*`, `scripts/train_biomass.py` |
+| 1 | Sampling parity with Raman | Farm/shrub trained on **AEZ ∩ 40 km of the box** — a regression vs the pan-AEZ production model. Now trains **pan-AEZ** (drop the buffer, balanced per-class cap, deterministic seed), so the user gets the fully-trained model regardless of box size. Treecrop was already pan-India. Answered "why not stored/local": EE-native `smileRandomForest` runs server-side, no joblib to pickle; retrain-on-the-fly from a fixed pan-AEZ set is faithful + deterministic. | `src/ee_rf.py`, `week11/notes/eerf_sampling.md` |
+| 5 | Attach a model to **any** node | The two IndiaSAT EE-RF models were hard-wired to refine greenery. Now attachable to **any node** with a *suggested* default: `recommend_placement` gets an `ee_rf` branch ("normally refines greenery, but any node"), the UI applies to the selected class, and a name-collision guard returns a clean 400. Verified live: treecrop composited into **barren** paints cropland/tree there. The compositing machinery already generalized (a rule-split child stays a leaf; `_apply_ee_rf` scans any `ee_rf`-marked node). | `catalogue.py`, `backend.py`, `static/app.js` |
+| 9 | Mining pixel+vectorize good enough? | Pan-India experiment: `segment_class` polygons vs GT mining polygons, greedy IoU match. **precision 0.04 / recall 0.16 / F1 0.07 / mean IoU 0.52** (25 sites) — over-fragments and over-detects, so **not good enough for object-level delineation**; a learned segmentation route is warranted. The pixel model stays a good detector/screen. Numbers on `mc_barren_v1`. | `week11/mining_eval.py`, `week11/notes/mining_eval.md` |
+| 10 | Water validation + truth | Corrected the premise: the water model is **S1+S2**, not S1-only (so road/water confusion is already mitigated). Small-vs-large body eval on the deployed model: **large F1 0.99, small F1 0.75 (recall 0.67 — the real gap)**, dryland false-positive **2.5 %** (not spurious). Points to sir's two-classifier design for small/seasonal water. Numbers on `mc_water_fortnight_augmented_v1`. | `week11/water_eval.py`, `week11/notes/water_eval.md` |
+
+**Verified:** app boots with no biomass route (404), `stacd.py` smoke passes with `input_set`/`op_sequence`,
+`ee_rf.py` offline checks pass; live EE — farm/shrub trains pan-AEZ, treecrop composited on **barren**
+renders cropland/tree, mining eval over 25 GT sites, water eval over 67 water bodies with card writes.
+
+### Block 2 — track B (high-quality classifiers) + the spurious-water filter: #11, #12, #13
+Plan: `(internal planning notes)` (11/12/13 working plan:
+`week11/notes/plan_11_12_13.md`). Track B = building classifiers that work anywhere in India, evaluated
+as **pan-India experiments outside the framework**; #13 also ships a real feature. Every eval reports
+precision + recall + F1.
+
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 13 | Road/spurious water: a filter | **Code-level correction (not a UI feature):** the spurious-water threshold holds a pixel as water only if it read water in ≥ N fortnights — `infer.annual_water_mask`, threshold `config.WATER_MIN_FORTNIGHTS` (=2), to de-spurious the annual water layer when the fortnight model feeds the LULC (deferred water step). No endpoint/button. **Eval** on sir's EE GT (all readable): `GTSeasonal`/`GTPerennial` + `GT_BINARY_LATEST`. A **2-fortnight hold cuts spurious water 15%→2%** (precision 0.80→0.96); cost lands on small/seasonal recall (small-water 0.30→0.11), confirming the two-classifier need. | `src/infer.py`, `config.py`, `week11/water_gt_eval.py`, `week11/notes/water_gt_eval.md` |
+| 12 | Pan-India mining classifier accuracy | Track-B experiment: mining vs not with **buffer-ring hard negatives** (`buffer(d)∖all_mines` = tentative barren around mines) + generic negatives, whole-polygon holdout. Linear = F1 0.55 (P 0.45, R 0.70 — weak precision, barren confusion). **RF + tuned threshold lifts it to F1 0.59, precision 0.45→0.61** (recall give-back). Ring width ~irrelevant. Complements #9 (object-level 0.07). On `mc_barren_v1`. | `week11/mining_pan_india.py`, `week11/notes/mining_pan_india.md` |
+| 11 | Acacia: counts, filter, **improve** | Crowns: **acacia 336, non_acacia 576**, all single trees (median 27 m², sub-pixel on 10 m AE → mixed-pixel = why it's near-random). A *gentle* < 15 m² filter keeps **296/498** (not the 8 a 100 m² cutoff leaves). Real levers (week9 recipe): **RF + multi-year lifts F1 0.68→0.71, acc 0.72→0.78, precision +0.10**. Ceiling is the mixed pixel; the true fix is higher-res features (Tessera / drone-RGB **DINO**, external). P/R/F1 throughout. | `week11/acacia_eval.py`, `week11/notes/acacia_eval.md` |
+
+**Verified (live EE):** the annual-water correction thresholds the fortnight count (`annual_water_mask`);
+water GT eval over 317 GT polygons writes the threshold sweep to the card; mining pan-India over 50
+polygons (linear vs RF+threshold); acacia counts + gentle filter + RF/multi-year. App boots at `?v=30`.
+
+### STACD cross-verification (#15)
+Susmit replied to the spec mail (`week11/susmit_stac.json` = their tree-crown item): some parameters
+differ, unsure which are optional/mandatory, asked to cross-check Saharsh's Airflow format. Field-by-field
+comparison (`week11/notes/stacd_crosscheck.md`): the mandatory STAC fields already matched; the gaps were
+optional-but-common metadata, now adopted in `build_stack_item` — **STAC 1.1.0**, a `collection`, real
+`links` (self/root/collection/parent), a `start/end_datetime` range, `keywords`, `input_parameters`, and
+bbox-corner fields. Their table-extension/drone-model fields don't apply (our output is a raster with a
+class legend). Two items still need Saharsh: whether `stac_extensions` must be a validatable schema URL
+(ours is the repo), and the collection/catalog layout the Airflow ingester expects; then re-send. (Note: `/api/session/reset` archives the
+example canvas — the acacia/mining/barren example files were restored after a test triggered it.)
+
+### Deferred / open (week 11)
+- Water **step 2** (the lenient level-1 + within-body two-classifier for small/seasonal water) — sir's
+  staging; #10 and #13 both quantified the small-body recall gap that motivates it.
+- A learned mining segmentation net (#9 says it's justified; #12 shows the pixel classifier is a screen,
+  not a delineator) — not built.
+- Acacia dataset expansion via drone-RGB DINO embeddings (#11) — external (Gaurav's data).
+- Remaining review points (#2 store the model / timing, #3 mail STACD) — external/next.
+
+### Deliverables (week 11)
+`week11/slides_week11.{tex,pdf}` (Beamer Madrid, 9 content frames, same style as prior weeks, no bold;
+covers the STACD cross-check #15, pan-AEZ, any-node, mining, water + spurious-water correction, acacia — biomass
+removal #7 and the STACD op-log tidy #14 were kept off the deck) · `week11/slide_explainer.md` (foundations +
+slide-by-slide + the **#4/#6/#8 answers** — which sensors each lab model uses, why the RF differs /
+coarse grid vs crisp tile, and the existing tile path — plus Q&A) · `week11/manual_test_guide.md` +
+`week11/demo.md` (hands-on click-through of every feature + the pan-India experiments) ·
+`week11/notes/{eerf_sampling,mining_eval,water_eval,water_gt_eval,mining_pan_india,acacia_eval,stacd_crosscheck,deployment_test_plan,plan_11_12_13}.md`.
+**EE GT access:** all three assets sir named are readable from our project — `GTSeasonal` (16),
+`GTPerennial` (13), `GT_BINARY_LATEST` (288); used live in `water_gt_eval.py`.

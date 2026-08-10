@@ -36,10 +36,27 @@ def tessera_tiles(bbox):
     return max(1, cols) * max(1, rows)
 
 
+def valid_bbox(bbox):
+    """Is the box a real, non-degenerate rectangle? A user can POST raw west/south/east/north, so
+    an inverted (west>east) or zero-area (west==east) box can slip in and reach Earth Engine as a
+    null-dimension geometry — which errors opaquely or paints nonsense. Catch it here, where every
+    render path already gates. Returns (ok, reason)."""
+    w, s, e, n = bbox
+    if not (-180.0 <= w <= 180.0 and -180.0 <= e <= 180.0 and -90.0 <= s <= 90.0 and -90.0 <= n <= 90.0):
+        return False, "Coordinates are out of range (longitude -180..180, latitude -90..90)."
+    if e <= w or n <= s:
+        return False, ("This box is degenerate: west must be below east and south below north "
+                       "(you may have drawn it backwards, or as a line/point).")
+    return True, ""
+
+
 def check(bbox, path="tiles"):
     """Is this bbox within the cap for the given render `path` (tiles | geotiff | tessera)?
 
     Returns {ok, area, cap, reason}. `reason` is a ready-to-show message when ok is False."""
+    ok_box, why = valid_bbox(bbox)
+    if not ok_box:
+        return {"ok": False, "area": round(area_km2(bbox), 1), "cap": None, "reason": why}
     area = area_km2(bbox)
     if path == "tessera":
         tiles = tessera_tiles(bbox)
@@ -65,4 +82,8 @@ if __name__ == "__main__":
     print("india tiles:", check(india), "geotiff:", check(india, "geotiff"))
     assert check(small)["ok"] and check(small, "geotiff")["ok"]
     assert not check(india)["ok"] and not check(india, "geotiff")["ok"]
+    # degenerate / inverted boxes must be refused before they reach EE
+    for bad in [(77.2, 28.5, 77.2, 28.56), (77.16, 28.55, 77.2, 28.55),
+                (77.205, 28.52, 77.165, 28.56), (77.165, 28.56, 77.205, 28.52)]:
+        assert not check(bad)["ok"], f"BUG: accepted degenerate box {bad}"
     print("aoi.py smoke test OK")

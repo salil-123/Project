@@ -1,0 +1,295 @@
+{
+  "kind": "corestack-lulc-project",
+  "version": 1,
+  "created": "2026-08-09T12:04:18.847Z",
+  "aoi": [
+    77.165,
+    28.52,
+    77.205,
+    28.56
+  ],
+  "year": 2024,
+  "base_scheme": "indiasat",
+  "hierarchy": {
+    "root": {
+      "class": "root",
+      "name": "All land",
+      "parent": null,
+      "color": null,
+      "classifier": null,
+      "children": [
+        "greenery",
+        "water",
+        "built_up",
+        "barren"
+      ],
+      "source": null
+    },
+    "greenery": {
+      "class": "greenery",
+      "name": "Greenery",
+      "parent": "root",
+      "color": "#2e8b2e",
+      "classifier": null,
+      "children": [
+        "dense_veg",
+        "sparse_veg"
+      ],
+      "source": null,
+      "rule": {
+        "clauses": [
+          {
+            "when": "ndvi_annual > 0.3",
+            "class": "dense_veg"
+          }
+        ],
+        "default": "sparse_veg"
+      }
+    },
+    "water": {
+      "class": "water",
+      "name": "Water",
+      "parent": "root",
+      "color": "#1e88e5",
+      "classifier": null,
+      "children": [
+        "open_water",
+        "other_water"
+      ],
+      "source": null,
+      "rule": {
+        "clauses": [
+          {
+            "when": "ndwi > 0",
+            "class": "open_water"
+          }
+        ],
+        "default": "other_water"
+      }
+    },
+    "built_up": {
+      "class": "built_up",
+      "name": "Built-up",
+      "parent": "root",
+      "color": "#d7301f",
+      "classifier": null,
+      "children": [
+        "residential",
+        "commercial"
+      ],
+      "source": null
+    },
+    "barren": {
+      "class": "barren",
+      "name": "Barren",
+      "parent": "root",
+      "color": "#c2a05a",
+      "classifier": "barren",
+      "children": [
+        "barren_other",
+        "mining"
+      ],
+      "source": null
+    },
+    "dense_veg": {
+      "class": "dense_veg",
+      "name": "Dense Veg",
+      "parent": "greenery",
+      "color": "#8e44ad",
+      "classifier": null,
+      "children": [],
+      "source": null
+    },
+    "sparse_veg": {
+      "class": "sparse_veg",
+      "name": "Sparse Veg",
+      "parent": "greenery",
+      "color": "#16a085",
+      "classifier": null,
+      "children": [],
+      "source": null
+    },
+    "open_water": {
+      "class": "open_water",
+      "name": "Open Water",
+      "parent": "water",
+      "color": "#e67e22",
+      "classifier": null,
+      "children": [],
+      "source": null
+    },
+    "other_water": {
+      "class": "other_water",
+      "name": "Other Water",
+      "parent": "water",
+      "color": "#2c3e50",
+      "classifier": null,
+      "children": [],
+      "source": null
+    },
+    "barren_other": {
+      "class": "barren_other",
+      "name": "Barren",
+      "parent": "barren",
+      "color": "#c2a05a",
+      "classifier": null,
+      "children": [],
+      "source": {
+        "type": "residual",
+        "of": "barren"
+      }
+    },
+    "mining": {
+      "class": "mining",
+      "name": "mining",
+      "parent": "barren",
+      "color": "#c0392b",
+      "classifier": null,
+      "children": [],
+      "source": {
+        "type": "examples"
+      }
+    },
+    "residential": {
+      "class": "residential",
+      "name": "residential",
+      "parent": "built_up",
+      "color": "#27ae60",
+      "classifier": null,
+      "children": [],
+      "source": {
+        "type": "examples"
+      }
+    },
+    "commercial": {
+      "class": "commercial",
+      "name": "commercial",
+      "parent": "built_up",
+      "color": "#2980b9",
+      "classifier": null,
+      "children": [],
+      "source": {
+        "type": "examples"
+      }
+    }
+  },
+  "sequence": [
+    {
+      "seq": 45,
+      "ts": "2026-08-09T11:52:23.413816+00:00",
+      "op": "rule_split",
+      "args": {
+        "parent": "greenery",
+        "rule": {
+          "clauses": [
+            {
+              "when": "ndvi_annual > 0.3",
+              "class": "dense_veg"
+            }
+          ],
+          "default": "sparse_veg"
+        },
+        "classes": [
+          "dense_veg",
+          "sparse_veg"
+        ]
+      },
+      "result": {
+        "model": "mc_greenery_rule_v1"
+      }
+    },
+    {
+      "seq": 46,
+      "ts": "2026-08-09T11:53:05.171868+00:00",
+      "op": "rule_split",
+      "args": {
+        "parent": "water",
+        "rule": {
+          "clauses": [
+            {
+              "when": "ndwi > 0",
+              "class": "open_water"
+            }
+          ],
+          "default": "other_water"
+        },
+        "classes": [
+          "open_water",
+          "other_water"
+        ]
+      },
+      "result": {
+        "model": "mc_water_rule_v1"
+      }
+    },
+    {
+      "seq": 47,
+      "ts": "2026-08-09T11:53:46.506929+00:00",
+      "op": "add",
+      "args": {
+        "parent": "barren",
+        "name": "mining",
+        "color": null
+      },
+      "result": null
+    },
+    {
+      "seq": 48,
+      "ts": "2026-08-09T12:00:40.520453+00:00",
+      "op": "retrain",
+      "args": {
+        "node": "barren",
+        "balance": "balanced",
+        "years": null,
+        "algo": "linearsvc",
+        "embedding": "ae"
+      },
+      "result": {
+        "model": "mc_barren_v1",
+        "datasets": [
+          "ds_master_alpha_full_v1",
+          "ds_mining_polygons_v1"
+        ]
+      }
+    },
+    {
+      "seq": 49,
+      "ts": "2026-08-09T12:01:57.264916+00:00",
+      "op": "split",
+      "args": {
+        "parent": "built_up",
+        "children": [
+          {
+            "name": "residential"
+          },
+          {
+            "name": "commercial"
+          }
+        ]
+      },
+      "result": null
+    },
+    {
+      "seq": 50,
+      "ts": "2026-08-09T12:02:34.705056+00:00",
+      "op": "merge",
+      "args": {
+        "target": "disturbed",
+        "name": "disturbed",
+        "sources": [
+          "dense_veg",
+          "mining"
+        ]
+      },
+      "result": {
+        "model": "mc_merge_disturbed_v1"
+      }
+    }
+  ],
+  "classifier_refs": {
+    "barren": {
+      "artifact": "data/refine/barren.joblib",
+      "card": "mc_barren_v1"
+    }
+  }
+}

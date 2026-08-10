@@ -20,6 +20,8 @@ Run from the repo root (so data/ paths resolve), needs live Earth Engine:
         --classes greenery water built_up barren
 """
 import argparse
+import sys
+from pathlib import Path
 
 import joblib
 import pandas as pd
@@ -29,13 +31,15 @@ from sklearn.svm import LinearSVC
 from sklearn.model_selection import GroupShuffleSplit
 from sklearn.metrics import accuracy_score
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
+import config
 import examples
 import hierarchy
 import sampling
 
 AE_COLS = [f"ae_{i:03d}" for i in range(64)]
 AE_YEARS = list(range(2017, 2025))            # Alpha Earth annual coverage
-REFINE_DIR = "data/refine"
+REFINE_DIR = config.project_path("data/refine")
 
 
 # ---- two ways to get a labelled, embedded frame for a given year ----

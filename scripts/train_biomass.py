@@ -100,16 +100,8 @@ def main():
                           "n_test": int(len(te)), "n_train": int(len(tr))}}
     joblib.dump(bundle, out)
     print(f"saved {out}")
-
-    # card it in the zoo right away (a CLI train should show up like any other model)
-    try:
-        sys.path.insert(0, str(ROOT / "src"))
-        import catalogue
-        rel = str(out.relative_to(ROOT)).replace("\\", "/") if out.is_relative_to(ROOT) else str(out)
-        cid = catalogue.mint_biomass_card(args.name, bundle, rel)
-        print(f"carded as {cid}")
-    except Exception as e:
-        print(f"(card mint skipped: {e})")
+    # biomass is a separate mini-project now (week11 #7) — it no longer cards itself into the LULC
+    # zoo. The bundle stands on its own; wire it into a dedicated biomass tool if/when that's built.
 
 
 if __name__ == "__main__":

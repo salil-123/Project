@@ -11,16 +11,20 @@ one GeoJSON FeatureCollection per node at data/examples/<node>.geojson.
 """
 import json
 import os
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
 import geopandas as gpd
 import pandas as pd
 from shapely.geometry import shape
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
+import config
 import hierarchy
 import sampling
 
-EXAMPLES_DIR = "data/examples"
+EXAMPLES_DIR = config.project_path("data/examples")  # anchored to root, CWD-independent
 ROLES = ("positive", "negative")
 
 

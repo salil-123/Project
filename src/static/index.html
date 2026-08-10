@@ -7,13 +7,11 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="/style.css?v=24" />
+  <link rel="stylesheet" href="/style.css?v=31" />
 </head>
 <body>
   <aside id="sidebar">
     <h1>Core Stack <span>LULC</span></h1>
-    <p class="sub">Alpha&nbsp;Earth base map, with greenery split into acacia / non-acacia and barren
-      into mining.</p>
 
     <section>
       <label>Area</label>
@@ -26,8 +24,7 @@
         <label>Half-size (deg): <b id="halfval">0.010</b></label>
         <input id="half" type="range" min="0.005" max="0.25" step="0.005" value="0.01">
       </div>
-      <p class="hint" id="aoihint">Draw a box on the map (▭ tool), or pick <b>Custom</b> and click
-        the map to drop a centre — the slider sizes the box live.</p>
+      <p class="hint" id="aoihint">Pick a preset, draw a box (▭), or choose <b>Custom</b> and click the map.</p>
       <p class="hint aoi-size" id="aoiSize"></p>
       <div class="run-row">
         <button id="run" class="primary">Run classification</button>
@@ -37,30 +34,15 @@
         <button id="dlTif" class="ghost" title="Download the classified area as a GeoTIFF">⬇ GeoTIFF</button>
       </div>
       <div class="run-row water-row">
-        <span><label>Water on a fortnight</label>
+        <span><label>Fortnight</label>
           <input id="waterDate" type="date" value="2024-07-14"></span>
         <button id="runWater" class="ghost" title="Water vs non-water on this date, from raw Sentinel-1/2">💧 Map water</button>
         <button id="runWaterFreq" class="ghost" title="How many fortnights each pixel held water across the year">💧× Water frequency</button>
-      </div>
-      <p class="hint">Water uses a separate model on raw Sentinel for the chosen fortnight (5, 7),
-        so it answers which pixels held water on that date, not the annual map above.
-        <b>Water frequency</b> (#11) runs it over the whole year and counts how many fortnights each
-        pixel was water — darker blue = more persistent water.</p>
-      <!-- biomass hidden for now: kept in code + zoo, awaiting how to fold it into the framework (#3) -->
-      <div class="run-row hidden">
-        <button id="runBiomass" class="ghost" title="Above-ground biomass (AGBD) regressed from Alpha Earth + GEDI">🌲 Map biomass</button>
-        <span id="biomassRamp" class="biomass-ramp hidden"></span>
       </div>
       <div class="run-row">
         <button id="runSegment" class="ghost" title="Vectorize the mining class into cleaned polygon segments">⛏ Segment mining</button>
         <button id="dlSegment" class="ghost hidden" title="Download the mining segments as GeoJSON">⬇ GeoJSON</button>
       </div>
-      <p class="hint">Segmentation vectorizes the mining pixels into discrete polygons (#4) — speckle
-        dropped, tiny blobs filtered — so you get mining objects with per-segment area, not confetti.</p>
-      <!-- the IndiaSAT tree/crop + farm/shrub models are pickable from the Model Zoo (Use this model),
-           not standalone buttons — they are models you plug in, like any other card (#13) -->
-      <p class="hint">Base classes and the inference year live in the Model Zoo — open it to pick a
-        starting scheme or change the Alpha Earth year.</p>
       <div id="status" class="status"></div>
     </section>
 
@@ -71,8 +53,7 @@
         <button id="viewHier" class="vtab sel">By hierarchy</button>
         <button id="viewOps" class="vtab">By operations</button>
       </div>
-      <p class="hint">Click any class to select it, then use the <b>panel on the right</b> to mark
-        data or grow it. Selected: <b id="selName">root</b></p>
+      <p class="hint">Click a class to select it, then use the panel on the right. Selected: <b id="selName">root</b></p>
       <div id="tree"></div>
       <!-- the operations / schema view: the sequence that defines the current scheme -->
       <div id="ops" class="hidden"></div>
@@ -81,25 +62,16 @@
 
     <section>
       <h3>💾 Save / resume project</h3>
-      <p class="hint">Save the whole project as one JSON — the class scheme, the sequence of steps
-        that built it, plus the area, year and base classes. Datasets/models are kept as links, not
-        copied. Load it to resume exactly where you left off.</p>
       <button id="exportHier">Download project (JSON)</button>
       <button id="exportStacd" class="ghost" title="STAC Item + DAG provenance for the current output">⬇ Provenance (STACD)</button>
-      <p class="hint">…or resume a saved project (it's checked first; only applied if it's sound)</p>
+      <p class="hint">Resume a saved project:</p>
       <input id="importHier" type="file" accept=".json">
     </section>
 
     <section>
-      <h3>🗂️ Model Zoo</h3>
-      <p class="hint">Trained models + datasets, stored as cards in a git-backed catalogue.
-        <span id="zooBadge" class="badge"></span></p>
+      <h3>🗂️ Model Zoo <span id="zooBadge" class="badge"></span></h3>
       <button id="openZoo" class="primary">Open Model Zoo</button>
     </section>
-
-    <footer>Edit the tree, add example polygons, retrain a node — the 10 m map updates with
-      the new sub-classes. Root-level retrain rebuilds the base map (slow). Trained models land
-      in the Model Zoo as cards you can inspect and publish.</footer>
   </aside>
 
   <main id="map"></main>
@@ -108,12 +80,11 @@
        blocks are always present (ids kept so handlers bind once) but shown/hidden per selection. -->
   <aside id="context">
     <h2 id="ctxHead">Pick a class</h2>
-    <p class="hint" id="ctxWhat">Select a class in the Hierarchy to see what you can do with it.</p>
+    <p class="hint" id="ctxWhat">Select a class in the Hierarchy to begin.</p>
 
     <section id="ctxExamples" class="ctx-block">
       <h3>① Mark example data</h3>
-      <p class="hint">Draw a polygon on the map, pick a role, then add — this is how you teach the
-        model. Positive = "this is <span class="ctxcls">X</span>"; negative = "not it".</p>
+      <p class="hint">Draw a polygon on the map, pick a role, then Add.</p>
       <label>Role</label>
       <select id="role">
         <option value="positive">positive</option>
@@ -127,8 +98,6 @@
 
     <section id="ctxSplit" class="ctx-block">
       <h3>② Split into finer classes</h3>
-      <p class="hint">Divide <span class="ctxcls">X</span> into sub-classes. Bring your own data and
-        train it, or apply a ready model from the zoo.</p>
       <input id="splitNames" type="text" placeholder="e.g. cereal, orchard">
       <button id="doSplit">Create split (mark your own data)</button>
       <button id="splitFromZoo" class="ghost">Use a model from the Zoo</button>
@@ -136,9 +105,6 @@
 
     <section id="ctxRuleSplit" class="ctx-block">
       <h3>②′ Split by rule (no training)</h3>
-      <p class="hint">Split <span class="ctxcls">X</span> with an interpretable threshold on an
-        index — <i>if the rule holds → class A, else → class B</i>. Evaluated live in Earth Engine,
-        so it renders as crisp tiles with no data to mark.</p>
       <label>Index variable</label>
       <select id="ruleVar"></select>
       <p class="hint" id="ruleVarDesc"></p>
@@ -158,8 +124,6 @@
       <input id="ruleFalse" type="text" placeholder="e.g. sparse_veg">
       <details class="advrule">
         <summary>Advanced: raw expression</summary>
-        <p class="hint">Combine indices, e.g. <code>ndvi_annual &gt; 0.3 &amp;&amp; slope &lt; 5</code>.
-          Overrides the picker above when non-empty.</p>
         <input id="ruleExpr" type="text" placeholder="ndvi_annual > 0.3 && slope < 5">
       </details>
       <button id="doRuleSplit">Create rule split</button>
@@ -167,16 +131,13 @@
 
     <section id="ctxAdd" class="ctx-block">
       <h3>③ Add a class</h3>
-      <p class="hint">Add a brand-new class under <span class="ctxcls">X</span>.</p>
       <input id="addName" type="text" placeholder="new class name">
       <button id="doAdd">Add class</button>
     </section>
 
     <section id="ctxMerge" class="ctx-block">
       <h3>④ Merge classes</h3>
-      <p class="hint">Tick two or more leaf classes <b>in the Hierarchy</b> (even from different
-        models), name them, and merge. A relabel layer applied after inference — no retraining.
-        Active merges show in the tree with a ✕ to undo.</p>
+      <p class="hint">Tick two or more leaves in the Hierarchy, name them, then Merge. Undo with ✕ in the tree.</p>
       <label>New class name</label>
       <input id="mergeName" type="text" placeholder="e.g. extractive land">
       <label class="mergecolor">Colour <input id="mergeColor" type="color" value="#8e44ad"></label>
@@ -185,8 +146,6 @@
 
     <section id="ctxRetrain" class="ctx-block">
       <h3>⑤ Retrain this split</h3>
-      <p class="hint">Once <span class="ctxcls">X</span> has children with example data, train the
-        classifier that tells them apart.</p>
       <!-- balancing + multi-year are training-your-own-model options; shown only in that flow (#12) -->
       <div id="retrainAdvanced">
         <label>Algorithm</label>
@@ -196,17 +155,12 @@
           <option value="ridge">Ridge</option>
           <option value="auto">Auto — best model</option>
         </select>
-        <p class="hint">The list depends on your inference data (#1): Alpha Earth is linear only, so
-          the model renders as crisp tiles; Tessera adds Random Forest and other local models.
-          “Auto” bakes off the valid models and keeps the most accurate (#17).</p>
         <div id="embeddingRow" class="hidden">
           <label>Feature embedding</label>
           <select id="embedding">
             <option value="ae">Alpha Earth (64-d, default)</option>
             <option value="tessera">Tessera (128-d)</option>
           </select>
-          <p class="hint">Tessera is available for the 4 requested test sites (#16). A Tessera split is
-            trained + scored + carded, but doesn’t ride the crisp tile map (point-grid only).</p>
         </div>
         <label>Class balance (if a split is skewed)</label>
         <select id="balance">
@@ -216,8 +170,6 @@
         </select>
         <label>Train across years (blank = 2024)</label>
         <input id="trainYears" type="text" placeholder="e.g. 2019, 2021, 2023" />
-        <p class="hint">Pool several Alpha Earth years so the split holds up across years (temporal
-          robustness). Costs more time — one sampling pass per year.</p>
       </div>
       <button id="doRetrain" class="primary">Retrain & apply</button>
       <pre id="metrics" class="metrics"></pre>
@@ -230,8 +182,6 @@
   <div id="base-onboard" class="hidden">
     <div class="onboard-card">
       <h2>Choose your base classes</h2>
-      <p>Pick the starting scheme to build on. You can split, add, and merge from here — and switch
-        later anytime from the Model Zoo.</p>
       <div id="baseOptions"></div>
       <button id="baseSkip" class="ghost">Keep the current scheme</button>
     </div>
@@ -260,6 +210,6 @@
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  <script src="/app.js?v=24"></script>
+  <script src="/app.js?v=33"></script>
 </body>
 </html>

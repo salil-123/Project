@@ -26,7 +26,8 @@ drawnLayer.addTo(map);
 
 // draw tools: rectangle sets the AOI (#3); polygon + marker mark example geometry
 map.addControl(new L.Control.Draw({
-  edit: { featureGroup: drawnLayer },
+  edit: false,   // no edit/delete toolbar (the pen + trash): we never wired a draw:edited handler, so
+                 // reshaping a drawn box did nothing — drop them to declutter. Re-draw to change the AOI.
   draw: { polygon: true, marker: true, rectangle: true, polyline: false,
           circle: false, circlemarker: false },
 }));
@@ -60,7 +61,10 @@ map.on("click", (e) => {
 // the persistent AOI rectangle, redrawn whenever the area changes so it's always visible (#3)
 function drawAoi() {
   const bb = currentBbox();
-  if (!bb) return;
+  // an empty custom lat/lon (NaN) or a zero/inverted box would make Leaflet throw "Invalid LatLng"
+  // here — and since callers run drawAoi() before their try block, that froze the whole UI on the
+  // "working…" toast. Never draw an invalid box; just clear any stale outline and bail.
+  if (!bboxValid(bb)) { if (aoiLayer) { map.removeLayer(aoiLayer); aoiLayer = null; } return; }
   const [w, s, e, n] = bb;
   if (aoiLayer) map.removeLayer(aoiLayer);
   aoiLayer = L.rectangle([[s, w], [n, e]],
@@ -173,10 +177,40 @@ function bboxAreaKm2(bb) {
   return (widthM * heightM) / 1e6;
 }
 
+// a finite, correctly-ordered, in-range box. currentBbox() can hand back NaN (empty custom lat/lon)
+// or a zero/inverted box (half-size 0, a backwards drag); passing that to Leaflet or the server is a
+// silent freeze / opaque error. Mirrors src/aoi.valid_bbox so client and server agree.
+function bboxValid(bb) {
+  if (!bb) return false;
+  const [w, s, e, n] = bb;
+  if (![w, s, e, n].every(Number.isFinite)) return false;
+  if (w < -180 || e > 180 || s < -90 || n > 90) return false;
+  return e > w && n > s;
+}
+
+// use at the top of every run handler: returns the box, or null after showing a friendly error, so a
+// bad AOI never gets as far as setting the "working…" state or firing a request.
+function requireValidBbox() {
+  const bb = currentBbox();
+  if (!bboxValid(bb)) {
+    setStatus("Set a valid area first: enter a lat/lon and size, or draw a box on the map.", "err");
+    return null;
+  }
+  return bb;
+}
+
 const getJSON = async (url) => (await fetch(url)).json();
 const postJSON = async (url, body) => (await fetch(url,
   { method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body) }));
+
+// tolerant JSON read: an uncaught server 500 returns a plain-text body ("Internal Server Error"),
+// and r.json() throws on that — which, in a handler without a try/catch, would strand the "working…"
+// toast forever. Never throw: fall back to a detail we can show.
+async function readJson(r) {
+  try { return await r.json(); }
+  catch { return { detail: `server error (HTTP ${r.status})` }; }
+}
 
 // ---------------- tree ----------------
 // the source->merge map, so a leaf can show which merge it's been relabelled into (#1)
@@ -574,7 +608,8 @@ function bumpSession() {
 
 // ---------------- classify ----------------
 async function runClassify() {
-  const [w, s, e, n] = currentBbox();
+  const bb = requireValidBbox(); if (!bb) return;
+  const [w, s, e, n] = bb;
   // one model now (#2): Alpha Earth served server-side as 10 m EE tiles, at the year set in the zoo.
   const year = inferYear;
   setStatus("Classifying at 10 m…", "work");
@@ -613,7 +648,8 @@ $("run").onclick = runClassify;
 // ---------------- water on a fortnight (5, 7) ----------------
 // separate from the annual LULC: raw Sentinel classified for one date, rendered as EE tiles.
 async function runWater() {
-  const [w, s, e, n] = currentBbox();
+  const bb = requireValidBbox(); if (!bb) return;
+  const [w, s, e, n] = bb;
   const date = $("waterDate").value;
   if (!date) { setStatus("Pick a date for the water map.", "err"); return; }
   setStatus(`Mapping water for ${date}…`, "work");
@@ -637,7 +673,8 @@ $("runWater").onclick = runWater;
 // ---------------- water frequency over a year (#11 wk10) ----------------
 // counts how many fortnights each pixel held water; served as a blue-ramp tile layer.
 async function runWaterFreq() {
-  const [w, s, e, n] = currentBbox();
+  const bb = requireValidBbox(); if (!bb) return;
+  const [w, s, e, n] = bb;
   setStatus("Counting water fortnights over the year… (runs the model ~24×)", "work");
   $("runWaterFreq").disabled = true;
   drawAoi();
@@ -656,52 +693,13 @@ async function runWaterFreq() {
 }
 $("runWaterFreq").onclick = runWaterFreq;
 
-// ---------------- biomass overlay (AGBD regression) (#3 wk10) ----------------
-// a continuous quantity, not classes, so it draws on the point grid with a green ramp: light ->
-// dark green as AGBD climbs from the run's min to max. Renders like the tessera/detailed cells.
-function biomassColor(v, lo, hi) {
-  const t = hi > lo ? Math.max(0, Math.min(1, (v - lo) / (hi - lo))) : 0.5;
-  // pale yellow-green (#e8f5c8) -> deep green (#1b5e20)
-  const a = [232, 245, 200], b = [27, 94, 32];
-  const ch = a.map((x, i) => Math.round(x + (b[i] - x) * t));
-  return `rgb(${ch[0]},${ch[1]},${ch[2]})`;
-}
-async function runBiomass() {
-  const [w, s, e, n] = currentBbox();
-  setStatus("Mapping biomass (AGBD)…", "work");
-  $("runBiomass").disabled = true;
-  drawAoi();
-  try {
-    const d = await getJSON(`/api/biomass?west=${w}&south=${s}&east=${e}&north=${n}&year=${inferYear}`);
-    if (d.detail) { setStatus(d.detail, "err"); $("runBiomass").disabled = false; return; }
-    predLayer.clearLayers();
-    if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
-    const cw = d.cell_w / 2, ch = d.cell_h / 2, lo = d.ramp.min, hi = d.ramp.max;
-    d.cells.forEach((c) => {
-      if (c.val == null) return;                 // no embedding here -> leave transparent
-      L.rectangle([[c.lat - ch, c.lon - cw], [c.lat + ch, c.lon + cw]],
-        { stroke: false, fillOpacity: 0.6, fillColor: biomassColor(c.val, lo, hi) }).addTo(predLayer);
-    });
-    map.fitBounds([[s, w], [n, e]]);
-    overlayVisible = true;
-    if ($("eyeToggle")) { $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off"); }
-    // legend: min .. max Mg/ha
-    const ramp = $("biomassRamp");
-    ramp.classList.remove("hidden");
-    ramp.innerHTML = `<i style="background:${biomassColor(lo, lo, hi)}"></i>${lo.toFixed(0)}` +
-      `<i style="background:${biomassColor(hi, lo, hi)}"></i>${hi.toFixed(0)} ${d.ramp.units}`;
-    setStatus(`Biomass: ${lo.toFixed(0)}–${hi.toFixed(0)} ${d.ramp.units} (mean ${d.ramp.mean.toFixed(0)})`);
-  } catch (err) { setStatus("Biomass error: " + err, "err"); }
-  $("runBiomass").disabled = false;
-}
-$("runBiomass").onclick = runBiomass;
-
 // ---------------- mining segmentation (vectorize a class) (#4 wk10) ----------------
 // turn the mining pixels into discrete cleaned polygons drawn as outlines, with per-segment area.
 let segmentGeojson = null;
 let segmentClass = "mining";       // which class the last segmentation ran on (for the download name)
 async function runSegment() {
-  const [w, s, e, n] = currentBbox();
+  const bb = requireValidBbox(); if (!bb) return;
+  const [w, s, e, n] = bb;
   // segment the class the user has selected (any leaf), not a hard-wired one (#10). Fall back to
   // mining when nothing useful is selected, since that's the canonical example.
   const cls = (TREE[selected] && !(TREE[selected].children || []).length && selected !== "root")
@@ -742,17 +740,22 @@ $("dlSegment").onclick = () => {
 // it on the current view, the same way you'd apply any other model from the zoo.
 // apply an ee_rf card as a refinement of greenery: it updates the hierarchy (greenery gains the
 // model's classes) and then classifies, so the tree and the map both follow the model (#13).
-async function useEeRfModel(cardId) {
+async function useEeRfModel(cardId, targetNode) {
   const c = await getJSON(`/api/cards/${cardId}`);
-  setStatus(`Applying "${c.name}" to greenery…`, "work");
+  // attach to the node the user picked (a selected class in the tree); if none, fall back to the
+  // model's suggested default (its parent_class, usually greenery). Any node is allowed (#5 wk11).
+  const parent = (targetNode && TREE[targetNode] && targetNode !== "root") ? targetNode
+                 : (c.recommendation && c.recommendation.apply_after) || "greenery";
+  const pname = (TREE[parent] || {}).name || parent;
+  setStatus(`Applying "${c.name}" to ${pname}…`, "work");
   try {
-    const r = await postJSON("/api/apply-eerf", { card_id: cardId });
+    const r = await postJSON("/api/apply-eerf", { card_id: cardId, parent });
     const d = await r.json();
     if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
     closeZoo();
-    await refreshTree(d);                 // the tree now shows greenery -> the model's classes
-    await runClassify();                  // and the map composites the model within greenery
-    setStatus(`Applied "${c.name}" — greenery refined into ${(c.produces||[]).map(p=>p.class).join(" / ")}.`, "ok");
+    await refreshTree(d);                 // the tree now shows <parent> -> the model's classes
+    await runClassify();                  // and the map composites the model within that node
+    setStatus(`Applied "${c.name}" — ${pname} refined into ${(c.produces||[]).map(p=>p.class).join(" / ")}.`, "ok");
   } catch (err) { setStatus("Apply error: " + err, "err"); }
 }
 
@@ -769,7 +772,8 @@ $("eyeToggle").onclick = () => { overlayVisible = !overlayVisible; applyOverlayV
 
 // ---------------- download the classified output as GeoTIFF (#24) ----------------
 $("dlTif").onclick = async () => {
-  const [w, s, e, n] = currentBbox();
+  const bb = requireValidBbox(); if (!bb) return;
+  const [w, s, e, n] = bb;
   setStatus("Preparing GeoTIFF (server-side export)…", "work");
   $("dlTif").disabled = true;                     // guard against double-firing concurrent exports (#10)
   try {
@@ -785,15 +789,17 @@ $("dlTif").onclick = async () => {
 // ---------------- examples ----------------
 $("addDrawn").onclick = async () => {
   if (!lastGeometry) { setStatus("Draw a polygon on the map first.", "err"); return; }
-  const r = await postJSON("/api/examples",
-    { node: selected, geometry: lastGeometry, role: $("role").value });
-  const d = await r.json();
-  if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
-  const ds = d.dataset ? ` — dataset card ${d.dataset} updated` : "";
-  setStatus(`Added ${d.role} example to "${selected}" (it now has ${d.total})${ds}.`, "ok");
-  drawnLayer.clearLayers(); lastGeometry = null;
-  await updateDataDist();
-  await refreshZooBadge(); if (isZooOpen()) await loadZooFull();
+  try {
+    const r = await postJSON("/api/examples",
+      { node: selected, geometry: lastGeometry, role: $("role").value });
+    const d = await readJson(r);
+    if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
+    const ds = d.dataset ? ` — dataset card ${d.dataset} updated` : "";
+    setStatus(`Added ${d.role} example to "${selected}" (it now has ${d.total})${ds}.`, "ok");
+    drawnLayer.clearLayers(); lastGeometry = null;
+    await updateDataDist();
+    await refreshZooBadge(); if (isZooOpen()) await loadZooFull();
+  } catch (err) { setStatus("Add example failed: " + err, "err"); }
 };
 
 $("upload").onchange = async () => {
@@ -802,13 +808,15 @@ $("upload").onchange = async () => {
   const fd = new FormData();
   fd.append("file", f); fd.append("node", selected); fd.append("role", $("role").value);
   setStatus(`Uploading ${f.name} → "${selected}"…`, "work");
-  const r = await fetch("/api/examples/upload", { method: "POST", body: fd });
-  const d = await r.json();
-  const ds = d.dataset ? ` (dataset card ${d.dataset} updated)` : "";
-  setStatus(r.ok ? `Uploaded ${f.name}: "${selected}" now has ${d.total} examples${ds}.`
-                 : "Error: " + (d.detail || r.status), r.ok ? "ok" : "err");
-  $("upload").value = "";
-  if (r.ok) { await updateDataDist(); await refreshZooBadge(); if (isZooOpen()) await loadZooFull(); }
+  try {
+    const r = await fetch("/api/examples/upload", { method: "POST", body: fd });
+    const d = await readJson(r);      // a bad file used to 500 with plain text, hanging this toast
+    const ds = d.dataset ? ` (dataset card ${d.dataset} updated)` : "";
+    setStatus(r.ok ? `Uploaded ${f.name}: "${selected}" now has ${d.total} examples${ds}.`
+                   : "Error: " + (d.detail || r.status), r.ok ? "ok" : "err");
+    if (r.ok) { await updateDataDist(); await refreshZooBadge(); if (isZooOpen()) await loadZooFull(); }
+  } catch (err) { setStatus("Upload failed: " + err, "err"); }
+  finally { $("upload").value = ""; }
 };
 
 // ---------------- operations ----------------
@@ -1153,9 +1161,11 @@ async function showCardFull(id) {
   const c = await getJSON(`/api/cards/${id}`);
   $("zoo-detail").innerHTML = id.startsWith("mc_") ? modelDetail(c) : datasetDetail(c);
   renderGrid();   // refresh selection highlight
-  // a polygon dataset: fill in coverage-vs-current-AOI right away, so it shows without touching
-  // the grid select (#4). recomputeSpread no-ops when there's no spread panel.
-  if (!id.startsWith("mc_") && (c.quality || {}).spatial_diversity != null) recomputeSpread(id, 0.25);
+  // a polygon dataset: compute + fill the spread right away, so every polygon card shows it, not just
+  // the ones that happened to have it precomputed (#6). recomputeSpread no-ops when there's no panel.
+  if (!id.startsWith("mc_") && c.kind === "polygons") recomputeSpread(id, 0.25);
+  // name the strong regions (districts / states) for models and polygon datasets (#7)
+  if (id.startsWith("mc_") || c.kind === "polygons") fillCardRegions(id);
 }
 
 function modelDetail(c) {
@@ -1179,7 +1189,8 @@ function modelDetail(c) {
     ${balanceFeedback(c)}
     <div class="blk"><span class="k">Training data</span>${dsChips(c.training && c.training.datasets)}</div>
     <div class="blk"><span class="k">Inference features</span>${dsChips([(c.inference || {}).dataset].filter(Boolean))}</div>
-    <div class="blk"><span class="k">Valid extent${year ? " · " + year : ""}</span>${extentLineForCard(c)}
+    <div class="blk"><span class="k">Strong regions${year ? " · " + year : ""}</span>${extentLineForCard(c)}
+      <div id="cardRegions" class="prose"></div>
       <button id="showExtent">Show on map</button></div>
     <div class="blk"><span class="k">About</span>${aboutRows}
       <button id="annotateToggle">Annotate / evidence / class mapping</button>
@@ -1188,10 +1199,18 @@ function modelDetail(c) {
     ${c.topology === "merge_relabel"
       ? `<div class="prose">Already live as a relabel layer — undo it from the Hierarchy tree.</div>`
       : c.topology === "ee_rf"
-      ? `<button id="useEeRfBtn" class="primary">Use this model on the current view</button>
+      ? (() => {
+          // attach to the selected class if there is one, else the model's suggested default (#5 wk11)
+          const def = (c.recommendation && c.recommendation.apply_after) || "greenery";
+          const tgt = (selected && TREE[selected] && selected !== "root") ? selected : def;
+          const tname = (TREE[tgt] || {}).name || tgt, defName = (TREE[def] || {}).name || def;
+          return `<button id="useEeRfBtn" class="primary">Apply to “${tname}”</button>
          <p class="hint">Plugs this IndiaSAT model (Earth-Engine Random Forest) in as a refinement of
-           the <b>greenery</b> class: the base map stays everywhere else, and greenery becomes this
-           model's classes (${(c.produces||[]).map(p=>p.class).join(", ")}). Needs the IndiaSAT base.</p>`
+           the <b>${tname}</b> class: the base map stays everywhere else, and ${tname} becomes this
+           model's classes (${(c.produces||[]).map(p=>p.class).join(", ")}). Normally refines
+           ${defName}, but you can attach it to <b>any</b> node — select a class in the tree first.
+           Needs the IndiaSAT base.</p>`;
+        })()
       : `<button id="applyBtn" class="primary">${
           c.base_scheme === "worldcover" ? "Use WorldCover base (7 classes)"
           : c.topology === "base_pooled" ? "Use IndiaSAT base (4 classes)"
@@ -1328,15 +1347,20 @@ function spreadValueHTML(d, occ, n, cell, coverage, missing) {
     ${tail ? `<div class="prose">${tail}</div>` : ""}${cov}`;
 }
 
-function spreadFeedback(q) {
+function spreadFeedback(c) {
+  const q = c.quality || {};
   const d = q.spatial_diversity;
-  if (d == null) return "";
-  const opts = SPREAD_CELLS.map((c) =>
-    `<option value="${c}" ${c === 0.25 ? "selected" : ""}>${c}°</option>`).join("");
+  const isPoly = c.kind === "polygons";
+  if (d == null && !isPoly) return "";        // non-polygon cards with no precomputed spread: skip
+  const opts = SPREAD_CELLS.map((cc) =>
+    `<option value="${cc}" ${cc === 0.25 ? "selected" : ""}>${cc}°</option>`).join("");
+  // a polygon card without a stored value gets the panel anyway — showCardFull fills it live (#6)
+  const initial = d != null ? spreadValueHTML(d, q.occupied_cells, q.n_polygons, 0.25)
+                            : `<div class="prose">computing…</div>`;
   return `<div class="blk"><span class="k">Spread (spatial diversity)</span>
     <label class="spread-grid">grid cell
       <select id="spreadCell">${opts}</select></label>
-    <div id="spreadOut">${spreadValueHTML(d, q.occupied_cells, q.n_polygons, 0.25)}</div>
+    <div id="spreadOut">${initial}</div>
     <div class="prose">Shannon entropy of where the polygons fall, normalized to [0,1] —
     flags data that's all from one area before it skews a model.</div></div>`;
 }
@@ -1377,13 +1401,32 @@ function datasetDetail(c) {
     ${usedByHTML(c)}
     <div class="blk"><span class="k">Definition</span><code>${JSON.stringify(c.definition)}</code></div>
     ${e.source ? `<div class="blk"><span class="k">Embedding</span>${e.source} ${e.dim}-d (${e.year || ""})</div>` : ""}
-    ${spreadFeedback(q)}
+    ${spreadFeedback(c)}
     <div class="blk"><span class="k">Provenance</span><div class="prose">${p.annotator || "—"} · ${p.method || ""}
       ${p.license ? "· " + p.license : ""}</div></div>
     ${inferenceYearHTML(c)}
     ${sourceLinkHTML(c)}
     <div class="blk"><span class="k">Valid extent${((c.extent || {}).temporal || {}).year ? " · " + c.extent.temporal.year : ""}</span>${extentLineForCard(c)}
+      <div id="cardRegions" class="prose"></div>
       <button id="showExtent">Show on map</button></div>`;
+}
+
+// name the districts / states a card's polygons fall in (#7), via the GAUL lookup, and drop them into
+// the card's region line — so "strong regions" reads e.g. "Assam (Dibrugarh, Tinsukia)", not just a map.
+async function fillCardRegions(id) {
+  const out = $("cardRegions");
+  if (!out) return;
+  out.textContent = "naming districts / states…";
+  try {
+    const r = await getJSON(`/api/cards/${id}/regions`);
+    if (!r.available) { out.textContent = ""; return; }
+    const states = (r.states || []).join(", ");
+    const districts = (r.districts || []).slice(0, 8).join(", ");
+    const more = (r.districts || []).length > 8 ? ` +${r.districts.length - 8} more` : "";
+    out.innerHTML = states
+      ? `<b>${states}</b>${districts ? ` — ${districts}${more}` : ""}`
+      : "";
+  } catch { out.textContent = ""; }
 }
 
 // public source link, edited right here on the card (#3/#8b). The user attaches it once, on the
@@ -1422,6 +1465,13 @@ function isNational(bb) { return (bb[2] - bb[0]) > 8 || (bb[3] - bb[1]) > 8; }
 // polygon-backed cards: the extent IS the polygons, not a country box — say so.
 function extentLineForCard(c) {
   if (c.kind === "polygons") return `<span class="prose">its labelled polygons (see map)</span>`;
+  // a model's strength is where its training data falls, not a country box (#7). Point at that.
+  if (String(c.id || "").startsWith("mc_")) {
+    const ds = (c.training && c.training.datasets) || [];
+    if (ds.length) return `<span class="prose">strongest where its training data falls — see map ` +
+      `(${ds.length} training set${ds.length > 1 ? "s" : ""})</span>`;
+    return `<span class="prose">no localized training data — a general feature-source model</span>`;
+  }
   return extentLine(c.extent);
 }
 function extentLine(extent) {
@@ -1435,9 +1485,26 @@ function extentLine(extent) {
 // few prominent ones (everything here is India anyway — a country box says nothing). Feature
 // sources (Alpha Earth / Tessera / pixel tables) have no polygons, so fall back to the bbox/label.
 async function showOnMap(id) {
+  if (id.startsWith("mc_")) { await showModelStrongRegion(id); return; }
   const geo = await getJSON(`/api/cards/${id}/geometry`);
   if (geo.drawable && (geo.features || []).length) { drawPolygons(geo); return; }
   const c = await getJSON(`/api/cards/${id}`);
+  drawExtent(c.extent);
+}
+
+// a model's strong region is where its training data lives (#7): draw those polygons, gathered across
+// its training datasets. Falls back to the extent for a model with no polygon training data.
+async function showModelStrongRegion(id) {
+  const c = await getJSON(`/api/cards/${id}`);
+  const ds = (c.training && c.training.datasets) || [];
+  const feats = [];
+  for (const d of ds) {
+    try {
+      const g = await getJSON(`/api/cards/${d}/geometry`);
+      if (g.drawable) feats.push(...(g.features || []));
+    } catch { /* a dataset without drawable polygons just contributes nothing */ }
+  }
+  if (feats.length) { drawPolygons({ features: feats, shown: feats.length, total: feats.length }); return; }
   drawExtent(c.extent);
 }
 
@@ -1535,7 +1602,7 @@ $("zoo-detail").addEventListener("click", async (e) => {
   else if (id === "annotateToggle") { $("annotateForm").classList.toggle("hidden"); }
   else if (id === "annotateSave") { await saveAnnotation(zooSelected); }
   else if (id === "applyBtn") { await applyModel(zooSelected); }
-  else if (id === "useEeRfBtn") { await useEeRfModel(zooSelected); }             // #13 IndiaSAT model overlay
+  else if (id === "useEeRfBtn") { await useEeRfModel(zooSelected, selected); }   // #13/#5 apply to selected node
   else if (id === "applyHereBtn") { await applyModel(zooSelected, selected); }   // #11 target = selected class
   else if (id === "delBtn") { await deleteCardUI(zooSelected); }                 // #9 drop a card
   else if (id === "pubBtn") { await publishCard(zooSelected); }

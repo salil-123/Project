@@ -114,7 +114,9 @@ def _to_python(expr):
     """EE boolean operators -> Python, so we can parse with ast. `!=` is left intact (only a bare
     `!` becomes `not`)."""
     expr = expr.replace("&&", " and ").replace("||", " or ")
-    return re.sub(r"!(?!=)", " not ", expr)
+    # a leading `!` -> " not " would put a space at column 0, which ast.parse reads as an indent and
+    # (wrongly) calls malformed; strip so a leading negation like `!(ndvi_annual > 0.3)` parses.
+    return re.sub(r"!(?!=)", " not ", expr).strip()
 
 
 def vars_in(expr):
@@ -125,6 +127,20 @@ def vars_in(expr):
         if name in REGISTRY and name not in out:
             out.append(name)
     return out
+
+
+def _is_boolean(node):
+    """Does this AST node evaluate to a genuine true/false condition? A rule clause must — it feeds
+    `.where(mask, ...)`, and a non-boolean (a bare index value, a constant, an arithmetic result)
+    would be truthy almost everywhere and paint the whole map. So we require the expression to bottom
+    out in comparisons: a single-operator Compare, a Not of one, or And/Or of booleans."""
+    if isinstance(node, ast.Compare):
+        return len(node.ops) == 1          # reject chained compares (a > b > c): EE reads them differently
+    if isinstance(node, ast.BoolOp):
+        return all(_is_boolean(v) for v in node.values)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return _is_boolean(node.operand)
+    return False
 
 
 def check_expr(expr):
@@ -146,6 +162,10 @@ def check_expr(expr):
     if unknown:
         raise ValueError(f"unknown rule variable(s): {', '.join(unknown)}. "
                          f"Pick from: {', '.join(REGISTRY)}")
+    # the expression must be an actual condition, not a bare value/constant — a clause paints where it
+    # holds, so `ndvi_annual` or `0.3` (truthy everywhere) or a chained compare are silent map-wreckers.
+    if not _is_boolean(tree.body):
+        raise ValueError(f"rule expression must be a comparison (e.g. 'ndvi_annual > 0.3'), not {expr!r}")
     return [n for n in dict.fromkeys(names)]
 
 
@@ -209,7 +229,12 @@ if __name__ == "__main__":
     # offline checks — parser + rule shape, no EE needed.
     assert vars_in("ndvi_annual > 0.3 && slope < 5") == ["ndvi_annual", "slope"]
     assert check_expr("ndvi_annual > 0.3") == ["ndvi_annual"]
-    for bad in ["", "ndvi_annual >", "os.system('x')", "ndvi_annual $ 1", "foobar > 1"]:
+    assert check_expr("ndvi_annual > 0.3 && slope < 5") == ["ndvi_annual", "slope"]
+    assert check_expr("!(ndvi_annual > 0.3)") == ["ndvi_annual"]
+    # non-boolean / chained expressions must be refused (they'd paint the whole map)
+    for bad in ["", "ndvi_annual >", "os.system('x')", "ndvi_annual $ 1", "foobar > 1",
+                "ndvi_annual", "0.3", "ndvi_annual + 0.1", "ndvi_annual > 0.3 && ndbi",
+                "ndvi_annual > 0.3 > 0.1"]:
         try:
             check_expr(bad); print("BUG: accepted", repr(bad))
         except ValueError:

@@ -1,0 +1,30 @@
+# Bring the LULC app up with one command:  docker compose up -d
+# Reads Earth Engine + zoo config from .env; keeps the writable runtime data on a named volume
+# so hierarchy/op_log/examples survive a container restart.
+services:
+  lulc:
+    image: salil2003/corestack-lulc:latest
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # persist the app's runtime state (the tree, op-log, example canvas, merges)
+      - lulc_data:/app/data
+      # Earth Engine service-account key, mounted read-only (see notes in deploy/.env.example).
+      # Point GOOGLE_APPLICATION_CREDENTIALS at it, or wire config.ee_init to read it.
+      # - ./deploy/ee-service-account.json:/app/ee-key.json:ro
+    restart: unless-stopped
+
+  # Optional: an nginx reverse proxy in front of the app (TLS, a public port 80/443).
+  # Uncomment and add deploy/nginx.conf to use it.
+  # nginx:
+  #   image: nginx:alpine
+  #   ports: ["80:80"]
+  #   volumes: ["./deploy/nginx.conf:/etc/nginx/nginx.conf:ro"]
+  #   depends_on: [lulc]
+  #   restart: unless-stopped
+
+volumes:
+  lulc_data:

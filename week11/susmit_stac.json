@@ -1,0 +1,184 @@
+{
+  "type": "Feature",
+  "stac_version": "1.1.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/table/v1.2.0/schema.json"
+  ],
+  "id": "ss_0e25161e_run1_finalize",
+  "collection": "tree_crown_runs",
+  "geometry": {
+    "type": "Polygon",
+    "coordinates": [
+      [
+        [
+          77.175538,
+          28.531619
+        ],
+        [
+          77.175538,
+          28.534031
+        ],
+        [
+          77.17792,
+          28.534031
+        ],
+        [
+          77.17792,
+          28.531619
+        ],
+        [
+          77.175538,
+          28.531619
+        ]
+      ]
+    ]
+  },
+  "properties": {
+    "title": "Tree-Crown Species Map",
+    "description": "Tree crown vector and species classification output generated from a drone orthomosaic. The workflow detects individual tree crowns using Detectree2, converts crown predictions to GeoJSON polygons, extracts visual embeddings with DINOv2, clusters crowns with KMeans, supports human-in-the-loop cluster labelling, and exports per-crown species outputs for GIS and Google Earth review. The STAC item records the run configuration, model choices, output assets, and WGS84 footprint so the result can be indexed or consumed by downstream catalog systems.",
+    "start_datetime": "2026-07-12T10:40:55Z",
+    "end_datetime": "2026-07-12T10:40:55Z",
+    "datetime": "2026-07-12T10:40:55Z",
+    "keywords": [
+      "forestry",
+      "tree-crown",
+      "species",
+      "drone",
+      "orthomosaic"
+    ],
+    "project_id": "0e25161e-3f78-4e08-855f-f0b2290e59dc",
+    "run": 1,
+    "detector_model": "urban_cambridge",
+    "feature_extractor": "vit_base_patch14_dinov2.lvd142m",
+    "source_epsg": 32643,
+    "chosen_k": 4,
+    "input_parameters": {
+      "tile_size": 10,
+      "buffer": 10,
+      "iou_threshold": 0.9,
+      "conf_threshold": 0.85,
+      "k_list": [
+        2,
+        4
+      ],
+      "pca_components": 50,
+      "batch_size": 16,
+      "img_size": 224,
+      "model_name": "vit_base_patch14_dinov2.lvd142m",
+      "model_key": "urban_cambridge",
+      "source_epsg": 32643,
+      "chosen_k": 4
+    },
+    "table:columns": [
+      {
+        "name": "image_name",
+        "type": "string",
+        "description": "Crown image filename"
+      },
+      {
+        "name": "image_stem",
+        "type": "string",
+        "description": "Column image_stem"
+      },
+      {
+        "name": "polygon_id",
+        "type": "int64",
+        "description": "Crown polygon id"
+      },
+      {
+        "name": "site",
+        "type": "string",
+        "description": "Orthomosaic stem"
+      },
+      {
+        "name": "cluster",
+        "type": "int64",
+        "description": "KMeans cluster id"
+      },
+      {
+        "name": "species",
+        "type": "string",
+        "description": "Assigned species label"
+      }
+    ],
+    "min_longitude": 77.175538,
+    "min_latitude": 28.531619,
+    "max_longitude": 77.17792,
+    "max_latitude": 28.534031,
+    "center_longitude": 77.176729,
+    "center_latitude": 28.532825
+  },
+  "assets": {
+    "data": {
+      "href": "projects/0e25161e-3f78-4e08-855f-f0b2290e59dc/work/run_1/polygons/s1_tree.geojson",
+      "type": "application/geo+json",
+      "title": "Tree crown GeoJSON vector layer",
+      "roles": [
+        "data"
+      ]
+    },
+    "kmz": {
+      "href": "/api/v1/project/results/kmz",
+      "type": "application/vnd.google-earth.kmz",
+      "title": "Species map for Google Earth",
+      "roles": [
+        "data"
+      ]
+    },
+    "crown_master": {
+      "href": "/api/v1/project/results/crown-master.csv",
+      "type": "text/csv",
+      "title": "Per-crown master table",
+      "roles": [
+        "data"
+      ]
+    },
+    "polygon_species": {
+      "href": "/api/v1/project/results/polygon-species.csv",
+      "type": "text/csv",
+      "title": "Polygon-to-species table",
+      "roles": [
+        "data"
+      ]
+    },
+    "style": {
+      "href": "https://raw.githubusercontent.com/core-stack-org/QGIS-Styles/main/Land/LULC0_12class.qml",
+      "type": "application/xml",
+      "title": "QGIS Style file",
+      "roles": [
+        "metadata"
+      ]
+    }
+  },
+  "links": [
+    {
+      "rel": "root",
+      "href": "catalog.json",
+      "type": "application/json",
+      "title": "Tree Crown Spatio Temporal Asset Catalog"
+    },
+    {
+      "rel": "collection",
+      "href": "collection.json",
+      "type": "application/json",
+      "title": "tree_crown_runs"
+    },
+    {
+      "rel": "parent",
+      "href": "collection.json",
+      "type": "application/json",
+      "title": "tree_crown_runs"
+    },
+    {
+      "rel": "self",
+      "href": "/api/v1/project/results/stac-item.json",
+      "type": "application/json"
+    }
+  ],
+  "bbox": [
+    77.175538,
+    28.531619,
+    77.17792,
+    28.534031
+  ]
+}

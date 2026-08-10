@@ -1,0 +1,9 @@
+1. why does the geotiff not give the output what is this user memory limit exceeded
+2. your persistent water button was literally hidden till i figured out you can slide right
+3. why does it happen when i split barren into mining,non_mining why does it already have data?
+4. why is it that i cannot manually add a class of mining under barren then train after just adding mining polygons???
+5. why does it say its all over india for acacia expert polygons when we do show on map? they are polygons they can be shown cant they ?
+6. the spatial diversity isnt shown for all dataset cards which are relevant to having their spatial diversity spread being shown
+7. we dont need a valid extent for models if you're just gonna say its india wide we wanted to say which regions are the strong points of this model in the model card
+8. please delete the barren sample that i added of 1 barren polygon for testing
+9. from the slides remove that bioacoustics team bs naming

@@ -1,0 +1,18 @@
+# Serving-only deps for the LULC web app image. Trimmed from the repo's requirements.txt:
+# no jupyter/ipykernel/pytest (dev), no geemap/contextily (unused), no xarray/zarr/geotessera
+# (only the unexposed Tessera path — imported lazily, so its endpoints just error if ever called).
+earthengine-api
+geopandas
+pyogrio            # geopandas IO engine (bundles GDAL) — reads uploaded GeoJSON/KML
+shapely
+pyproj
+rasterio           # GeoTIFF export path
+pandas
+numpy
+scikit-learn
+joblib
+jsonschema
+fastapi
+uvicorn[standard]
+python-dotenv
+xgboost            # non-linear Tessera splits (#7); light enough to keep

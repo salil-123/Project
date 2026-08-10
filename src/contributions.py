@@ -14,9 +14,14 @@ Design intent:
 """
 import json
 import os
+import sys
 from datetime import datetime, timezone
+from pathlib import Path
 
-CONTRIB_PATH = "data/contributions.geojson"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
+import config
+
+CONTRIB_PATH = config.project_path("data/contributions.geojson")  # anchored to root, CWD-independent
 
 
 def _empty_fc():
