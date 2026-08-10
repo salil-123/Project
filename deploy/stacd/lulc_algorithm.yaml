@@ -1,0 +1,20 @@
+# Algorithm instance for the LULC classifier — how STACD runs it.
+# DRAFT — confirm the exact keys + the expected success response with Saharsh.
+--- !Algorithm_Instance
+type: LULCClassify
+version: "1"
+execution_modes:
+  # PRIMARY (recommended): our FastAPI service is already running (the published image / compose).
+  # It classifies server-side in Earth Engine and returns the STACD-ready output descriptor.
+  api:
+    enabled: true
+    priority: 1
+    url: "http://lulc:8000/api/export-asset"   # see note (3) in README — endpoint returns {asset_id,version,hosting_platform}
+  # FALLBACK: run the published image as a one-shot container. Needs a thin CLI wrapper that prints the
+  # ===RESULT_JSON_START===/===RESULT_JSON_END=== markers simple_docker_runner.py parses.
+  docker:
+    enabled: true
+    priority: 2
+    image: "salil2003/corestack-lulc:latest"
+    module: "runner"
+    function: "run"

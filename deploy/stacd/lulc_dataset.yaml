@@ -1,0 +1,10 @@
+# Input dataset instance for the LULC workflow.
+# DRAFT — the AOI can be a CoreStack admin boundary or an explicit bbox; confirm with Saharsh.
+--- !Dataset_Instance
+type_id: AOIInput
+version: "1"
+region: india
+asset_id: "projects/ee-indiasat/assets/IndiaSat"   # example AOI/boundary source (swap per run)
+metadata:
+  source: "CoreStack admin boundary (state/district/block) or a user bbox"
+  description: "Area of interest to classify at 10 m on Alpha Earth"

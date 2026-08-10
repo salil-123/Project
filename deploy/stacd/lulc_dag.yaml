@@ -1,0 +1,25 @@
+# STACD workflow definition for the Core Stack LULC classifier.
+# DRAFT — matches the STACD_framework/dev YAML format; field values to confirm with Saharsh.
+--- !DAG
+id: corestack_lulc
+name: Core Stack LULC Classification
+group: corestack                       # RBAC role bucket
+# runtime params supplied when the workflow is triggered: CoreStack admin-boundary selectors +
+# the Alpha Earth year we classify at.
+params: [state, district, block, gee_account_id, year]
+alg_type_nodes: [LULCClassify]
+dataset_type_nodes: [AOIInput, LULCOutput]
+
+--- !Algorithm_Type
+type: LULCClassify
+input_datasets: [AOIInput]
+output_datasets: [LULCOutput]
+params: [year]
+
+--- !Dataset_Type
+type: AOIInput
+format: GEEAsset                       # a boundary FeatureCollection (state/district/block) or AOI geometry
+
+--- !Dataset_Type
+type: LULCOutput
+format: GEEAsset                       # the classified LULC image, exported to a GEE asset
