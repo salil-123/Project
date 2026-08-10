@@ -1,48 +1,62 @@
 # Core Stack LULC
 
-A web tool to paint a 10 m land-use / land-cover map over any part of India, then **grow your own
-class scheme** on top of it — split a class into finer ones, add new classes, merge classes across
-models — by handing the tool a few example polygons and retraining on the fly. Every trained model
-and dataset is recorded as a **card** in a git-backed **model zoo** so others can find one for
-their area and keep refining it.
+A web tool to paint a **land-use / land-cover map** over any part of India at **10 m**, then *grow your
+own class scheme* on top of it — split a class into finer ones, add a new class, merge/relabel across
+models — by drawing a few example polygons and retraining on the fly. Every trained model and dataset is
+recorded as a **card** in a git-backed **model zoo**. Project home: https://core-stack.org/
 
-Project home: https://core-stack.org/
-
-## How it works (one paragraph)
-
-We never touch raw imagery at inference. Each pixel is a pre-learned vector — **Alpha Earth** (64-d,
-Google Satellite Embedding, server-side in Earth Engine, free, India-wide) and optionally **Tessera**
-(128-d, 2024-only over India). A linear model (`StandardScaler → LinearSVC`) sits on top; because
-it's linear, it **replays exactly as band math inside Earth Engine**, so a whole bounding box is
-classified server-side and served as map tiles with nothing downloaded.
+## How it works (two ideas)
+- **A canonical class spine** (`data/hierarchy.json`) seeded from 4 base classes — *greenery, water,
+  built_up, barren* — editable at every level.
+- **Embeddings as features, never raw imagery.** Each pixel is a pre-learned vector (Google **Alpha
+  Earth**, 64-d, in Earth Engine, India-wide). A **linear** model on top replays *exactly as band math
+  inside Earth Engine*, so a whole bounding box classifies server-side and comes back as map tiles with
+  **nothing downloaded**. Non-linear models (RF) and Tessera embeddings are available for fine splits.
 
 ## Run it
-
 ```bash
-python -m venv .venv && . .venv/Scripts/activate    # Windows: .venv\Scripts\activate
+# pull the published image and start it
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
+curl http://localhost:8000/api/health          # -> {"ok": true}
+# open http://localhost:8000/
+```
+Image: `docker pull salil2003/corestack-lulc:latest`. Local dev without Docker:
+```bash
 pip install -r requirements.txt
-# Earth Engine: copy .env.example to .env and set EE_PROJECT / EE_USER_ID (then `earthengine authenticate`)
-uvicorn backend:app --reload --app-dir src
+uvicorn backend:app --reload --app-dir src      # http://127.0.0.1:8000/
+```
+Earth Engine config goes in `.env` (see `deploy/.env.example`); headless servers use a service-account key.
+
+## Repository structure
+```
+src/                 the application (FastAPI backend + Leaflet frontend)
+├─ backend.py        FastAPI app: classify, hierarchy ops, zoo, water, segment, STACD endpoints
+├─ infer.py          inference — linear→EE band-math tiles, point-grid fallback, compositing
+├─ hierarchy.py      the class tree (split/add/validate)
+├─ refine.py         the training engine (per-node split classifiers, bake-off)
+├─ examples.py       user example polygons → embedded training frames
+├─ sampling.py       shared Alpha Earth / Tessera sampling
+├─ catalogue.py      the model-zoo card database (+ zoo_git.py for git-backed publish)
+├─ rules.py          interpretable index-based splits (NDVI/NDWI/…) that ride the tile map
+├─ ee_rf.py          IndiaSAT EE-native RandomForest models (tree/crop, farm/shrub)
+├─ sentinel.py       raw Sentinel-1/2 per-fortnight water model
+├─ stacd.py          STACD provenance emitter (STAC 1.1.0 Item + DAG)
+├─ aoi.py            bounding-box guardrails
+└─ static/           the Leaflet web UI (index.html, app.js, style.css)
+
+config.py            central config + Earth Engine init + path anchors (runs from any CWD)
+schema/              JSON schemas for the zoo's dataset/model cards
+scripts/             offline data-prep + training scripts (GEDI biomass, acacia, water, …)
+data/                runtime state (hierarchy, op-log), trained .joblib models, zoo cards, examples
+deploy/              Dockerize + deployment: requirements, .env.example, build/push scripts,
+                     DEPLOYMENT.md, and stacd/ (onboarding YAMLs for the STACD framework)
+airflow/dags/        template Airflow DAG that drives the app's API (optional batch/STACD runs)
+Dockerfile           the serving image  ·  docker-compose*.yml  ·  .dockerignore
+master_document.md   the full week-by-week build narrative (deep-dive)
 ```
 
-Open http://127.0.0.1:8000/.
-
-## The full story
-
-`master_document.md` is the single source of truth: what the project is, the live architecture, the
-week-by-week history, and the latest refinements. Per-week detail lives in `weekN/plan.md`; deeper
-notes in `docs/pipeline.md` and `docs/model.md`.
-
-## What's not in this repo (and why)
-
-To keep the repo lean and within GitHub's limits, a few things are intentionally `.gitignore`d:
-
-- **`.venv/`** — recreate from `requirements.txt`.
-- **`.env`** — local config (your Earth Engine project + the zoo remote). Not a secret store, but
-  machine-specific.
-- **Large training/eval tables (`*.csv`, `*.npy`)** — regenerable from Earth Engine;
-  `master_tessera.csv` alone is 138 MB (past GitHub's 100 MB limit). The trained **`.joblib`
-  models are kept** (they're tiny), so the app classifies straight from a clone — only *retraining*
-  needs the tables rebuilt.
-- **`data/catalogue/`** — the model zoo is its own git repository (pushed to `zoo_database.git`),
-  so it isn't nested inside this one.
+## Deploying into STACD / CoreStack
+See `deploy/DEPLOYMENT.md` (Docker/nginx/Airflow + EE auth) and `deploy/stacd/` (the draft
+DAG / algorithm / dataset onboarding YAMLs + submission notes).
+</content>

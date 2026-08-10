@@ -34,3 +34,28 @@ global_0.1_degree_representation/
 beyond_flat_classifier_paper.pdf
 stacd_paper.pdf
 data/refine/biomass_*.joblib
+
+# Weekly working folders (notes, slides, plans, one-off experiments). Kept LOCAL — they're the
+# build diary, not the deliverable, and clutter the repo for anyone reading the code. The narrative
+# lives in master_document.md; the code is under src/. Un-ignore a week folder if you ever need it tracked.
+week2/
+week3/
+week4/
+week5/
+week6/
+week7/
+week8/
+week9/
+week10/
+week11/
+week12/
+week*_instructions.txt
+
+# embedded reference repo (flood pipeline) + competitive-programming cache + one-off root scripts/assets
+floodMappingPipelines/
+.cph/
+entire_test.txt
+chahat_paper_flowchart.png
+tessera_fast.py
+*.ipynb
+"3_store_embeddings_run_lulcv4 (temporal multi year sampling).py"

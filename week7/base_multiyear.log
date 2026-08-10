@@ -1,9 +1,0 @@
-temporal robustness for ['greenery', 'water', 'built_up', 'barren'] from data/selected_polygons.geojson
-
-trained on [2019, 2021, 2023] (pooled) vs newest single year 2023
-held-out year | single-year | multi-year | gain
-    2020      |    0.886    |   0.886   | +0.000
-    2024      |    0.890    |   0.896   | +0.007
-  mean over unseen years: single 0.888  multi 0.891  (+0.003)
-
-saved pooled multi-year model -> data/refine/base_multiyear.joblib
