@@ -1,10 +1,13 @@
-# Input dataset instance for the LULC workflow.
-# DRAFT — the AOI can be a CoreStack admin boundary or an explicit bbox; confirm with Saharsh.
---- !Dataset_Instance
-type_id: AOIInput
+# Dataset instance (dataset_repo) matching STACD_framework/dev sample_yaml/.../dataset_repo_normal.yaml.
+# In the full CoreStack pipeline the root is Pan_India_MWS and MWS_Boundaries is auto-produced upstream,
+# so nothing new needs registering. For a STANDALONE run of just our LULC, register the MWS boundary
+# asset our algorithm reads geometry from:
+---
+!Dataset_Instance
+type_id: MWS_Boundaries
 version: "1"
-region: india
-asset_id: "projects/ee-indiasat/assets/IndiaSat"   # example AOI/boundary source (swap per run)
+region: pan_india
+asset_id: "projects/corestack-datasets/assets/datasets/hydrological_boundaries/microwatershed"
 metadata:
-  source: "CoreStack admin boundary (state/district/block) or a user bbox"
-  description: "Area of interest to classify at 10 m on Alpha Earth"
+  source: "CoRE Stack public GEE datasets account (corestack-datasets)"
+  description: "Pan-India micro-watershed V2 boundaries — public read-only GEE asset (root input)"

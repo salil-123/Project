@@ -1,25 +1,60 @@
-# STACD workflow definition for the Core Stack LULC classifier.
-# DRAFT — matches the STACD_framework/dev YAML format; field values to confirm with Saharsh.
+# DAG config for our LULC model, modelled on STACD_framework/dev stacd/yaml_configs/dag1_simple_lulc.yaml.
+# Bundles the !DAG + the !Dataset_Type and !Algorithm_Type definitions (the Instances live in the
+# algorithm_repo / dataset_repo files). Named Custom_LULC so it sits alongside CoreStack's own
+# LULC_Algorithm (lulc_v3) rather than clashing with it.
 --- !DAG
-id: corestack_lulc
-name: Core Stack LULC Classification
-group: corestack                       # RBAC role bucket
-# runtime params supplied when the workflow is triggered: CoreStack admin-boundary selectors +
-# the Alpha Earth year we classify at.
-params: [state, district, block, gee_account_id, year]
-alg_type_nodes: [LULCClassify]
-dataset_type_nodes: [AOIInput, LULCOutput]
+id: dag_custom_lulc
+name: Custom LULC (Alpha Earth) Workflow
+version: 1.0
+description: "Minimal 2-node workflow: refinable 10 m Alpha Earth LULC raster for a region"
+params:
+  - state
+  - district
+  - block
+  - start_year
+  - end_year
+  - gee_account_id
+alg_type_nodes:
+  - Custom_LULC
+dataset_type_nodes:
+  - MWS_Boundaries       # ROOT input (produced upstream by MWS_Layer in the full pipeline)
+  - Custom_LULC_Raster
 
+---
+# Dataset Types
+--- !Dataset_Type
+id: MWS_Boundaries
+name: Micro-Watershed Boundaries
+description: Filtered micro-watershed boundaries for the region of interest
+format: GEEAsset
+
+--- !Dataset_Type
+id: Custom_LULC_Raster
+name: Custom LULC Raster Output
+description: Alpha Earth 10 m LULC raster (refinable class hierarchy), exported to a GEE asset
+format: GEEAsset
+
+---
+# Algorithm Type
 --- !Algorithm_Type
-type: LULCClassify
-input_datasets: [AOIInput]
-output_datasets: [LULCOutput]
-params: [year]
-
---- !Dataset_Type
-type: AOIInput
-format: GEEAsset                       # a boundary FeatureCollection (state/district/block) or AOI geometry
-
---- !Dataset_Type
-type: LULCOutput
-format: GEEAsset                       # the classified LULC image, exported to a GEE asset
+id: Custom_LULC
+name: Custom_LULC
+description: Generate a 10 m Alpha Earth LULC raster for a region and export it as a GEE asset
+params:
+  - name: state
+    type: string
+  - name: district
+    type: string
+  - name: block
+    type: string
+  - name: start_year
+    type: integer
+  - name: end_year
+    type: integer
+  - name: gee_account_id
+    type: integer
+input_datasets:
+  - MWS_Boundaries
+outputs:
+  - Custom_LULC_Raster
+depends_on: []

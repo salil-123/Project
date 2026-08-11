@@ -35,6 +35,7 @@ import merges
 import validate_ops
 import aoi
 import stacd
+import config
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
@@ -330,6 +331,60 @@ def classify_geotiff(west: float, south: float, east: float, north: float, year:
                                      "model makes the export especially heavy.")
         raise HTTPException(400, f"GeoTIFF export failed (try a smaller area): {e}")
     return {"url": url, "classes": classes, "year": year}
+
+
+# ----------------------------- export to a GEE asset (STACD onboarding) -----------------------------
+@app.get("/api/export-asset")
+def export_asset(west: float = None, south: float = None, east: float = None, north: float = None,
+                 roi_asset: str = None, year: int = 2024, end_year: int = None,
+                 asset_id: str = None, name: str = None, wait: bool = True):
+    """Export a classified LULC raster to a Google Earth Engine asset and return its descriptor, the
+    contract the STACD framework ingests: {asset_id, version, hosting_platform: "GEE"}.
+
+    AOI: pass `roi_asset` (a FeatureCollection asset id, e.g. the filtered MWS boundaries the CoreStack
+    pipeline hands downstream) and we read geometry from it; or a plain `west/south/east/north` bbox for
+    standalone testing. `year` (or `end_year`) picks the Alpha Earth slice. With no `asset_id` the output
+    lands under our own project: projects/<EE_PROJECT>/assets/corestack_lulc/<name>_<year>. Synchronous:
+    blocks until the EE export finishes, matching how the other algorithms behave (wait=false returns the
+    task immediately instead)."""
+    _maybe_reload()
+    yr = min(max(end_year or year, AE_YEARS[0]), AE_YEARS[-1])
+
+    region_geom = None
+    if roi_asset:
+        ee = config.ee_init()
+        region_geom = ee.FeatureCollection(roi_asset).geometry()
+        try:                                          # bounds -> a plain bbox for the AE image build
+            ring = region_geom.bounds().coordinates().get(0).getInfo()
+        except Exception as e:
+            raise HTTPException(400, f"couldn't read geometry from roi_asset {roi_asset!r}: {e}")
+        xs = [p[0] for p in ring]; ys = [p[1] for p in ring]
+        bbox = (min(xs), min(ys), max(xs), max(ys))
+        default_name = roi_asset.rstrip("/").split("/")[-1]
+    elif None not in (west, south, east, north):
+        bbox = (west, south, east, north)
+        default_name = f"{west:.3f}_{south:.3f}_{east:.3f}_{north:.3f}"
+    else:
+        raise HTTPException(400, "provide either roi_asset or all of west/south/east/north")
+
+    # a GEE batch export handles large areas fine (unlike the size-capped getDownloadURL), so the
+    # generous tile cap is the right guard here.
+    guard = aoi.check(bbox, "tiles")
+    if not guard["ok"]:
+        raise HTTPException(400, guard["reason"])
+
+    if not asset_id:
+        import re as _re
+        base = _re.sub(r"[^A-Za-z0-9_]", "_", (name or default_name))[:80] or "aoi"
+        asset_id = f"{config.EE_ASSET_ROOT.rstrip('/')}/{base}_{yr}"
+
+    try:
+        return infer.classify_to_asset(bbox, asset_id, year=yr, region_geom=region_geom,
+                                       model_bundle=_model, refinements=_refinements, wait=wait)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"export failed: {e}")
 
 
 # ----------------------------- per-fortnight water (#5/#7) -----------------------------

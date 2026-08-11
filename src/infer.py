@@ -454,6 +454,55 @@ def classify_bbox_geotiff(bbox, year: int = 2024, model_bundle=None, refinements
     return url, final_classes
 
 
+# ----------------- export the classified raster to a GEE asset (the STACD contract) -----------------
+def classify_to_asset(bbox, asset_id, year: int = 2024, region_geom=None, model_bundle=None,
+                      refinements=None, colors=None, scale: int = 10, wait: bool = True,
+                      timeout_s: int = 1800):
+    """Classify the AOI and EXPORT the integer label raster to a GEE asset, the shape STACD ingests.
+
+    Builds the same label image the tile map uses (`final`, the class-code raster), then runs an Earth
+    Engine batch Export.image.toAsset. `region_geom` (an ee.Geometry) overrides the bbox rectangle for the
+    export clip + region, so an admin boundary read from a FeatureCollection exports clipped to the actual
+    boundary, not its bounding box. Blocks until the task finishes (the CoreStack APIs are synchronous),
+    then returns {asset_id, version, hosting_platform, classes, state, task_id}. wait=False fires and
+    returns immediately. `asset_id` is a full path like projects/<proj>/assets/<folder>/<name>."""
+    import re
+    import time
+    ee, final, final_classes, region, _vis = _labelled_bbox(bbox, year, model_bundle, refinements, colors)
+    export_region = region_geom if region_geom is not None else region
+    img = final.toInt().clip(export_region)
+
+    # the parent folder has to exist before toAsset writes into it; make it best-effort
+    parent = asset_id.rsplit("/", 1)[0]
+    try:
+        ee.data.createAsset({"type": "FOLDER"}, parent)
+    except Exception:
+        pass  # already there, or a perms issue toAsset will report clearly
+
+    desc = re.sub(r"[^A-Za-z0-9_]", "_", asset_id.rsplit("/", 1)[-1])[:100] or "lulc_export"
+    task = ee.batch.Export.image.toAsset(image=img, description=desc, assetId=asset_id,
+                                         region=export_region, scale=scale, crs="EPSG:4326",
+                                         maxPixels=int(1e13))
+    task.start()
+
+    state = "SUBMITTED"
+    if wait:
+        start = time.time()
+        while True:
+            st = task.status()
+            state = st.get("state", "UNKNOWN")
+            if state == "COMPLETED":
+                break
+            if state in ("FAILED", "CANCELLED", "CANCEL_REQUESTED"):
+                raise RuntimeError(f"export {state}: {st.get('error_message', '')}")
+            if time.time() - start > timeout_s:
+                raise TimeoutError(f"export still {state} after {timeout_s}s (task {task.id})")
+            time.sleep(5)
+
+    return {"asset_id": asset_id, "version": "1", "hosting_platform": "GEE",
+            "classes": final_classes, "year": year, "state": state, "task_id": task.id}
+
+
 # ----------------- vectorize a class into cleaned segments (#4 wk10) -----------------
 def segment_class(bbox, year: int = 2024, cls: str = "mining", min_area_ha: float = 0.5,
                   model_bundle=None, refinements=None):
