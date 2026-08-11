@@ -45,6 +45,11 @@ def project_path(rel) -> str:
 # us (e.g. their CoreStack project). The /api/export-asset caller can also pass an explicit asset_id.
 EE_ASSET_ROOT = os.getenv("EE_ASSET_ROOT", f"projects/{EE_PROJECT}/assets/corestack_lulc")
 
+# Public base URL for STAC asset/link hrefs so they come out ABSOLUTE — a STAC browser can't render a
+# relative '/api/...'. Set to wherever the backend is reachable (e.g. http://act4dws5/corestack-lulc, or
+# an ngrok URL). Empty -> hrefs stay relative. The /api/export-asset call can also pass `asset_base`.
+STAC_ASSET_BASE = os.getenv("STAC_ASSET_BASE", "")
+
 AOI_TILE_CAP_KM2 = float(os.getenv("AOI_TILE_CAP_KM2", "40000"))     # ~200x200 km
 AOI_GEOTIFF_CAP_KM2 = float(os.getenv("AOI_GEOTIFF_CAP_KM2", "600"))  # ~25x25 km
 AOI_TESSERA_MAX_TILES = int(os.getenv("AOI_TESSERA_MAX_TILES", "6"))  # ~6 x 150 MB

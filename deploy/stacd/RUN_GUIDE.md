@@ -55,28 +55,32 @@ curl "http://127.0.0.1:8000/api/export-asset?west=77.16&south=28.53&east=77.20&n
 ```
 A healthy response looks like:
 ```json
-{ "asset_id": "projects/<proj>/assets/custom_lulc/smoke_2024",
+{ "status": "success",
+  "asset_id": ["projects/<proj>/assets/custom_lulc/smoke_2024"],
   "version": "1", "hosting_platform": "GEE",
-  "classes": ["barren","built_up","greenery","other","water"], "state": "COMPLETED" }
+  "stac_items": [ { "type": "Feature", "stac_version": "1.1.0", "id": "lulc_...", "bbox": [...],
+                    "geometry": {...}, "properties": {...}, "assets": {...}, "links": [...] } ] }
 ```
 
 ## 5. The endpoint your DAG calls
-`GET /api/export-asset` — returns the STACD shape `{asset_id, version, hosting_platform: "GEE"}`. Input,
-either:
-- `roi_asset=<FeatureCollection asset id>` — reads geometry from it (e.g. the filtered MWS boundaries), or
+`POST /api/export-asset` (GET with query args also works). The DAG forwards its run `conf` here; params can
+sit at the top level or under a `conf` key, and extra keys are ignored. Input, any of:
+- `region: [west, south, east, north]` — the bbox (the DAG param), or
+- `roi_asset=<FeatureCollection asset id>` — reads geometry from it (e.g. MWS boundaries), or
 - `west,south,east,north` — a plain bbox.
-Plus `year` (or `start_year`/`end_year`), and optional `asset_id` / `name` to control the output path.
-This is the `url:` in `lulc_algorithm.yaml` (set the host to wherever Airflow reaches the container).
+Plus `year` (or `start_year`/`end_year`), `base_scheme`, optional `asset_id`/`name`, and `asset_base` (or
+the `STAC_ASSET_BASE` env) to make the STAC hrefs absolute. This is the `url:` in
+`corestack_lulc_algorithm_repo.yaml`.
 
-Params can go as **GET query args** or a **POST JSON body** (same path) — the body form is what an
-Airflow algorithm call typically posts:
 ```bash
 curl -X POST http://HOST:8000/api/export-asset -H "Content-Type: application/json" \
-  -d '{"west":77.16,"south":28.53,"east":77.20,"north":28.57,"year":2024,"name":"test"}'
+  -d '{"region":[77.16,28.53,77.20,28.57],"year":2024,"base_scheme":"indiasat"}'
 ```
-The response includes the asset descriptor **and the STACD spec** for that output: `stac` (the STAC
-Item) + `stacd` (the DAG). Add `include_stacd=false` to drop it if you only want the asset id. Re-running
-the same region+year overwrites the existing asset (idempotent); pass `overwrite=false` to keep it.
+
+**Response shape** (what the STACD DAG generator reads): `status`, `asset_id` (list), `version`,
+`hosting_platform`, and `stac_items` (an array of STAC Feature objects). There is **no `stacd` block** —
+the pipeline builds provenance from the registered YAMLs and only reads `stac_items`. Re-running the same
+region+year overwrites the existing asset (idempotent); pass `overwrite=false` to keep it.
 
 **Two ways to run it:**
 - **Synchronous (default, `wait=true`):** the call blocks until the GEE export finishes, then returns the

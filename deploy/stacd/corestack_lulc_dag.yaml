@@ -1,0 +1,42 @@
+# DAG config for the Core Stack LULC algorithm (group: corestack). Single algorithm, no root input
+# dataset — the AOI arrives as the `region` param and the output raster is produced by the algorithm.
+--- !DAG
+id: corestack_lulc
+name: Core Stack LULC
+group: corestack
+version: 1.0
+description: "Single-algorithm workflow: 10 m Alpha Earth LULC raster for a region, exported to a GEE asset"
+params:
+  - region          # bounding box [west, south, east, north]
+  - year
+  - base_scheme
+alg_type_nodes:
+  - CoreStack_LULC
+dataset_type_nodes:
+  - CoreStack_LULC_Raster
+
+---
+# Dataset Type (output only)
+--- !Dataset_Type
+id: CoreStack_LULC_Raster
+name: Core Stack LULC Raster
+description: 10 m LULC raster (integer class codes) exported to a GEE asset
+format: GEEAsset
+
+---
+# Algorithm Type
+--- !Algorithm_Type
+id: CoreStack_LULC
+name: CoreStack_LULC
+description: Classify a region at 10 m on Alpha Earth and export the LULC raster as a GEE asset
+params:
+  - name: region
+    type: array
+  - name: year
+    type: integer
+  - name: base_scheme
+    type: string
+input_datasets: []
+outputs:
+  - CoreStack_LULC_Raster
+depends_on: []

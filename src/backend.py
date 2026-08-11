@@ -334,14 +334,24 @@ def classify_geotiff(west: float, south: float, east: float, north: float, year:
 
 
 # ----------------------------- export to a GEE asset (STACD onboarding) -----------------------------
-def _run_export(west=None, south=None, east=None, north=None, roi_asset=None,
+def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, region=None,
                 year=2024, start_year=None, end_year=None, asset_id=None, name=None,
-                wait=True, overwrite=True, include_stacd=True, **_ignored):
-    """Shared logic for the GET + POST export endpoints. Classifies the AOI, exports the raster to a
-    GEE asset, and (by default) attaches the STACD spec for that same output. `**_ignored` swallows
-    extra CoreStack params (state/district/block/gee_account_id) so a DAG body doesn't error."""
+                base_scheme=None, asset_base=None, wait=True, overwrite=True, include_stac=True,
+                **_ignored):
+    """Shared logic for the GET + POST export endpoints. Classifies the AOI, exports the raster to a GEE
+    asset, and returns the shape the STACD DAG generator reads: status + asset_id (list) + stac_items
+    (array). We deliberately DON'T return a `stacd` block — the pipeline builds provenance itself from the
+    registered YAML configs and only reads `stac_items` from us. `**_ignored` swallows extra DAG params
+    (state/district/block/gee_account_id/hierarchy/job_id/…) so a forwarded DAG conf never errors."""
     _maybe_reload()
     yr = min(max(end_year or start_year or year, AE_YEARS[0]), AE_YEARS[-1])
+
+    # `region: [w,s,e,n]` (a DAG param) is an alias for the bbox
+    if region and None in (west, south, east, north) and not roi_asset:
+        try:
+            west, south, east, north = [float(x) for x in region]
+        except Exception:
+            raise HTTPException(400, "region must be [west, south, east, north]")
 
     region_geom = None
     if roi_asset:
@@ -358,7 +368,7 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None,
         bbox = (west, south, east, north)
         default_name = f"{west:.3f}_{south:.3f}_{east:.3f}_{north:.3f}"
     else:
-        raise HTTPException(400, "provide either roi_asset or all of west/south/east/north")
+        raise HTTPException(400, "provide region [w,s,e,n], roi_asset, or west/south/east/north")
 
     # a GEE batch export handles large areas fine (unlike the size-capped getDownloadURL), so the
     # generous tile cap is the right guard here.
@@ -380,38 +390,51 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None,
     except Exception as e:
         raise HTTPException(500, f"export failed: {e}")
 
-    # attach the STACD provenance for this output (STAC Item + DAG) — cheap, metadata-only, no EE run
-    if include_stacd:
+    # response shaped for the STACD DAG generator: `status` + `asset_id` (list) + `stac_items` (array).
+    # No `stacd` block on purpose — the pipeline registers that from our YAMLs and only reads stac_items.
+    state = out.get("state")
+    resp = {"status": "success" if state == "COMPLETED" else (state or "unknown").lower(),
+            "asset_id": [out["asset_id"]],
+            "version": out.get("version", "1"),
+            "hosting_platform": out.get("hosting_platform", "GEE"),
+            "stac_items": [],
+            # extras the generator ignores; our async poll / debugging use them
+            "state": state, "task_id": out.get("task_id"), "classes": out.get("classes")}
+    if include_stac:
         try:
-            out["stac"] = stacd.build_stack_item(bbox, yr)
-            out["stacd"] = stacd.build_stacd(bbox, yr)
-        except Exception as e:
-            out["stacd_error"] = str(e)          # never fail the export over the provenance add-on
-    return out
+            resp["stac_items"] = [stacd.build_stack_item(bbox, yr, base_scheme=base_scheme,
+                                                        base_url=(asset_base or config.STAC_ASSET_BASE),
+                                                        asset_id=out["asset_id"])]
+        except Exception as ex:
+            resp["stac_error"] = str(ex)          # never fail the export over the stac add-on
+    return resp
 
 
 # the body keys /api/export-asset understands; anything else in the DAG conf (job_id, execution_type,
 # spots, …) is simply ignored, so the endpoint accepts whatever the pipeline forwards.
-_EXPORT_KEYS = {"west", "south", "east", "north", "roi_asset", "year", "start_year", "end_year",
-                "asset_id", "name", "wait", "overwrite", "include_stacd",
-                "state", "district", "block", "gee_account_id"}
+_EXPORT_KEYS = {"west", "south", "east", "north", "roi_asset", "region", "year", "start_year",
+                "end_year", "asset_id", "name", "base_scheme", "asset_base", "wait", "overwrite",
+                "include_stac", "state", "district", "block", "gee_account_id", "hierarchy"}
 
 
 @app.get("/api/export-asset")
 def export_asset(west: float = None, south: float = None, east: float = None, north: float = None,
                  roi_asset: str = None, year: int = 2024, start_year: int = None, end_year: int = None,
-                 asset_id: str = None, name: str = None, wait: bool = True, overwrite: bool = True,
-                 include_stacd: bool = True):
-    """Export a classified LULC raster to a Google Earth Engine asset. Returns the STACD ingest contract
-    {asset_id, version, hosting_platform: "GEE"} plus (by default) the STACD spec (`stac` + `stacd`).
+                 asset_id: str = None, name: str = None, base_scheme: str = None, asset_base: str = None,
+                 wait: bool = True, overwrite: bool = True, include_stac: bool = True):
+    """Export a classified LULC raster to a Google Earth Engine asset. Returns the shape the STACD DAG
+    generator reads: {status, asset_id: [...], version, hosting_platform, stac_items: [STAC Feature]}.
+    No `stacd` block — the pipeline builds provenance from the registered YAMLs.
 
-    AOI: pass `roi_asset` (a FeatureCollection asset id, e.g. the filtered MWS boundaries the CoreStack
-    pipeline hands downstream) and we read geometry from it; or a plain `west/south/east/north` bbox.
-    `year` (or `start_year`/`end_year`) picks the Alpha Earth slice; no `asset_id` -> auto under
-    EE_ASSET_ROOT. Synchronous by default (wait=false returns the task immediately). Params can also be
-    sent as a JSON body via POST to this same path."""
-    return _run_export(west, south, east, north, roi_asset, year, start_year, end_year,
-                       asset_id, name, wait, overwrite, include_stacd)
+    AOI: `region=[w,s,e,n]`, or `roi_asset` (a FeatureCollection asset id, e.g. the MWS boundaries), or a
+    plain `west/south/east/north` bbox. `year` (or `start_year`/`end_year`) picks the Alpha Earth slice;
+    no `asset_id` -> auto under EE_ASSET_ROOT. `asset_base` (or config.STAC_ASSET_BASE) makes the STAC
+    hrefs absolute. Synchronous by default (wait=false returns the task immediately). Params can also be
+    POSTed as a JSON body to this same path (what the DAG forwards)."""
+    return _run_export(west=west, south=south, east=east, north=north, roi_asset=roi_asset,
+                       year=year, start_year=start_year, end_year=end_year, asset_id=asset_id,
+                       name=name, base_scheme=base_scheme, asset_base=asset_base, wait=wait,
+                       overwrite=overwrite, include_stac=include_stac)
 
 
 @app.post("/api/export-asset")
