@@ -344,12 +344,26 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
     registered YAML configs and only reads `stac_items` from us. `**_ignored` swallows extra DAG params
     (state/district/block/gee_account_id/hierarchy/job_id/…) so a forwarded DAG conf never errors."""
     _maybe_reload()
-    yr = min(max(end_year or start_year or year, AE_YEARS[0]), AE_YEARS[-1])
+    # the pipeline stringifies params, so coerce: year may arrive as "2024", base_scheme as '"indiasat"'
+    try:
+        yr = int(str(end_year or start_year or year).strip().strip('"').strip("'"))
+    except Exception:
+        yr = 2024
+    yr = min(max(yr, AE_YEARS[0]), AE_YEARS[-1])
+    if isinstance(base_scheme, str):
+        base_scheme = base_scheme.strip().strip('"').strip("'") or None
 
-    # `region: [w,s,e,n]` (a DAG param) is an alias for the bbox
-    if region and None in (west, south, east, north) and not roi_asset:
+    # `region` (a DAG param) is an alias for the bbox. The pipeline may send it as a real array OR as a
+    # string like "[77.16,28.53,77.20,28.57]", so accept both.
+    if region is not None and None in (west, south, east, north) and not roi_asset:
+        if isinstance(region, str):
+            import json as _json
+            try:
+                region = _json.loads(region)                     # "[77.16, ...]" -> list
+            except Exception:
+                region = region.strip().strip("[]").split(",")   # bare "77.16,28.53,..." fallback
         try:
-            west, south, east, north = [float(x) for x in region]
+            west, south, east, north = [float(str(x).strip()) for x in region]
         except Exception:
             raise HTTPException(400, "region must be [west, south, east, north]")
 
