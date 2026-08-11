@@ -404,23 +404,26 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
     except Exception as e:
         raise HTTPException(500, f"export failed: {e}")
 
-    # response shaped for the STACD DAG generator: `status` + `asset_id` (list) + `stac_items` (array).
-    # No `stacd` block on purpose — the pipeline registers that from our YAMLs and only reads stac_items.
+    # response shaped for the STACD DAG generator: `status` + `asset_id` (a STRING — their register task
+    # wraps it into a list itself, and a list from us ends up double-nested and breaks the DB bind) +
+    # `stac_items` (array). No `stacd` block — the pipeline builds that from the registered YAMLs.
     state = out.get("state")
-    resp = {"status": "success" if state == "COMPLETED" else (state or "unknown").lower(),
-            "asset_id": [out["asset_id"]],
-            "version": out.get("version", "1"),
-            "hosting_platform": out.get("hosting_platform", "GEE"),
-            "stac_items": [],
-            # extras the generator ignores; our async poll / debugging use them
-            "state": state, "task_id": out.get("task_id"), "classes": out.get("classes")}
+    stac_items = []
     if include_stac:
         try:
-            resp["stac_items"] = [stacd.build_stack_item(bbox, yr, base_scheme=base_scheme,
-                                                        base_url=(asset_base or config.STAC_ASSET_BASE),
-                                                        asset_id=out["asset_id"])]
+            stac_items = [stacd.build_stack_item(bbox, yr, base_scheme=base_scheme,
+                                                 base_url=(asset_base or config.STAC_ASSET_BASE),
+                                                 asset_id=out["asset_id"])]
         except Exception as ex:
-            resp["stac_error"] = str(ex)          # never fail the export over the stac add-on
+            stac_items = []                        # never fail the export over the stac add-on
+            _stac_err = str(ex)
+    resp = {"status": "success" if state == "COMPLETED" else (state or "unknown").lower(),
+            "asset_id": out["asset_id"],           # single string; the pipeline lists it itself
+            "version": out.get("version", "1"),
+            "hosting_platform": out.get("hosting_platform", "GEE"),
+            "stac_items": stac_items,
+            # extras the generator ignores; our async poll / debugging use them
+            "state": state, "task_id": out.get("task_id"), "classes": out.get("classes")}
     return resp
 
 
