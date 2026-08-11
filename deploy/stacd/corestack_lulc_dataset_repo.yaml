@@ -1,0 +1,4 @@
+# Dataset repo for Core Stack LULC — intentionally empty. There's no root dataset to pre-register: the
+# AOI comes in as the `region` DAG param and the LULC output asset is produced by the algorithm at run
+# time (Airflow registers it as a DatasetInstance from the returned asset_id). Matches the drone /
+# bioacoustic dataset repos, which are also empty.

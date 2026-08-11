@@ -137,12 +137,13 @@ def _effective_ops(ops):
     return out
 
 
-def build_stack_item(bbox, year, base_scheme=None, archive=False):
+def build_stack_item(bbox, year, base_scheme=None, archive=False, base_url="", asset_id=None):
     """The stack-spec: a STAC Item / Dataset_Instance describing the LULC raster over `bbox`.
 
     Assets point at our own producers (the GeoTIFF + tile endpoints) so the item is actionable
     without us pre-running a slow EE export just to describe it. `properties.classes` is the code
-    legend a consumer needs to read the raster's integer bands."""
+    legend a consumer needs to read the raster's integer bands. `base_url` (if set) is prepended to the
+    relative '/api/...' hrefs so a STAC browser can resolve them; `asset_id` adds the produced GEE asset."""
     w, s, e, n = bbox
     colors = infer.load_colors()
     base_scheme = base_scheme or infer.active_base().get("scheme", "indiasat")
@@ -150,6 +151,9 @@ def build_stack_item(bbox, year, base_scheme=None, archive=False):
     q = f"west={w}&south={s}&east={e}&north={n}"
     item_id = f"lulc_{w:.4f}_{s:.4f}_{e:.4f}_{n:.4f}_{year}"
     dt = f"{year}-01-01T00:00:00Z"
+    _b = base_url.rstrip("/")
+    def _abs(href):                                    # make our '/api/...' hrefs absolute if a base is set
+        return f"{_b}{href}" if _b and href.startswith("/") else href
     return {
         "stac_version": STAC_VERSION,
         "stac_extensions": [STACD_REF],
@@ -177,21 +181,25 @@ def build_stack_item(bbox, year, base_scheme=None, archive=False):
             # clean up unflagged (test) STAC items later — sir's "checkbox to archive". Emit-only for
             # now; the retention/cleanup itself is deferred to the deployment week.
             "archive": bool(archive),
+            "asset_id": asset_id,
             "classes": _leaf_legend(colors),
         },
         "assets": {
-            "geotiff": {"href": f"/api/classify.tif?{q}&year={year}", "type": "image/tiff; application=geotiff",
+            **({"gee_asset": {"href": f"https://code.earthengine.google.com/?asset={asset_id}",
+                             "type": "application/x-ee-image", "roles": ["data"],
+                             "title": "Exported GEE asset"}} if asset_id else {}),
+            "geotiff": {"href": _abs(f"/api/classify.tif?{q}&year={year}"), "type": "image/tiff; application=geotiff",
                         "roles": ["data"], "title": "Class-code raster (10 m)"},
-            "tiles": {"href": f"/api/classify?{q}&year={year}", "type": "application/json",
+            "tiles": {"href": _abs(f"/api/classify?{q}&year={year}"), "type": "application/json",
                       "roles": ["visual"], "title": "XYZ tile endpoint"},
         },
         # real STAC catalog links (self / root / collection), matching their item — was an empty list (#15)
         "links": [
-            {"rel": "self", "href": f"/api/stacd?{q}&year={year}", "type": "application/json"},
-            {"rel": "root", "href": "catalog.json", "type": "application/json",
+            {"rel": "self", "href": _abs(f"/api/stacd?{q}&year={year}"), "type": "application/json"},
+            {"rel": "root", "href": _abs("/catalog.json"), "type": "application/json",
              "title": "Core Stack LULC catalog"},
-            {"rel": "collection", "href": "collection.json", "type": "application/json", "title": COLLECTION},
-            {"rel": "parent", "href": "collection.json", "type": "application/json", "title": COLLECTION},
+            {"rel": "collection", "href": _abs("/collection.json"), "type": "application/json", "title": COLLECTION},
+            {"rel": "parent", "href": _abs("/collection.json"), "type": "application/json", "title": COLLECTION},
         ],
     }
 

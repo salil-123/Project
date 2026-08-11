@@ -1,0 +1,17 @@
+# Algorithm instance for Core Stack LULC. API-mode (synchronous): the DAG forwards its run conf to this
+# url, our backend classifies + exports to GEE and returns {status, asset_id, stac_items}.
+--- !Algorithm_Instance
+type: CoreStack_LULC
+version: "1"
+date: 2026-08-11
+assets:
+  code: "https://github.com/salil-123/Project"
+execution_modes:
+  api:
+    enabled: true
+    priority: 1
+    # set this to wherever the backend container is reachable from Airflow (an ngrok URL, the LAN IP,
+    # or the container host), e.g. https://<sub>.ngrok-free.dev/api/export-asset
+    url: "http://<backend-host>:8000/api/export-asset"
+  docker:
+    enabled: false
