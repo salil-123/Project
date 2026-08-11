@@ -387,6 +387,38 @@ def export_asset(west: float = None, south: float = None, east: float = None, no
         raise HTTPException(500, f"export failed: {e}")
 
 
+@app.get("/api/export-status")
+def export_status(task_id: str = None, asset_id: str = None):
+    """Poll an export that was started async (`/api/export-asset?wait=false`) — the isSuccess() check
+    an Airflow sensor polls instead of blocking one long HTTP call. Pass `task_id` (returned by
+    export-asset) for the EE task state, or `asset_id` to just check whether the asset exists yet.
+    Returns {state, done, success, asset_id, error}."""
+    if not task_id and not asset_id:
+        raise HTTPException(400, "provide task_id or asset_id")
+    ee = config.ee_init()
+
+    if task_id:
+        try:
+            st = ee.data.getTaskStatus(task_id)
+            st = st[0] if isinstance(st, list) else st
+        except Exception as e:
+            raise HTTPException(404, f"no task {task_id}: {e}")
+        state = st.get("state", "UNKNOWN")
+        done = state in ("COMPLETED", "FAILED", "CANCELLED", "CANCEL_REQUESTED")
+        dest = st.get("destination_uris") or []
+        return {"task_id": task_id, "state": state, "done": done,
+                "success": state == "COMPLETED", "error": st.get("error_message"),
+                "asset_id": asset_id, "destination": dest}
+
+    # asset_id only: does the produced asset exist yet?
+    try:
+        info = ee.data.getAsset(asset_id)
+        return {"asset_id": asset_id, "state": "COMPLETED", "done": True,
+                "success": True, "type": info.get("type")}
+    except Exception:
+        return {"asset_id": asset_id, "state": "PENDING", "done": False, "success": False}
+
+
 # ----------------------------- per-fortnight water (#5/#7) -----------------------------
 @app.get("/api/water")
 def classify_water(west: float, south: float, east: float, north: float, date: str):

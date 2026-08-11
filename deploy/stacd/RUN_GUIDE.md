@@ -61,12 +61,26 @@ A healthy response looks like:
 ```
 
 ## 5. The endpoint your DAG calls
-`GET /api/export-asset` — synchronous (blocks until the GEE export completes), returns the STACD shape
-`{asset_id, version, hosting_platform: "GEE"}`. Input, either:
+`GET /api/export-asset` — returns the STACD shape `{asset_id, version, hosting_platform: "GEE"}`. Input,
+either:
 - `roi_asset=<FeatureCollection asset id>` — reads geometry from it (e.g. the filtered MWS boundaries), or
 - `west,south,east,north` — a plain bbox.
 Plus `year` (or `start_year`/`end_year`), and optional `asset_id` / `name` to control the output path.
 This is the `url:` in `lulc_algorithm.yaml` (set the host to wherever Airflow reaches the container).
+
+**Two ways to run it:**
+- **Synchronous (default, `wait=true`):** the call blocks until the GEE export finishes, then returns the
+  descriptor. Matches the other CoreStack APIs; simplest for a plain DAG task.
+- **Async + poll (for long exports / to avoid HTTP timeouts):** call with `wait=false` — it submits and
+  returns immediately with a `task_id`. Then poll `GET /api/export-status?task_id=<id>` until
+  `"done": true`; `"success": true` is the isSuccess() check (an Airflow sensor fits here). You can also
+  poll `GET /api/export-status?asset_id=<id>` to check whether the asset exists yet.
+  ```bash
+  # submit
+  curl "http://HOST:8000/api/export-asset?...&wait=false"     # -> {task_id, asset_id, state:"SUBMITTED"}
+  # poll
+  curl "http://HOST:8000/api/export-status?task_id=<id>"      # -> {state, done, success, error}
+  ```
 
 ## Handy
 ```bash
