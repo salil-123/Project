@@ -10,17 +10,33 @@ docker pull salil2003/corestack-lulc:latest
 ```
 
 ## 2. Earth Engine auth (the only real setup step)
-The container has no EE credentials baked in. Easiest path: authenticate once on the host, then mount
-that credential into the container.
+The container has no EE credentials baked in. Two options:
+
+**Option A — use OUR project via a service-account key (recommended).** We give you a JSON key for a
+service account on our project (`modern-mystery-398416`); the container authenticates as it, and outputs
+land in our project (already set up). Nothing to configure on your GEE side. Mount the key and set
+`EE_SERVICE_ACCOUNT_KEY` (see the run command below). Keep the key file private.
+
+**Option B — use your own EE identity.** Authenticate once on the host and mount the token:
 ```bash
 earthengine authenticate          # one-time, on the host; opens a browser, stores a token
 ls ~/.config/earthengine/credentials   # confirm it's there
 ```
-(For a headless server later we can switch to a service-account key; mounting the token is fine to start.)
+Then set `EE_PROJECT` / `EE_ASSET_ROOT` to a project you can write to.
 
 ## 3. Run it
-Point `EE_PROJECT` and `EE_ASSET_ROOT` at a GEE project **your EE identity can write assets to** (a
-CoreStack project, or your own). The output rasters land under `EE_ASSET_ROOT`.
+
+**Option A — our project, service-account key** (outputs land in our already-set-up project):
+```bash
+docker run -d --name custom_lulc -p 8000:8000 \
+  -e EE_PROJECT=modern-mystery-398416 \
+  -e EE_ASSET_ROOT=projects/modern-mystery-398416/assets/custom_lulc \
+  -e EE_SERVICE_ACCOUNT_KEY=/app/ee-key.json \
+  -v /path/to/ee-key.json:/app/ee-key.json:ro \
+  salil2003/corestack-lulc:latest
+```
+
+**Option B — your own project + token:**
 ```bash
 docker run -d --name custom_lulc -p 8000:8000 \
   -e EE_PROJECT=<your-gee-project> \

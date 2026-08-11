@@ -76,10 +76,24 @@ OPTIONAL_ASSETS = {
 }
 
 
+# optional service-account key (a JSON file) for headless / shared use: point EE_SERVICE_ACCOUNT_KEY at
+# it and the app authenticates AS that robot identity on EE_PROJECT, instead of a personal
+# `earthengine authenticate` token. This is how someone else (e.g. Saharsh) runs the container against
+# OUR project without our personal login. Falls back to the normal token flow when unset.
+EE_SERVICE_ACCOUNT_KEY = os.getenv("EE_SERVICE_ACCOUNT_KEY", "")
+
+
 def ee_init():
-    """Initialize Earth Engine with the project. Returns the ee module."""
+    """Initialize Earth Engine on EE_PROJECT and return the ee module. Uses a service-account key if
+    EE_SERVICE_ACCOUNT_KEY points at one, otherwise the local `earthengine authenticate` credentials."""
     import ee
-    ee.Initialize(project=EE_PROJECT)
+    if EE_SERVICE_ACCOUNT_KEY and os.path.exists(EE_SERVICE_ACCOUNT_KEY):
+        import json
+        email = json.load(open(EE_SERVICE_ACCOUNT_KEY)).get("client_email")
+        creds = ee.ServiceAccountCredentials(email, EE_SERVICE_ACCOUNT_KEY)
+        ee.Initialize(creds, project=EE_PROJECT)
+    else:
+        ee.Initialize(project=EE_PROJECT)
     return ee
 
 
