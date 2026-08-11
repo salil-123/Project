@@ -60,3 +60,8 @@ chahat_paper_flowchart.png
 tessera_fast.py
 *.ipynb
 "3_store_embeddings_run_lulcv4 (temporal multi year sampling).py"
+
+# service-account / key files — never commit
+deploy/ee-key.json
+*ee-key.json
+*-sa.json
