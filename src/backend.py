@@ -19,7 +19,7 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -390,14 +390,11 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None,
     return out
 
 
-class ExportIn(BaseModel):
-    west: float = None; south: float = None; east: float = None; north: float = None
-    roi_asset: str = None
-    year: int = 2024; start_year: int = None; end_year: int = None
-    asset_id: str = None; name: str = None
-    wait: bool = True; overwrite: bool = True; include_stacd: bool = True
-    # accepted (so a CoreStack DAG body validates), geometry still comes from roi_asset/bbox for now
-    state: str = None; district: str = None; block: str = None; gee_account_id: int = None
+# the body keys /api/export-asset understands; anything else in the DAG conf (job_id, execution_type,
+# spots, …) is simply ignored, so the endpoint accepts whatever the pipeline forwards.
+_EXPORT_KEYS = {"west", "south", "east", "north", "roi_asset", "year", "start_year", "end_year",
+                "asset_id", "name", "wait", "overwrite", "include_stacd",
+                "state", "district", "block", "gee_account_id"}
 
 
 @app.get("/api/export-asset")
@@ -418,10 +415,21 @@ def export_asset(west: float = None, south: float = None, east: float = None, no
 
 
 @app.post("/api/export-asset")
-def export_asset_post(body: ExportIn):
-    """Same as GET /api/export-asset, but the parameters come in a JSON body — the shape a STACD/Airflow
-    algorithm call posts. Returns the asset descriptor + STACD spec."""
-    return _run_export(**body.model_dump())
+async def export_asset_post(request: Request):
+    """Same as GET /api/export-asset, but parameters come in a JSON body — the shape a STACD/Airflow
+    algorithm call posts (the DAG forwards its run `conf` here). Tolerant of the exact envelope: params
+    may sit at the top level or under a `conf` key, and any extra keys the pipeline sends (job_id,
+    execution_type, …) are ignored. Returns the asset descriptor + STACD spec."""
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "body must be JSON")
+    if not isinstance(body, dict):
+        raise HTTPException(400, "body must be a JSON object")
+    if isinstance(body.get("conf"), dict):
+        body = body["conf"]                       # Airflow DAG-conf envelope
+    kwargs = {k: v for k, v in body.items() if k in _EXPORT_KEYS}
+    return _run_export(**kwargs)
 
 
 @app.get("/api/export-status")
