@@ -334,21 +334,14 @@ def classify_geotiff(west: float, south: float, east: float, north: float, year:
 
 
 # ----------------------------- export to a GEE asset (STACD onboarding) -----------------------------
-@app.get("/api/export-asset")
-def export_asset(west: float = None, south: float = None, east: float = None, north: float = None,
-                 roi_asset: str = None, year: int = 2024, end_year: int = None,
-                 asset_id: str = None, name: str = None, wait: bool = True):
-    """Export a classified LULC raster to a Google Earth Engine asset and return its descriptor, the
-    contract the STACD framework ingests: {asset_id, version, hosting_platform: "GEE"}.
-
-    AOI: pass `roi_asset` (a FeatureCollection asset id, e.g. the filtered MWS boundaries the CoreStack
-    pipeline hands downstream) and we read geometry from it; or a plain `west/south/east/north` bbox for
-    standalone testing. `year` (or `end_year`) picks the Alpha Earth slice. With no `asset_id` the output
-    lands under our own project: projects/<EE_PROJECT>/assets/corestack_lulc/<name>_<year>. Synchronous:
-    blocks until the EE export finishes, matching how the other algorithms behave (wait=false returns the
-    task immediately instead)."""
+def _run_export(west=None, south=None, east=None, north=None, roi_asset=None,
+                year=2024, start_year=None, end_year=None, asset_id=None, name=None,
+                wait=True, overwrite=True, include_stacd=True, **_ignored):
+    """Shared logic for the GET + POST export endpoints. Classifies the AOI, exports the raster to a
+    GEE asset, and (by default) attaches the STACD spec for that same output. `**_ignored` swallows
+    extra CoreStack params (state/district/block/gee_account_id) so a DAG body doesn't error."""
     _maybe_reload()
-    yr = min(max(end_year or year, AE_YEARS[0]), AE_YEARS[-1])
+    yr = min(max(end_year or start_year or year, AE_YEARS[0]), AE_YEARS[-1])
 
     region_geom = None
     if roi_asset:
@@ -379,12 +372,56 @@ def export_asset(west: float = None, south: float = None, east: float = None, no
         asset_id = f"{config.EE_ASSET_ROOT.rstrip('/')}/{base}_{yr}"
 
     try:
-        return infer.classify_to_asset(bbox, asset_id, year=yr, region_geom=region_geom,
-                                       model_bundle=_model, refinements=_refinements, wait=wait)
+        out = infer.classify_to_asset(bbox, asset_id, year=yr, region_geom=region_geom,
+                                      model_bundle=_model, refinements=_refinements,
+                                      wait=wait, overwrite=overwrite)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
     except Exception as e:
         raise HTTPException(500, f"export failed: {e}")
+
+    # attach the STACD provenance for this output (STAC Item + DAG) — cheap, metadata-only, no EE run
+    if include_stacd:
+        try:
+            out["stac"] = stacd.build_stack_item(bbox, yr)
+            out["stacd"] = stacd.build_stacd(bbox, yr)
+        except Exception as e:
+            out["stacd_error"] = str(e)          # never fail the export over the provenance add-on
+    return out
+
+
+class ExportIn(BaseModel):
+    west: float = None; south: float = None; east: float = None; north: float = None
+    roi_asset: str = None
+    year: int = 2024; start_year: int = None; end_year: int = None
+    asset_id: str = None; name: str = None
+    wait: bool = True; overwrite: bool = True; include_stacd: bool = True
+    # accepted (so a CoreStack DAG body validates), geometry still comes from roi_asset/bbox for now
+    state: str = None; district: str = None; block: str = None; gee_account_id: int = None
+
+
+@app.get("/api/export-asset")
+def export_asset(west: float = None, south: float = None, east: float = None, north: float = None,
+                 roi_asset: str = None, year: int = 2024, start_year: int = None, end_year: int = None,
+                 asset_id: str = None, name: str = None, wait: bool = True, overwrite: bool = True,
+                 include_stacd: bool = True):
+    """Export a classified LULC raster to a Google Earth Engine asset. Returns the STACD ingest contract
+    {asset_id, version, hosting_platform: "GEE"} plus (by default) the STACD spec (`stac` + `stacd`).
+
+    AOI: pass `roi_asset` (a FeatureCollection asset id, e.g. the filtered MWS boundaries the CoreStack
+    pipeline hands downstream) and we read geometry from it; or a plain `west/south/east/north` bbox.
+    `year` (or `start_year`/`end_year`) picks the Alpha Earth slice; no `asset_id` -> auto under
+    EE_ASSET_ROOT. Synchronous by default (wait=false returns the task immediately). Params can also be
+    sent as a JSON body via POST to this same path."""
+    return _run_export(west, south, east, north, roi_asset, year, start_year, end_year,
+                       asset_id, name, wait, overwrite, include_stacd)
+
+
+@app.post("/api/export-asset")
+def export_asset_post(body: ExportIn):
+    """Same as GET /api/export-asset, but the parameters come in a JSON body — the shape a STACD/Airflow
+    algorithm call posts. Returns the asset descriptor + STACD spec."""
+    return _run_export(**body.model_dump())
 
 
 @app.get("/api/export-status")

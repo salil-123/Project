@@ -457,7 +457,7 @@ def classify_bbox_geotiff(bbox, year: int = 2024, model_bundle=None, refinements
 # ----------------- export the classified raster to a GEE asset (the STACD contract) -----------------
 def classify_to_asset(bbox, asset_id, year: int = 2024, region_geom=None, model_bundle=None,
                       refinements=None, colors=None, scale: int = 10, wait: bool = True,
-                      timeout_s: int = 1800):
+                      timeout_s: int = 1800, overwrite: bool = True):
     """Classify the AOI and EXPORT the integer label raster to a GEE asset, the shape STACD ingests.
 
     Builds the same label image the tile map uses (`final`, the class-code raster), then runs an Earth
@@ -478,6 +478,14 @@ def classify_to_asset(bbox, asset_id, year: int = 2024, region_geom=None, model_
         ee.data.createAsset({"type": "FOLDER"}, parent)
     except Exception:
         pass  # already there, or a perms issue toAsset will report clearly
+
+    # EE won't overwrite an existing asset — so a re-run (same region+year -> same id) errors. Delete
+    # the old one first so the export is idempotent, which is what a re-triggered DAG expects.
+    if overwrite:
+        try:
+            ee.data.deleteAsset(asset_id)
+        except Exception:
+            pass  # nothing to delete (or it'll surface on export)
 
     desc = re.sub(r"[^A-Za-z0-9_]", "_", asset_id.rsplit("/", 1)[-1])[:100] or "lulc_export"
     task = ee.batch.Export.image.toAsset(image=img, description=desc, assetId=asset_id,

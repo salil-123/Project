@@ -68,6 +68,16 @@ either:
 Plus `year` (or `start_year`/`end_year`), and optional `asset_id` / `name` to control the output path.
 This is the `url:` in `lulc_algorithm.yaml` (set the host to wherever Airflow reaches the container).
 
+Params can go as **GET query args** or a **POST JSON body** (same path) — the body form is what an
+Airflow algorithm call typically posts:
+```bash
+curl -X POST http://HOST:8000/api/export-asset -H "Content-Type: application/json" \
+  -d '{"west":77.16,"south":28.53,"east":77.20,"north":28.57,"year":2024,"name":"test"}'
+```
+The response includes the asset descriptor **and the STACD spec** for that output: `stac` (the STAC
+Item) + `stacd` (the DAG). Add `include_stacd=false` to drop it if you only want the asset id. Re-running
+the same region+year overwrites the existing asset (idempotent); pass `overwrite=false` to keep it.
+
 **Two ways to run it:**
 - **Synchronous (default, `wait=true`):** the call blocks until the GEE export finishes, then returns the
   descriptor. Matches the other CoreStack APIs; simplest for a plain DAG task.
