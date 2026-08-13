@@ -1,27 +1,23 @@
-# Workstation deploy — PULL the pre-built image from Docker Hub (no local build).
-# This is the file sir's workstation runs; mirrors the drone_docker `docker-compose.hub.yml` pattern.
+# Workstation deploy — PULL the deps image, MOUNT the code from the host.
+# Update the app with `git pull` + `docker compose ... restart` (no image rebuild).
 #
-#   1) cp deploy/.env.example .env   # fill in EE_PROJECT etc. (no build creds needed to run)
-#   2) docker compose -f docker-compose.hub.yml pull
-#   3) docker compose -f docker-compose.hub.yml up -d
-#   4) open http://<host>:8000/   |   health: curl http://<host>:8000/api/health
+#   1) git clone <repo> && cd it
+#   2) cp deploy/.env.example .env    # fill EE_PROJECT, EE_ASSET_ROOT, STAC_ASSET_BASE, EE key path
+#   3) docker compose -f docker-compose.hub.yml pull
+#   4) docker compose -f docker-compose.hub.yml up -d
+#   5) open http://<host>:8000/   |   health: curl http://<host>:8000/api/health
+#   later: git pull && docker compose -f docker-compose.hub.yml restart
 services:
   lulc:
-    image: salil2003/corestack-lulc:latest   # pulled from hub.docker.com, not built here
+    image: salil2003/corestack-lulc:latest   # dependencies only; pulled from hub.docker.com
     pull_policy: always
     ports:
       - "8000:8000"
     env_file:
       - .env
     volumes:
-      # persist the writable runtime state (tree, op-log, example canvas, merges) across restarts.
-      # Bind-mount a host dir instead of a named volume if you want to edit/inspect it directly:
-      #   - ./data:/app/data
-      - lulc_data:/app/data
-      # Earth Engine service-account key (headless auth). Mount it read-only and set
-      # GOOGLE_APPLICATION_CREDENTIALS=/app/ee-key.json in .env.
-      # - ./deploy/ee-service-account.json:/app/ee-key.json:ro
+      # the app CODE + data, straight from this checkout — `git pull` to update, no rebuild
+      - .:/app
+      # Earth Engine service-account key (headless auth). Point EE_SERVICE_ACCOUNT_KEY at it in .env.
+      # - ./deploy/ee-key.json:/app/ee-key.json:ro
     restart: unless-stopped
-
-volumes:
-  lulc_data:

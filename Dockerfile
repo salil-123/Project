@@ -1,43 +1,30 @@
-# Core Stack LULC — web app image.
+# Core Stack LULC — DEPENDENCIES-ONLY image.
+#
+# The application CODE is intentionally NOT baked in. You bind-mount the repo at /app when you run, so
+# updating the app is just `git pull` + restart the container — no image rebuild. Only rebuild this image
+# when the *dependencies* change (requirements-docker.txt).
 #
 #   build:  docker build -t salil2003/corestack-lulc:latest .
-#   run:    docker run --rm -p 8000:8000 --env-file .env salil2003/corestack-lulc:latest
-#   then:   http://127.0.0.1:8000/
-#
-# Only the serving app + its small runtime data land in the image; the heavy CSV caches,
-# biomass artifacts, zoo artifacts and secrets are kept out by .dockerignore. Paths are
-# anchored to the project root (config.project_path), so uvicorn runs fine from /app.
+#   run:    docker run --rm -p 8000:8000 --env-file .env -v "$(pwd)":/app salil2003/corestack-lulc:latest
+#   (or:    docker compose -f docker-compose.hub.yml up -d   — it does the mount for you)
 FROM python:3.11-slim
 
-# The geospatial wheels (rasterio/pyproj/shapely/geopandas/pyogrio) bundle their own
-# GDAL/GEOS/PROJ, so at OS level we only need git (zoo_git shells out to it on publish)
-# and libgomp1 (xgboost's OpenMP runtime).
+# geospatial wheels bundle their own GDAL/GEOS/PROJ; we only need git (zoo publish) + libgomp1 (a numeric lib)
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# deps first so this layer caches across code edits. Slim the layer in-place: drop any stray CUDA
-# libs (nothing should pull them once xgboost is out) and the compiled-bytecode caches.
-COPY deploy/requirements-docker.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt \
+# install only the serving dependencies. This is the only thing baked in; the code arrives via the mount.
+COPY deploy/requirements-docker.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
     && pip uninstall -y nvidia-nccl-cu12 2>/dev/null || true \
     && find /usr/local/lib/python3.11 -name '__pycache__' -type d -prune -exec rm -rf {} + \
     && find /usr/local/lib/python3.11 -name '*.pyc' -delete
 
-# the app + its runtime data (heavy/secret files excluded via .dockerignore)
-COPY config.py README.md ./
-COPY src/ ./src/
-COPY schema/ ./schema/
-COPY data/ ./data/
-
-# the app writes hierarchy/op_log/examples/merge_rules at runtime — mount a volume here
-# to persist that state across container restarts (see docker-compose.yml).
-VOLUME ["/app/data"]
-
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
-# backend adds the repo root to sys.path itself; bind all interfaces so the port maps out.
+# runs the code bind-mounted at /app (expects /app/src/backend.py). With nothing mounted it errors clearly.
 CMD ["uvicorn", "backend:app", "--app-dir", "src", "--host", "0.0.0.0", "--port", "8000"]

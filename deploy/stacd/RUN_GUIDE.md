@@ -1,13 +1,17 @@
 # Running the Custom LULC service (for Saharsh)
 
-The LULC model ships as a public Docker image. Pull it, give it Earth Engine credentials, point it at a
-GEE project you can write to, and it exposes one endpoint your STACD DAG calls. Registers in STACD as the
-algorithm **`Custom_LULC`** (separate from CoreStack's `lulc_v3`).
+The LULC model ships as a **dependencies-only** Docker image + the code from git (bind-mounted at run
+time). So updating the app is just `git pull` + restart — no image rebuild. Give it Earth Engine
+credentials, point it at a GEE project you can write to, and it exposes one endpoint your STACD DAG calls.
+Registers in STACD as the algorithm **`CoreStack_LULC`** (separate from CoreStack's `lulc_v3`).
 
-## 1. Pull the image
+## 1. Get the code + the image
 ```bash
-docker pull salil2003/corestack-lulc:latest
+git clone https://github.com/salil-123/Project.git corestack-lulc && cd corestack-lulc
+docker pull salil2003/corestack-lulc:latest      # deps only; the code is what you just cloned
+cp deploy/.env.example .env                       # then fill EE_PROJECT / EE_ASSET_ROOT / STAC_ASSET_BASE
 ```
+The code is bind-mounted into the container, so later updates are just `git pull` + `docker restart`.
 
 ## 2. Earth Engine auth (the only real setup step)
 The container has no EE credentials baked in. Two options:
@@ -25,27 +29,31 @@ ls ~/.config/earthengine/credentials   # confirm it's there
 Then set `EE_PROJECT` / `EE_ASSET_ROOT` to a project you can write to.
 
 ## 3. Run it
+Always mount the checkout at `/app` (`-v "$(pwd)":/app`) — that's the code. Easiest is
+`docker compose -f docker-compose.hub.yml up -d` (it does the mount for you); the raw `docker run` is:
 
 **Option A — our project, service-account key** (outputs land in our already-set-up project):
 ```bash
 docker run -d --name custom_lulc -p 8000:8000 \
+  -v "$(pwd)":/app \
   -e EE_PROJECT=modern-mystery-398416 \
   -e EE_ASSET_ROOT=projects/modern-mystery-398416/assets/custom_lulc \
-  -e EE_SERVICE_ACCOUNT_KEY=/app/ee-key.json \
-  -v /path/to/ee-key.json:/app/ee-key.json:ro \
+  -e EE_SERVICE_ACCOUNT_KEY=/app/deploy/ee-key.json \
+  -v /path/to/ee-key.json:/app/deploy/ee-key.json:ro \
   salil2003/corestack-lulc:latest
 ```
 
 **Option B — your own project + token:**
 ```bash
 docker run -d --name custom_lulc -p 8000:8000 \
+  -v "$(pwd)":/app \
   -e EE_PROJECT=<your-gee-project> \
   -e EE_ASSET_ROOT=projects/<your-gee-project>/assets/custom_lulc \
   -v ~/.config/earthengine:/root/.config/earthengine:ro \
   salil2003/corestack-lulc:latest
 ```
 First time only: make sure the asset folder exists (Code Editor -> Assets, or the app auto-creates it
-under an existing project root).
+under an existing project root). **Update the app later:** `git pull && docker restart custom_lulc`.
 
 ## 4. Verify it's up
 ```bash
