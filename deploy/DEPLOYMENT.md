@@ -22,17 +22,20 @@ fixes** — see below.
 | `docker-compose.hub.yml` (pull) / `docker-compose.yml` (build) | same two files | `.hub.yml` pulls the published image; the plain one builds locally. |
 | `.env.example` | `deploy/.env.example` | EE + zoo + AOI caps + (build-only) Docker Hub creds. |
 | `frontend/config.js` with `API_BASE` | not needed | same-origin relative `/api/...`, so there's no base URL to reset. |
-| `models/*.pth` bind-mounted | `.joblib`s baked in | ours are small; the writable `data/` is the bind/volume. |
+| `models/*.pth` bind-mounted | code + `data/` bind-mounted | image is deps-only; the whole checkout is mounted at `/app` (same pattern). |
 | `airflow/dags/*` | `airflow/dags/corestack_lulc_dag.py` | example DAG that drives our API (template — set the base URL). |
 | `publish.sh` | `deploy/build_and_push.{sh,ps1}` | build + push using creds from `.env`. |
 
-## Run it on the workstation (pull path)
+## Run it on the workstation (deps image + mounted code)
+The image is **dependencies-only**; the code comes from this git checkout, bind-mounted at `/app`. So
+updates are `git pull` + restart, never an image rebuild. (The compose files do the mount for you.)
 ```bash
-cp deploy/.env.example .env         # fill EE_PROJECT / EE_USER_ID; add EE service-account if headless
+git clone https://github.com/salil-123/Project.git && cd Project
+cp deploy/.env.example .env         # fill EE_PROJECT / EE_ASSET_ROOT / STAC_ASSET_BASE (+ EE key if headless)
 docker compose -f docker-compose.hub.yml pull
 docker compose -f docker-compose.hub.yml up -d
 curl http://localhost:8000/api/health      # -> {"ok": true}
-# open http://<host>:8000/
+# update later:  git pull && docker compose -f docker-compose.hub.yml restart
 ```
 
 ## Build + push a new image (dev machine)
@@ -67,8 +70,10 @@ running container (`CORESTACK_API_BASE=http://<host>:8000`) and enable it in Air
 otherwise runs everything in-process on request.
 
 ## What's in the image vs mounted
-- **Baked in:** `src/`, `config.py`, `schema/`, the small model `.joblib`s, the zoo card JSON, live
-  example polygons, `worldcover_train.csv` + `water_extra.csv`.
-- **Not baked (see `.dockerignore`):** `.env` (secrets), big CSV caches, biomass artifacts, zoo
-  `artifacts/`, dev/week folders. Runtime writes land in the `data` volume.
+- **In the image (baked):** only the Python dependencies (the serving stack). Rebuild the image *only*
+  when `deploy/requirements-docker.txt` changes.
+- **Mounted from the host checkout at `/app`:** all the code (`src/`, `config.py`, `schema/`) + `data/`
+  (models, hierarchy, examples). So a code change is `git pull` + `docker restart` — no rebuild.
+- **Supplied at runtime, never in git/image:** `.env` (config), the EE service-account key (mounted
+  read-only). Runtime writes land back in the mounted `data/` on the host.
 </content>
