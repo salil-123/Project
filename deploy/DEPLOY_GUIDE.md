@@ -108,76 +108,54 @@ All configuration is environment variables (nothing is hardcoded). Edit `.env`:
 
 ---
 
-## 5. Earth Engine setup (required — the one real setup step)
+## 5. Earth Engine setup (required)
 
-The service classifies with Earth Engine, so it needs (1) **EE credentials** and (2) **a GEE project +
-folder to write the output asset into**. Without this the app still starts and `/api/health` works, but
-`/api/export-asset` will fail — so this section is required for a working deployment.
+The service classifies with Earth Engine, so it needs EE credentials and a GEE project + folder to write
+the output asset into. Without this the app still starts and `/api/health` works, but `/api/export-asset`
+fails. Two options — **Option A is the simplest** (we hand you everything).
 
-### 5.0 Decide whose GEE project to use *(your call)*
-- **Your own project** — recommended; you control it and the outputs land in your assets. Do 5.1–5.4.
-- **Our project** (`modern-mystery-398416`) — only if arranged with us: we create the service account +
-  the `corestack_lulc` folder and send you the key over a **secure channel** (we have **not** shared one by
-  default). Then skip to 5.4 using our project id + paths.
-
-### 5.1 Have a GEE-enabled Google Cloud project
-If you don't already have one: create a Google Cloud project, then register it for Earth Engine by signing
-in once at <https://code.earthengine.google.com> and selecting/creating the project. Note its **project id**
-(e.g. `my-org-lulc`). This is your `EE_PROJECT`.
-
-### 5.2 Create a service-account key (headless credential)
-The container can't do an interactive browser login, so it authenticates as a service account (a "robot").
-
-**Console:** Google Cloud Console → **IAM & Admin → Service Accounts → Create service account**
-- name it e.g. `lulc-runner` → **Create and continue**
-- grant the role **Earth Engine Resource Writer** (`roles/earthengine.writer`) → **Done**
-- open the new account → **Keys → Add key → Create new key → JSON** → a `…json` file downloads. Rename it
-  `ee-key.json`.
-
-**Or with gcloud (same thing):**
-```bash
-gcloud config set project <your-project>
-gcloud iam service-accounts create lulc-runner --display-name="LULC runner"
-gcloud projects add-iam-policy-binding <your-project> \
-  --member="serviceAccount:lulc-runner@<your-project>.iam.gserviceaccount.com" \
-  --role="roles/earthengine.writer"
-gcloud iam service-accounts keys create ee-key.json \
-  --iam-account=lulc-runner@<your-project>.iam.gserviceaccount.com
-```
-
-### 5.3 Create the output asset folder (`corestack_lulc`)
-The exported rasters are written into a **folder** inside the project's Earth Engine assets, and it must
-exist first:
-1. Open <https://code.earthengine.google.com> → the **Assets** tab (top-left panel).
-2. If the project has no asset home yet, add it: **NEW → … / “Add a project”** and pick your project (this
-   creates the `projects/<your-project>/assets` root).
-3. **NEW → Folder** → name it exactly **`corestack_lulc`**. Its full id becomes
-   `projects/<your-project>/assets/corestack_lulc` — that's your `EE_ASSET_ROOT`.
-
-*(The app tries to auto-create this folder on first run if the project's asset root already exists, but
-creating it yourself avoids a first-run error and makes the path unambiguous.)*
-
-### 5.4 Wire the credentials into the deployment
-1. Put `ee-key.json` on the host **inside the project folder** at `./deploy/ee-key.json`
-   (it's gitignored — never commit it).
+### Option A — use our project with the key we provide *(recommended)*
+We give you a service-account key file (`ee-key.json`) for our project `modern-mystery-398416`. The service
+account and the `corestack_lulc` output folder are **already set up on our side**, so there's nothing for
+you to create in Google Cloud. On the deploy machine:
+1. Put the `ee-key.json` we gave you at `./deploy/ee-key.json` (inside the project folder).
 2. In `.env` set:
    ```
-   EE_PROJECT=<your-project>
-   EE_ASSET_ROOT=projects/<your-project>/assets/corestack_lulc
+   EE_PROJECT=modern-mystery-398416
+   EE_ASSET_ROOT=projects/modern-mystery-398416/assets/corestack_lulc
    EE_SERVICE_ACCOUNT_KEY=/app/deploy/ee-key.json
    ```
-3. In `docker-compose.hub.yml`, **uncomment** the key-mount line so the container can read it:
+3. In `docker-compose.hub.yml`, uncomment the key-mount line:
    ```yaml
    - ./deploy/ee-key.json:/app/deploy/ee-key.json:ro
    ```
-4. `docker compose -f docker-compose.hub.yml up -d`, then run the §6 test — a `status: success` with the
-   asset id means EE is wired correctly.
+4. `docker compose -f docker-compose.hub.yml up -d`, then run the §6 test — a `status: success` with an
+   asset id means EE is wired correctly. Outputs land in our project's `corestack_lulc` folder.
 
-> **Quick alternative for a local test only** (no service account): run `earthengine authenticate` on the
-> host and mount `~/.config/earthengine:/root/.config/earthengine:ro` instead of the key. Not for a server.
+That's the entire EE setup for this option.
 
-> A service-account key is an access credential — keep it private, share it only over a secure channel, and
-> revoke/rotate it in GCP if it's ever exposed.
+### Option B — use your own GEE project *(only if you'd rather not use ours)*
+1. **Have a GEE-enabled project.** Create a Google Cloud project and register it for Earth Engine by
+   signing in once at <https://code.earthengine.google.com>. Note its **project id** → this is `EE_PROJECT`.
+2. **Create a service-account key.** Cloud Console → **IAM & Admin → Service Accounts → Create service
+   account** (e.g. `lulc-runner`) → grant **Earth Engine Resource Writer** (`roles/earthengine.writer`) →
+   **Keys → Add key → JSON**. Rename the download `ee-key.json`. gcloud equivalent:
+   ```bash
+   gcloud config set project <your-project>
+   gcloud iam service-accounts create lulc-runner --display-name="LULC runner"
+   gcloud projects add-iam-policy-binding <your-project> \
+     --member="serviceAccount:lulc-runner@<your-project>.iam.gserviceaccount.com" \
+     --role="roles/earthengine.writer"
+   gcloud iam service-accounts keys create ee-key.json \
+     --iam-account=lulc-runner@<your-project>.iam.gserviceaccount.com
+   ```
+3. **Create the output folder.** <https://code.earthengine.google.com> → **Assets** tab → (add your project
+   if it has no asset root) → **NEW → Folder** → name it `corestack_lulc`. Full id:
+   `projects/<your-project>/assets/corestack_lulc` → this is `EE_ASSET_ROOT`.
+4. **Wire it in** — same as Option A steps 1–4, but with your project id / paths.
+
+> Local-test-only alternative (no service account): run `earthengine authenticate` on the host and mount
+> `~/.config/earthengine:/root/.config/earthengine:ro` instead of a key.
 
 ---
 
@@ -285,14 +263,6 @@ stac_items}`, and Airflow records it in the STACD catalog.
 | Long export times out behind a proxy | raise `proxy_read_timeout` (nginx, §7), or use the async pattern (`wait=false` + `/api/export-status`). |
 
 Logs: `docker compose -f docker-compose.hub.yml logs -f` (or `docker logs <container>`).
-
----
-
-## 12. Security notes
-- **Never commit** `.env` or the EE key (`deploy/ee-key.json`) — both are gitignored. Share the key
-  privately; it can be revoked in GCP.
-- If the endpoint is exposed publicly (ngrok/nginx), consider putting it behind an auth token or IP
-  allow-list — by default it is open to anyone who can reach the URL.
 
 ---
 
