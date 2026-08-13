@@ -7,12 +7,17 @@ A self-contained guide to deploy the **Core Stack LULC** service and (optionally
 
 ## 1. What you are deploying
 
-A **FastAPI** web service that classifies land-use / land-cover (LULC) over any region of India at 10 m
-using Google **Earth Engine**, and exports the result as a **GEE asset**. It exposes:
+A **FastAPI** web service that classifies land-use / land-cover (LULC) over any region of India at 10 m,
+**on the fly**, using Google **Earth Engine**. The service is **stateless — it does not store the
+classification, and it does not save any model** (the classifier is replayed as Earth-Engine band math
+each call). It exposes:
 
-- `GET /` — an interactive web UI (Leaflet) for painting/refining LULC. *(optional, for humans)*
-- `POST /api/export-asset` — the pipeline endpoint: classify a region → export a GEE asset → return the
-  STAC record. *(this is what Airflow calls)*
+- `GET /` — an interactive web UI (Leaflet) for painting/refining LULC; returns **live map tiles**,
+  nothing is written anywhere. *(optional, for humans)*
+- `POST /api/export-asset` — the pipeline endpoint. It classifies the region and, **only because STACD
+  needs a persistent reference to ingest**, materializes the output **in Google Earth Engine's own asset
+  store** (under `EE_ASSET_ROOT`) and returns the STAC record. The asset lives in GEE — **our backend
+  keeps nothing**. *(this is what Airflow calls)*
 - `GET /api/health` — liveness check.
 
 **Packaging model (important):** the Docker image contains **only the dependencies**. The application
@@ -94,33 +99,34 @@ All configuration is environment variables (nothing is hardcoded). Edit `.env`:
 
 ## 5. Earth Engine authentication (the one real setup step)
 
-The container has no EE credentials baked in. Pick one:
+The container has no EE credentials baked in. **Recommended: use your own GEE project** (Option A). Using
+our project (Option B) is possible but requires us to issue and securely hand over a key — not done yet.
 
-### Option A — run against **our** GEE project with a service-account key *(simplest for you)*
-We provide a JSON key (`ee-key.json`) for a service account on our project `modern-mystery-398416`. The
-output assets land in our project (already set up). Steps:
-1. Put the key file on the host, e.g. at `./deploy/ee-key.json` (it is gitignored — never commit it).
-2. In `.env`:
+### Option A — run against **your own** GEE project *(recommended)*
+1. In **your** GCP project, create a service account with the **Earth Engine Resource Writer** role and
+   download its JSON key. *(Quick alternative for testing: `earthengine authenticate` on the host, then
+   mount `~/.config/earthengine` into the container instead of a key.)*
+2. Ensure the output asset folder exists: EE Code Editor → **Assets** → create
+   `projects/<your-project>/assets/corestack_lulc` (or the app auto-creates it under an existing asset root).
+3. Put the key on the host at `./deploy/ee-key.json` (gitignored — never commit it), set `.env`:
    ```
-   EE_PROJECT=modern-mystery-398416
-   EE_ASSET_ROOT=projects/modern-mystery-398416/assets/corestack_lulc
+   EE_PROJECT=<your-project>
+   EE_ASSET_ROOT=projects/<your-project>/assets/corestack_lulc
    EE_SERVICE_ACCOUNT_KEY=/app/deploy/ee-key.json
    ```
-3. In `docker-compose.hub.yml`, uncomment the key mount line:
+   and uncomment the key mount in `docker-compose.hub.yml`:
    ```yaml
    - ./deploy/ee-key.json:/app/deploy/ee-key.json:ro
    ```
 
-### Option B — run against **your own** GEE project
-1. Create a service account in **your** GCP project with the **Earth Engine Resource Writer** role, and
-   download its JSON key. (Or, for a quick test, `earthengine authenticate` on the host and mount
-   `~/.config/earthengine` into the container instead.)
-2. Ensure the output asset folder exists: in the EE Code Editor → **Assets**, create
-   `projects/<your-project>/assets/corestack_lulc` (or the app auto-creates it under an existing project
-   asset root).
-3. Point `.env` (`EE_PROJECT`, `EE_ASSET_ROOT`, `EE_SERVICE_ACCOUNT_KEY`) at your project + key.
+### Option B — run against **our** GEE project *(only if arranged with us)*
+We would issue a service-account key on our project `modern-mystery-398416` so outputs land there.
+**We have not shared such a key** — if you want this path, ask us and we'll create one and send it over a
+**secure channel** (never committed to git, never over plain chat/email). Then use the same `.env` as
+Option A but with our project/paths.
 
-> Keep the key file private (it is an access credential). It can be revoked/rotated in GCP anytime.
+> A service-account key is an access credential — keep it private, share it only securely, and revoke/rotate
+> it in GCP if it is ever exposed.
 
 ---
 
