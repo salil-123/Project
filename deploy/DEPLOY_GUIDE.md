@@ -20,14 +20,22 @@ each call). It exposes:
   keeps nothing**. *(this is what Airflow calls)*
 - `GET /api/health` — liveness check.
 
-**Packaging model (important):** the Docker image contains **only the dependencies**. The application
-**code is bind-mounted from a git checkout** at run time. So:
-- Deploy = clone the repo + pull the image + run (the run mounts the code).
-- Update the app = `git pull` + restart the container. **No image rebuild.**
-- Rebuild the image **only** if `deploy/requirements-docker.txt` (the dependency list) changes.
+**Packaging model (important — how the two pieces fit):**
+- The **Docker image = the dependencies only** (Python + geospatial libraries). You get it with
+  `docker pull`. It contains **no application code**.
+- The **application code = a folder on the host** (from the code package or a git clone).
+- At **run time** (`docker run` / `docker compose up`), that code folder is **bind-mounted** onto the image
+  at the path **`/app`** (via `-v <code-folder>:/app` — the compose files do this for you). This mount is a
+  *run-time step, not part of `docker pull`.*
 
-- **Repo:** `https://github.com/salil-123/Project.git`
-- **Image:** `salil2003/corestack-lulc:latest` (public, dependencies-only, ~1.5 GB)
+So the mental model is: **`docker pull` the deps once → mount your code onto it at `/app` each run.**
+Consequences:
+- Update the app = swap the code folder (`git pull`, or drop in a new package) + restart. **No image rebuild.**
+- Rebuild + re-push the image **only** if `deploy/requirements-docker.txt` (the dependency list) changes.
+
+- **Code:** a git clone of `https://github.com/salil-123/Project.git`, **or** the `corestack-lulc-deploy.zip`
+  package (no GitHub needed).
+- **Image:** `salil2003/corestack-lulc:latest` (public on Docker Hub, dependencies-only, ~1.5 GB).
 - **Port:** `8000`
 
 ---
@@ -100,36 +108,76 @@ All configuration is environment variables (nothing is hardcoded). Edit `.env`:
 
 ---
 
-## 5. Earth Engine authentication (the one real setup step)
+## 5. Earth Engine setup (required — the one real setup step)
 
-The container has no EE credentials baked in. **Recommended: use your own GEE project** (Option A). Using
-our project (Option B) is possible but requires us to issue and securely hand over a key — not done yet.
+The service classifies with Earth Engine, so it needs (1) **EE credentials** and (2) **a GEE project +
+folder to write the output asset into**. Without this the app still starts and `/api/health` works, but
+`/api/export-asset` will fail — so this section is required for a working deployment.
 
-### Option A — run against **your own** GEE project *(recommended)*
-1. In **your** GCP project, create a service account with the **Earth Engine Resource Writer** role and
-   download its JSON key. *(Quick alternative for testing: `earthengine authenticate` on the host, then
-   mount `~/.config/earthengine` into the container instead of a key.)*
-2. Ensure the output asset folder exists: EE Code Editor → **Assets** → create
-   `projects/<your-project>/assets/corestack_lulc` (or the app auto-creates it under an existing asset root).
-3. Put the key on the host at `./deploy/ee-key.json` (gitignored — never commit it), set `.env`:
+### 5.0 Decide whose GEE project to use *(your call)*
+- **Your own project** — recommended; you control it and the outputs land in your assets. Do 5.1–5.4.
+- **Our project** (`modern-mystery-398416`) — only if arranged with us: we create the service account +
+  the `corestack_lulc` folder and send you the key over a **secure channel** (we have **not** shared one by
+  default). Then skip to 5.4 using our project id + paths.
+
+### 5.1 Have a GEE-enabled Google Cloud project
+If you don't already have one: create a Google Cloud project, then register it for Earth Engine by signing
+in once at <https://code.earthengine.google.com> and selecting/creating the project. Note its **project id**
+(e.g. `my-org-lulc`). This is your `EE_PROJECT`.
+
+### 5.2 Create a service-account key (headless credential)
+The container can't do an interactive browser login, so it authenticates as a service account (a "robot").
+
+**Console:** Google Cloud Console → **IAM & Admin → Service Accounts → Create service account**
+- name it e.g. `lulc-runner` → **Create and continue**
+- grant the role **Earth Engine Resource Writer** (`roles/earthengine.writer`) → **Done**
+- open the new account → **Keys → Add key → Create new key → JSON** → a `…json` file downloads. Rename it
+  `ee-key.json`.
+
+**Or with gcloud (same thing):**
+```bash
+gcloud config set project <your-project>
+gcloud iam service-accounts create lulc-runner --display-name="LULC runner"
+gcloud projects add-iam-policy-binding <your-project> \
+  --member="serviceAccount:lulc-runner@<your-project>.iam.gserviceaccount.com" \
+  --role="roles/earthengine.writer"
+gcloud iam service-accounts keys create ee-key.json \
+  --iam-account=lulc-runner@<your-project>.iam.gserviceaccount.com
+```
+
+### 5.3 Create the output asset folder (`corestack_lulc`)
+The exported rasters are written into a **folder** inside the project's Earth Engine assets, and it must
+exist first:
+1. Open <https://code.earthengine.google.com> → the **Assets** tab (top-left panel).
+2. If the project has no asset home yet, add it: **NEW → … / “Add a project”** and pick your project (this
+   creates the `projects/<your-project>/assets` root).
+3. **NEW → Folder** → name it exactly **`corestack_lulc`**. Its full id becomes
+   `projects/<your-project>/assets/corestack_lulc` — that's your `EE_ASSET_ROOT`.
+
+*(The app tries to auto-create this folder on first run if the project's asset root already exists, but
+creating it yourself avoids a first-run error and makes the path unambiguous.)*
+
+### 5.4 Wire the credentials into the deployment
+1. Put `ee-key.json` on the host **inside the project folder** at `./deploy/ee-key.json`
+   (it's gitignored — never commit it).
+2. In `.env` set:
    ```
    EE_PROJECT=<your-project>
    EE_ASSET_ROOT=projects/<your-project>/assets/corestack_lulc
    EE_SERVICE_ACCOUNT_KEY=/app/deploy/ee-key.json
    ```
-   and uncomment the key mount in `docker-compose.hub.yml`:
+3. In `docker-compose.hub.yml`, **uncomment** the key-mount line so the container can read it:
    ```yaml
    - ./deploy/ee-key.json:/app/deploy/ee-key.json:ro
    ```
+4. `docker compose -f docker-compose.hub.yml up -d`, then run the §6 test — a `status: success` with the
+   asset id means EE is wired correctly.
 
-### Option B — run against **our** GEE project *(only if arranged with us)*
-We would issue a service-account key on our project `modern-mystery-398416` so outputs land there.
-**We have not shared such a key** — if you want this path, ask us and we'll create one and send it over a
-**secure channel** (never committed to git, never over plain chat/email). Then use the same `.env` as
-Option A but with our project/paths.
+> **Quick alternative for a local test only** (no service account): run `earthengine authenticate` on the
+> host and mount `~/.config/earthengine:/root/.config/earthengine:ro` instead of the key. Not for a server.
 
-> A service-account key is an access credential — keep it private, share it only securely, and revoke/rotate
-> it in GCP if it is ever exposed.
+> A service-account key is an access credential — keep it private, share it only over a secure channel, and
+> revoke/rotate it in GCP if it's ever exposed.
 
 ---
 
