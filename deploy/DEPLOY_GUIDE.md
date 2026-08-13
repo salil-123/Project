@@ -50,8 +50,11 @@ Outbound internet is required (Earth Engine + Docker Hub).
 
 ```bash
 # 1. get the code (the container mounts this)
+#    Option 1 — from git:
 git clone https://github.com/salil-123/Project.git corestack-lulc
 cd corestack-lulc
+#    Option 2 — NO GitHub: unzip the code package we hand you (same result):
+#    unzip corestack-lulc-deploy.zip -d corestack-lulc && cd corestack-lulc
 
 # 2. create the runtime config
 cp deploy/.env.example .env
@@ -71,8 +74,8 @@ Open `http://<host>:8000/` for the web UI. The service is now up.
 
 **To update the app later:**
 ```bash
-git pull
-docker compose -f docker-compose.hub.yml restart
+git pull                                            # or: replace the folder with a new package we send
+docker compose -f docker-compose.hub.yml restart    # no image rebuild
 ```
 
 ---
