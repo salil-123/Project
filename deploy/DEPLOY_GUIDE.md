@@ -138,14 +138,21 @@ That's the entire EE setup for this option.
 1. **Have a GEE-enabled project.** Create a Google Cloud project and register it for Earth Engine by
    signing in once at <https://code.earthengine.google.com>. Note its **project id** → this is `EE_PROJECT`.
 2. **Create a service-account key.** Cloud Console → **IAM & Admin → Service Accounts → Create service
-   account** (e.g. `lulc-runner`) → grant **Earth Engine Resource Writer** (`roles/earthengine.writer`) →
-   **Keys → Add key → JSON**. Rename the download `ee-key.json`. gcloud equivalent:
+   account** (e.g. `lulc-runner`). Grant it **BOTH** roles (both are required — Resource Writer lets it
+   read/write assets, Service Usage Consumer lets it *call* the EE API on the project):
+   - **Earth Engine Resource Writer** (`roles/earthengine.writer`)
+   - **Service Usage Consumer** (`roles/serviceusage.serviceUsageConsumer`)
+
+   Then **Keys → Add key → JSON**, rename the download `ee-key.json`. gcloud equivalent:
    ```bash
    gcloud config set project <your-project>
    gcloud iam service-accounts create lulc-runner --display-name="LULC runner"
    gcloud projects add-iam-policy-binding <your-project> \
      --member="serviceAccount:lulc-runner@<your-project>.iam.gserviceaccount.com" \
      --role="roles/earthengine.writer"
+   gcloud projects add-iam-policy-binding <your-project> \
+     --member="serviceAccount:lulc-runner@<your-project>.iam.gserviceaccount.com" \
+     --role="roles/serviceusage.serviceUsageConsumer"
    gcloud iam service-accounts keys create ee-key.json \
      --iam-account=lulc-runner@<your-project>.iam.gserviceaccount.com
    ```
@@ -260,13 +267,14 @@ stac_items}`, and Airflow records it in the STACD catalog.
 | `region must be [west, south, east, north]` | the `region` value isn't a valid bbox; pass `[w,s,e,n]` (string or array both accepted). |
 | STAC links show as `/api/...` (relative) in a browser | set `STAC_ASSET_BASE` to the public URL (§4/§7). |
 | EE errors about credentials | the service-account key isn't mounted or `EE_SERVICE_ACCOUNT_KEY` path is wrong; confirm the mount and path inside the container. |
+| EE error `... does not have required permission to use project ... serviceusage` | the service account is missing the **Service Usage Consumer** role — grant it `roles/serviceusage.serviceUsageConsumer` (§5, both roles are required). |
 | Long export times out behind a proxy | raise `proxy_read_timeout` (nginx, §7), or use the async pattern (`wait=false` + `/api/export-status`). |
 
 Logs: `docker compose -f docker-compose.hub.yml logs -f` (or `docker logs <container>`).
 
 ---
 
-### Quick summary for the impatient
+### Quick summary
 ```bash
 git clone https://github.com/salil-123/Project.git corestack-lulc && cd corestack-lulc
 cp deploy/.env.example .env            # set EE_PROJECT, EE_ASSET_ROOT, EE_SERVICE_ACCOUNT_KEY, STAC_ASSET_BASE
