@@ -102,9 +102,17 @@ All configuration is environment variables (nothing is hardcoded). Edit `.env`:
 | `ZOO_REMOTE` | optional | Git remote for the model-zoo cards. Only needed if you use the "publish" feature. |
 | `AOI_TILE_CAP_KM2`, `AOI_GEOTIFF_CAP_KM2`, `AOI_TESSERA_MAX_TILES` | optional | Size guardrails; defaults are fine. |
 | `CORESTACK_DATA_DIR`, `CORESTACK_ROOT` | optional | Relocate the data/code roots; leave unset for the mounted `/app`. |
+| `AIRFLOW_API_BASE` | for DAG mode | Root of the Airflow REST API incl. `/api/v1`, e.g. `http://<airflow-host>:8080/api/v1`. **Empty = DAG orchestration off** (`/api/dag/*` returns 503); the rest of the app still works. |
+| `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD` | for DAG mode | Basic-auth creds for the Airflow API (or set `AIRFLOW_TOKEN` instead for bearer auth). |
+| `AIRFLOW_DAG_ID` | for DAG mode | DAG to trigger; default `corestack_lulc`. |
+| `CORESTACK_API_BASE` | for DAG mode | Where the Airflow worker reaches **this** backend to call `/api/export-asset` (a LAN IP/host, **not** `localhost`), e.g. `http://<this-host>:8000`. |
 
 > `.env` also contains `docker_username` / `docker_pat` in the example — those are **build-time only**
 > (for pushing a new image) and are **not needed to run**. Leave them blank on the deploy machine.
+
+> **Airflow / DAG orchestration** (env vars + the trigger/poll API): full reference in
+> [`deploy/AIRFLOW_API.md`](AIRFLOW_API.md). Only needed if you run the DAG-driven flow; otherwise leave
+> the `AIRFLOW_*` vars empty.
 
 ---
 
