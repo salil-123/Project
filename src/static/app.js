@@ -18,6 +18,10 @@ let lastPreset = null;           // to detect a genuine area change and offer a 
 let viewMode = "hierarchy";      // left panel: "hierarchy" tree or "ops" operations view (#13)
 let TESSERA_SITES = {};          // bboxes where Tessera training is offered (#16)
 
+// ---- DAG runs go through OUR backend, not Airflow directly ----
+// A browser can't call Airflow cross-origin (CORS blocks it) and shouldn't hold the creds anyway. So
+// Submit hits our same-origin proxy (/api/dag/*), and the backend triggers + polls Airflow server-side.
+
 const map = L.map("map", { center: [28.540, 77.185], zoom: 14 });   // IIT Delhi + Sanjay Van strip
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
   { attribution: "Esri", maxZoom: 19 }).addTo(map);
@@ -210,6 +214,34 @@ const postJSON = async (url, body) => (await fetch(url,
 async function readJson(r) {
   try { return await r.json(); }
   catch { return { detail: `server error (HTTP ${r.status})` }; }
+}
+
+// Trigger the Airflow DAG directly and poll its run till it finishes. Returns the final run object
+// (carries dag_run_id + state) on success; throws on a failed run or an HTTP error. Synchronous from
+// the caller's view — it just awaits the whole trigger->poll loop, so the UI stays in step with the DAG.
+// Trigger the DAG through our backend and poll its run till it finishes. Same-origin, so no CORS.
+// Returns the final status object on success; throws with the backend's reason on failure.
+async function triggerDagAndPoll(conf, { interval = 3000, onState } = {}) {
+  console.log("[dag] triggering via backend", conf);
+  // 1) fire the run — the backend triggers Airflow and returns the dag_run_id it minted
+  const r = await postJSON("/api/dag/run", { conf });
+  const start = await readJson(r);
+  if (!r.ok) throw new Error(start.detail || `trigger failed (HTTP ${r.status})`);
+  const runId = start.dag_run_id;
+  console.log("[dag] run id", runId);
+
+  // 2) poll that id till the run reaches a terminal state
+  while (true) {
+    await new Promise((res) => setTimeout(res, interval));
+    const pr = await fetch(`/api/dag/status?run_id=${encodeURIComponent(runId)}`);
+    const s = await readJson(pr);
+    if (!pr.ok) throw new Error(s.detail || `poll failed (HTTP ${pr.status})`);
+    console.log("[dag]", runId, "state:", s.state);
+    if (onState) onState(s.state, runId);
+    if (s.success) return s;
+    if (s.state === "failed") throw new Error(`DAG run ${runId} failed`);
+    // else queued/running -> keep polling
+  }
 }
 
 // ---------------- tree ----------------
@@ -607,39 +639,46 @@ function bumpSession() {
 }
 
 // ---------------- classify ----------------
+// Submit fires the Airflow DAG directly: build the run conf from the AOI, trigger it, get a dag_run_id,
+// then poll that id till the run finishes. The DAG classifies + exports the raster to a GEE asset, so
+// we report its run state (not a map overlay — the output lands as a GEE asset, not tiles we draw here).
 async function runClassify() {
   const bb = requireValidBbox(); if (!bb) return;
   const [w, s, e, n] = bb;
-  // one model now (#2): Alpha Earth served server-side as 10 m EE tiles, at the year set in the zoo.
   const year = inferYear;
-  setStatus("Classifying at 10 m…", "work");
+  // which base classes the DAG should build on — fetch the live one, fall back to indiasat
+  let base_scheme = "indiasat";
+  try { base_scheme = (await getJSON("/api/base")).active || base_scheme; } catch {}
+  setStatus("Triggering the DAG…", "work");
   $("run").disabled = true;
   drawAoi();
   try {
+    const conf = { region: [w, s, e, n], year: String(year), base_scheme,
+                   execution_type: "fullexec" };
+    const run = await triggerDagAndPoll(conf, {
+      onState: (state, runId) => setStatus(`DAG ${runId} — ${state}…`, "work"),
+    });
+    // the DAG finished and exported the raster to a GEE asset — but that's not a drawable layer. Pull
+    // the same classification as EE tiles so there's a visible result on the map (#7).
+    setStatus("DAG done — rendering the classified map…", "work");
     const data = await getJSON(
       `/api/classify?west=${w}&south=${s}&east=${e}&north=${n}&mode=realistic&year=${year}`);
-    if (data.detail) { setStatus(data.detail, "err"); $("run").disabled = false; return; }  // e.g. AOI too large (#3)
     predLayer.clearLayers();
     if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
     if (data.render === "tiles") {
-      // Earth Engine map tiles: crisp at any zoom, EE serves them on demand (no download)
-      rasterLayer = L.tileLayer(data.tile_url,
-        { opacity: 0.7, bounds: [[s, w], [n, e]] }).addTo(map);
+      rasterLayer = L.tileLayer(data.tile_url, { opacity: 0.7, bounds: [[s, w], [n, e]] }).addTo(map);
     } else if (data.render === "raster") {
       const [bw, bs, be, bn] = data.bounds;
       rasterLayer = L.imageOverlay(data.image_url, [[bs, bw], [bn, be]], { opacity: 0.7 }).addTo(map);
-    } else {
+    } else if (data.cells) {
       const cw = data.cell_w / 2, ch = data.cell_h / 2;
-      data.cells.forEach((c) => {
-        L.rectangle([[c.lat - ch, c.lon - cw], [c.lat + ch, c.lon + cw]],
-          { stroke: false, fillOpacity: 0.55, fillColor: data.colors[c.pred] || "#999" })
-          .addTo(predLayer);
-      });
+      data.cells.forEach((c) => L.rectangle([[c.lat - ch, c.lon - cw], [c.lat + ch, c.lon + cw]],
+        { stroke: false, fillOpacity: 0.55, fillColor: data.colors[c.pred] || "#999" }).addTo(predLayer));
     }
     map.fitBounds([[s, w], [n, e]]);
-    overlayVisible = true;                        // a fresh render is shown; reset the eye toggle (#21)
+    overlayVisible = true;
     if ($("eyeToggle")) { $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off"); }
-    setStatus("Done: " + JSON.stringify(data.counts));
+    setStatus(`DAG ${run.dag_run_id}: success. ${data.counts ? "Counts: " + JSON.stringify(data.counts) : "Exported to GEE."}`);
   } catch (err) { setStatus("Error: " + err, "err"); }
   $("run").disabled = false;
 }

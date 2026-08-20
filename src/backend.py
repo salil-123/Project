@@ -11,8 +11,11 @@ Run (from the repo root):  uvicorn backend:app --reload --app-dir src
 Then open http://127.0.0.1:8000/
 """
 import sys
+import logging
 import tempfile
 from pathlib import Path
+
+log = logging.getLogger("corestack.dag")
 
 # repo root holds shared infra (config.py, tessera_fast.py) + the data/ dir; put it
 # on the path so infer can import them whichever directory uvicorn is launched from.
@@ -36,6 +39,8 @@ import validate_ops
 import aoi
 import stacd
 import config
+import jobs
+import airflow_client
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
@@ -502,6 +507,133 @@ def export_status(task_id: str = None, asset_id: str = None):
                 "success": True, "type": info.get("type")}
     except Exception:
         return {"asset_id": asset_id, "state": "PENDING", "done": False, "success": False}
+
+
+# ----------------------------- Airflow-orchestrated jobs -----------------------------
+# The long ops can run through an Airflow DAG instead of inline: the frontend triggers a job, the DAG
+# calls back into these endpoints to do the work, the frontend polls till it's done. Everything stays
+# synchronous — each link blocks on the next. With no Airflow configured the job runs inline, so the
+# same trigger+poll flow works locally too. See deploy/airflow_job_flow_plan.md.
+class JobIn(BaseModel):
+    op: str                 # "classify" | "export"
+    params: dict = {}
+
+
+def _run_op(op: str, params: dict) -> dict:
+    """Do the actual work for a job op. Reuses the same handlers the direct endpoints use, so the DAG
+    path and the inline path produce identical results."""
+    if op == "classify":
+        return classify(**params)
+    if op == "export":
+        return _run_export(**{k: v for k, v in params.items() if k in _EXPORT_KEYS})
+    raise HTTPException(400, f"unknown job op {op!r} (expected 'classify' or 'export')")
+
+
+@app.post("/api/jobs")
+def create_job(body: JobIn):
+    """Kick off a job. If Airflow is configured we trigger the DAG (which calls back to do the work and
+    posts the result to /api/jobs/{run_id}/result); otherwise we run it inline right here. Either way
+    the frontend gets a run_id and polls GET /api/jobs/{run_id}. `done` is set when it finished inline."""
+    run_id = jobs.new_run_id()
+    jobs.create(run_id, body.op, body.params)
+
+    if not airflow_client.configured():
+        # no Airflow: do the work now so the poll flow still resolves
+        try:
+            result = _run_op(body.op, body.params)
+        except HTTPException as e:
+            jobs.set_failed(run_id, str(e.detail))
+            return {"run_id": run_id, "done": True, "success": False, "error": e.detail}
+        except Exception as e:
+            jobs.set_failed(run_id, str(e))
+            return {"run_id": run_id, "done": True, "success": False, "error": str(e)}
+        jobs.set_result(run_id, result)
+        return {"run_id": run_id, "done": True, "success": True, "result": result}
+
+    conf = {"op": body.op, "params": body.params, "run_id": run_id,
+            "api_base": config.CORESTACK_API_BASE}
+    try:
+        airflow_client.trigger(run_id, conf)
+    except Exception as e:
+        jobs.set_failed(run_id, f"couldn't trigger Airflow DAG: {e}")
+        raise HTTPException(502, f"couldn't trigger Airflow DAG: {e}")
+    return {"run_id": run_id, "done": False, "state": "running"}
+
+
+@app.get("/api/jobs/{run_id}")
+def get_job(run_id: str):
+    """Poll a job. Returns the stored result once the DAG (or the inline run) has posted it. Also asks
+    Airflow for the run state so a DAG failure surfaces here instead of the frontend polling forever."""
+    job = jobs.get(run_id)
+    if job is None:
+        raise HTTPException(404, f"no job {run_id!r}")
+
+    if job["state"] == "success":
+        return {"run_id": run_id, "done": True, "success": True, "result": job["result"]}
+    if job["state"] == "failed":
+        return {"run_id": run_id, "done": True, "success": False, "error": job["error"]}
+
+    # still running — if Airflow says the run failed but no result came back, mark it failed
+    if airflow_client.configured():
+        st = airflow_client.run_state(run_id)
+        if st == "failed":
+            jobs.set_failed(run_id, "the Airflow DAG run failed (see Airflow logs)")
+            return {"run_id": run_id, "done": True, "success": False,
+                    "error": "the Airflow DAG run failed (see Airflow logs)"}
+    return {"run_id": run_id, "done": False, "state": "running"}
+
+
+@app.post("/api/jobs/{run_id}/result")
+async def store_job_result(run_id: str, request: Request):
+    """The DAG's callback: once the work endpoint returned success, the DAG posts the result here and
+    the job flips to done. Body is either the raw result dict, or {ok, result|error} to report a failure."""
+    if jobs.get(run_id) is None:
+        raise HTTPException(404, f"no job {run_id!r}")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "body must be JSON")
+    if isinstance(body, dict) and body.get("ok") is False:
+        jobs.set_failed(run_id, str(body.get("error", "job failed")))
+        return {"stored": True, "state": "failed"}
+    result = body.get("result", body) if isinstance(body, dict) else body
+    jobs.set_result(run_id, result)
+    return {"stored": True, "state": "success"}
+
+
+# ----------------------------- DAG proxy (same-origin, no browser CORS) -----------------------------
+# The frontend can't hit Airflow directly — a browser blocks the cross-origin call (CORS) and the creds
+# would be exposed anyway. So the frontend calls US (same origin as the page), and we trigger + poll
+# Airflow server-side. Logged so the uvicorn console shows every trigger/state call.
+@app.post("/api/dag/run")
+async def dag_run(request: Request):
+    """Trigger the Airflow DAG with a run conf; return the dag_run_id the frontend polls on."""
+    if not airflow_client.configured():
+        raise HTTPException(503, "Airflow isn't configured (set AIRFLOW_API_BASE)")
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(400, "body must be JSON")
+    conf = body.get("conf", body) if isinstance(body, dict) else {}
+    log.info("dag_run trigger conf=%s", conf)
+    try:
+        resp = airflow_client.trigger_conf(conf)
+    except Exception as e:
+        log.exception("dag_run trigger failed")
+        raise HTTPException(502, f"couldn't trigger the DAG: {e}")
+    return {"dag_run_id": resp.get("dag_run_id"), "state": resp.get("state")}
+
+
+@app.get("/api/dag/status")
+def dag_status(run_id: str):
+    """Poll one DAG run's state from Airflow (proxied so the browser stays same-origin)."""
+    if not airflow_client.configured():
+        raise HTTPException(503, "Airflow isn't configured (set AIRFLOW_API_BASE)")
+    st = airflow_client.run_state(run_id)
+    if st is None:
+        raise HTTPException(502, f"couldn't read run {run_id!r} state from Airflow")
+    return {"dag_run_id": run_id, "state": st,
+            "done": st in ("success", "failed"), "success": st == "success"}
 
 
 # ----------------------------- per-fortnight water (#5/#7) -----------------------------

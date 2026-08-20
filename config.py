@@ -88,6 +88,27 @@ OPTIONAL_ASSETS = {
 EE_SERVICE_ACCOUNT_KEY = os.getenv("EE_SERVICE_ACCOUNT_KEY", "")
 
 
+# ----------------------------- Airflow job orchestration -----------------------------
+# The long ops (classify/export) can run through an Airflow DAG instead of inline in the request:
+# the frontend triggers a job, the DAG calls back into this backend to do the work, the frontend
+# polls till it's done. All config-driven — leave AIRFLOW_API_BASE empty and the job runs inline
+# (so the app works locally with no Airflow at all).
+#
+# AIRFLOW_API_BASE: root of the Airflow 2.x stable REST API, e.g. http://airflow:8080/api/v1
+# Auth is either basic (username+password) or a bearer token — set whichever your Airflow uses.
+# All host-specific — set them in .env (gitignored). Empty AIRFLOW_API_BASE -> /api/dag/* returns 503
+# (Airflow not wired); the DAG id defaults to the STACD algorithm DAG since that's not a secret.
+AIRFLOW_API_BASE = os.getenv("AIRFLOW_API_BASE", "").rstrip("/")
+AIRFLOW_USERNAME = os.getenv("AIRFLOW_USERNAME", "")
+AIRFLOW_PASSWORD = os.getenv("AIRFLOW_PASSWORD", "")
+AIRFLOW_TOKEN = os.getenv("AIRFLOW_TOKEN", "")
+AIRFLOW_DAG_ID = os.getenv("AIRFLOW_DAG_ID", "corestack_lulc")
+
+# Where the Airflow worker can reach THIS backend to call the work endpoint + post the result back.
+# Not localhost unless Airflow runs on the same box; usually the container host / LAN IP / ngrok URL.
+CORESTACK_API_BASE = os.getenv("CORESTACK_API_BASE", "http://lulc:8000").rstrip("/")
+
+
 def ee_init():
     """Initialize Earth Engine on EE_PROJECT and return the ee module. Uses a service-account key if
     EE_SERVICE_ACCOUNT_KEY points at one, otherwise the local `earthengine authenticate` credentials."""

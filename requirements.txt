@@ -32,6 +32,7 @@ uvicorn
 aiohttp
 tqdm
 python-dotenv
+requests          # backend -> Airflow REST (job trigger/poll); also pulled in transitively by EE
 
 # --- Notebook / dev ---
 ipykernel
