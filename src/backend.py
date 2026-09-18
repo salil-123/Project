@@ -11,6 +11,8 @@ Run (from the repo root):  uvicorn backend:app --reload --app-dir src
 Then open http://127.0.0.1:8000/
 """
 import sys
+import json
+import time
 import logging
 import tempfile
 from pathlib import Path
@@ -23,7 +25,7 @@ _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -41,10 +43,38 @@ import stacd
 import config
 import jobs
 import airflow_client
+import logging_setup
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
+# set up logging before anything else runs, so startup work (EE init, zoo seeding, model loads) is
+# captured too rather than logging into the void.
+logging_setup.configure(config.LOG_LEVEL)
+_req_log = logging_setup.get("request")
+
 app = FastAPI(title="Core Stack LULC")
+
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """One line per request at info; at debug also the query string and how long it took to a
+    millisecond, which is what you actually want when a classify call is mysteriously slow."""
+    t0 = time.perf_counter()
+    try:
+        response = await call_next(request)
+    except Exception:
+        # log the failure here too — otherwise a 500 raised deep in a handler only shows in stderr
+        _req_log.exception("%s %s failed after %.0f ms", request.method, request.url.path,
+                           (time.perf_counter() - t0) * 1000)
+        raise
+    ms = (time.perf_counter() - t0) * 1000
+    if _req_log.isEnabledFor(logging.DEBUG) and request.url.query:
+        _req_log.debug("%s %s?%s -> %s (%.0f ms)", request.method, request.url.path,
+                       request.url.query, response.status_code, ms)
+    else:
+        _req_log.info("%s %s -> %s (%.0f ms)", request.method, request.url.path,
+                      response.status_code, ms)
+    return response
 
 # loaded once at startup and refreshed after any mutating op (see _reload)
 _model = infer.load_model()
@@ -53,6 +83,9 @@ _refinements = infer.load_refinements()
 
 # the zoo is a git-backed card DB; make sure it's a repo and seeded from what's on disk
 zoo_git.init_local()
+# a fresh clone/deploy has no cards (data/catalogue is gitignored) — pull them in from the repo's
+# shipped seed so the zoo shows the full set, not just what backfill can regenerate locally.
+catalogue.seed_from_bundled()
 if not catalogue.INDEX_PATH.exists():
     catalogue.backfill()
 catalogue.sync_merge_cards()        # any active merge gets a local model card, even older ones (#9)
@@ -339,16 +372,47 @@ def classify_geotiff(west: float, south: float, east: float, north: float, year:
 
 
 # ----------------------------- export to a GEE asset (STACD onboarding) -----------------------------
+def _truthy(v) -> bool:
+    """Airflow/STACD stringify conf values, so `export` can arrive as "false" or "0". Treat those as
+    false rather than as a non-empty (and therefore truthy) string."""
+    if isinstance(v, str):
+        return v.strip().strip('"').strip("'").lower() not in ("false", "0", "no", "")
+    return bool(v)
+
+
 def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, region=None,
                 year=2024, start_year=None, end_year=None, asset_id=None, name=None,
                 base_scheme=None, asset_base=None, wait=True, overwrite=True, include_stac=True,
-                **_ignored):
+                retrain=None, export=True, **_ignored):
     """Shared logic for the GET + POST export endpoints. Classifies the AOI, exports the raster to a GEE
     asset, and returns the shape the STACD DAG generator reads: status + asset_id (list) + stac_items
     (array). We deliberately DON'T return a `stacd` block — the pipeline builds provenance itself from the
     registered YAML configs and only reads `stac_items` from us. `**_ignored` swallows extra DAG params
-    (state/district/block/gee_account_id/hierarchy/job_id/…) so a forwarded DAG conf never errors."""
+    (state/district/block/gee_account_id/hierarchy/job_id/…) so a forwarded DAG conf never errors.
+
+    `retrain` lets a training run ride in on THIS path instead of needing a DAG of its own: pass the
+    /api/retrain params as a dict and the node is retrained first, so the export classifies with the
+    fresh model. `export=False` makes it a retrain-only job — still the same op, the same DAG, one
+    less thing to register with STACD."""
     _maybe_reload()
+
+    # train first when asked, so whatever we export below uses the model the user just built. The
+    # DAG only drives us over HTTP, so the training happens in this process and the model, hierarchy
+    # and zoo cards all stay consistent with each other.
+    retrain_result = None
+    if retrain:
+        if isinstance(retrain, str):          # the pipeline stringifies params; accept JSON text too
+            try:
+                retrain = json.loads(retrain)
+            except ValueError:
+                raise HTTPException(400, "retrain must be an object of /api/retrain params")
+        if not isinstance(retrain, dict) or not retrain.get("node"):
+            raise HTTPException(400, "retrain needs at least {'node': '<class>'}")
+        retrain_result = _do_retrain(**retrain)
+
+    if not _truthy(export):
+        # retrain-only job: nothing to classify, so report the training and stop here
+        return {"status": "success", "retrain": retrain_result, "export": None}
     # the pipeline stringifies params, so coerce: year may arrive as "2024", base_scheme as '"indiasat"'
     try:
         yr = int(str(end_year or start_year or year).strip().strip('"').strip("'"))
@@ -429,6 +493,8 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
             "stac_items": stac_items,
             # extras the generator ignores; our async poll / debugging use them
             "state": state, "task_id": out.get("task_id"), "classes": out.get("classes")}
+    if retrain_result is not None:
+        resp["retrain"] = retrain_result       # so one job can report "trained, then exported"
     return resp
 
 
@@ -436,7 +502,8 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
 # spots, …) is simply ignored, so the endpoint accepts whatever the pipeline forwards.
 _EXPORT_KEYS = {"west", "south", "east", "north", "roi_asset", "region", "year", "start_year",
                 "end_year", "asset_id", "name", "base_scheme", "asset_base", "wait", "overwrite",
-                "include_stac", "state", "district", "block", "gee_account_id", "hierarchy"}
+                "include_stac", "state", "district", "block", "gee_account_id", "hierarchy",
+                "retrain", "export"}
 
 
 @app.get("/api/export-asset")
@@ -760,9 +827,11 @@ def water_frequency(west: float, south: float, east: float, north: float,
             "stats": stats, "colors": {"ramp": ["#f7fbff", "#08306b"]}}
 
 
-# NB: the >=N-fortnight spurious-water filter (#13) is NOT a UI feature — it's a code-level correction
-# on the water output (infer.annual_water_mask), to be applied when the fortnight water model produces
-# an annual water layer for the LULC (the deferred water->LULC step). So there's no endpoint for it.
+# NB: an earlier >=N-fortnight persistence filter (the "spurious-water" correction, wk11 #13) was
+# removed — a single global threshold that de-spuriates the annual layer also crushes small/seasonal
+# recall (spurious 15->2% but F1 0.65->0.58, small-water recall 0.30->0.11), so it traded away exactly
+# the water we care about. The proper replacement is the two-classifier design (lenient level-1 that
+# lets seasonal water through, then a within-body classifier), not one blunt threshold.
 
 
 # ----------------------------- training-time estimate (#8) -----------------------------
@@ -941,36 +1010,50 @@ def add(op: AddIn):
     return _tree_payload()
 
 
-@app.post("/api/retrain")
-def retrain(op: RetrainIn):
-    """Train (or retrain) the classifier that resolves `node`'s children, then make the
-    new model live. Returns the held-out metrics. Slow: samples embeddings + fits."""
+def _do_retrain(node: str, balance: str = "balanced", years=None,
+                algo: str = "linearsvc", embedding: str = "ae", **_ignored) -> dict:
+    """Train (or retrain) the classifier that resolves `node`'s children and make it live.
+
+    The one implementation behind both entrypoints: the direct POST /api/retrain, and a retrain
+    ridden in on the export path (so an Airflow job can do it without its own DAG). Slow: samples
+    embeddings + fits. `**_ignored` lets a forwarded DAG conf carry extra keys harmlessly."""
+    log.info("retrain node=%s algo=%s embedding=%s balance=%s years=%s",
+             node, algo, embedding, balance, years)
     # snapshot the node's current model before we overwrite it, so re-splitting a node into a
     # different set of children keeps the old model in the zoo instead of making it vanish
-    prev_card = catalogue.get_card(f"mc_{op.node}_v1")
-    snapshot = catalogue.snapshot_model(op.node)
+    prev_card = catalogue.get_card(f"mc_{node}_v1")
+    snapshot = catalogue.snapshot_model(node)
     try:
-        bundle = refine.retrain(op.node, balance=op.balance, years=op.years,
-                                algo=op.algo, embedding=op.embedding)
+        bundle = refine.retrain(node, balance=balance, years=years, algo=algo, embedding=embedding)
     except ValueError as e:                  # e.g. a child has no examples yet / Tessera on a base source
         catalogue.discard_snapshot(snapshot)
         raise HTTPException(400, str(e))
     _reload()
     # mint/refresh the model + dataset cards for this node so the zoo tracks it
-    cards = catalogue.register_retrain(op.node, bundle)
+    cards = catalogue.register_retrain(node, bundle)
     # keep the superseded model only when the split actually changed (else it was a plain retrain)
     old_classes = sorted(p["class"] for p in (prev_card or {}).get("produces", []))
     if old_classes and old_classes != sorted(bundle.get("classes") or []):
-        arch = catalogue.archive_prev_card(op.node, prev_card, snapshot)
+        arch = catalogue.archive_prev_card(node, prev_card, snapshot)
         if arch:
             cards["archived"] = arch
     else:
         catalogue.discard_snapshot(snapshot)
-    oplog.append("retrain", {"node": op.node, "balance": op.balance, "years": op.years,
-                             "algo": bundle.get("algo"), "embedding": op.embedding}, result=cards)
-    return {"node": op.node, "classes": bundle.get("classes"),
+    oplog.append("retrain", {"node": node, "balance": balance, "years": years,
+                             "algo": bundle.get("algo"), "embedding": embedding}, result=cards)
+    log.info("retrain done node=%s classes=%s n_test=%s",
+             node, bundle.get("classes"), bundle.get("n_test"))
+    return {"node": node, "classes": bundle.get("classes"),
             "report": bundle.get("report"), "n_test": bundle.get("n_test"),
             "cards": cards, **_tree_payload()}
+
+
+@app.post("/api/retrain")
+def retrain(op: RetrainIn):
+    """Train (or retrain) the classifier that resolves `node`'s children, then make the
+    new model live. Returns the held-out metrics. Slow: samples embeddings + fits."""
+    return _do_retrain(op.node, balance=op.balance, years=op.years,
+                       algo=op.algo, embedding=op.embedding)
 
 
 # ----------------------------- base-class scheme picker (#5) -----------------------------
@@ -1296,8 +1379,13 @@ def publish(op: PublishIn):
     """Commit the cards + index and push to the shared zoo repo (git-backed DB). Records the
     contributor (#6), the published model binaries (#8a), and any public dataset links the user
     gave for the data sources (#8b)."""
-    return zoo_git.publish(op.card_ids, message=op.message, contributor=op.contributor,
-                           dataset_links=op.dataset_links)
+    try:
+        return zoo_git.publish(op.card_ids, message=op.message, contributor=op.contributor,
+                               dataset_links=op.dataset_links)
+    except Exception as e:
+        # never leak a raw 500 ("Internal Server Error" text the frontend can't parse) — a failed
+        # git commit/push comes back as clean JSON so the UI can show the reason.
+        raise HTTPException(500, f"publish failed: {e}")
 
 
 @app.get("/api/zoo/status")
@@ -1310,6 +1398,17 @@ def zoo_status():
 @app.get("/")
 def index():
     return FileResponse(_STATIC / "index.html")
+
+
+@app.get("/config.js")
+def frontend_config():
+    """The page's runtime config, generated rather than baked into app.js: where to send /api calls
+    (empty = relative, what the single-container deploy wants) and whether Airflow is wired, which
+    decides if the long ops go through the DAG or run inline. Declared before the static mount so
+    this route wins over any file of the same name."""
+    cfg = json.dumps({"apiBase": config.API_BASE_URL, "airflow": airflow_client.configured()})
+    return Response(f"window.CORESTACK_CFG = {cfg};\n", media_type="application/javascript",
+                    headers={"Cache-Control": "no-store"})   # no-store: it changes with the .env
 
 
 app.mount("/", StaticFiles(directory=_STATIC), name="static")

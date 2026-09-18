@@ -16,6 +16,10 @@ EE_USER_ID = os.getenv("EE_USER_ID", "salilsandeshgujar")
 # container mount the writable data/ as a volume somewhere else entirely.
 PROJECT_ROOT = Path(os.getenv("CORESTACK_ROOT") or Path(__file__).resolve().parent)
 DATA_DIR = Path(os.getenv("CORESTACK_DATA_DIR") or (PROJECT_ROOT / "data"))
+# Trained weights live on their own mount (cluster checklist #1: code/, models/, data/ are three
+# separate host dirs). Keeping them out of data/ means a deploy can wipe or rotate outputs without
+# taking the models with it, and the image stays weights-free.
+MODELS_DIR = Path(os.getenv("CORESTACK_MODELS_DIR") or (PROJECT_ROOT / "models"))
 SCHEMA_DIR = PROJECT_ROOT / "schema"
 
 
@@ -30,7 +34,31 @@ def project_path(rel) -> str:
     parts = p.parts
     if parts and parts[0] == "data":
         return str(DATA_DIR.joinpath(*parts[1:]))
+    if parts and parts[0] == "models":
+        return str(MODELS_DIR.joinpath(*parts[1:]))
     return str(PROJECT_ROOT / p)
+
+
+def model_path(rel) -> str:
+    """Resolve a trained-weight path, new home first and old home second.
+
+    Weights used to sit under data/ (data/refine/<node>.joblib, data/model_pooled.joblib) and that
+    spelling is baked into every zoo card's `artifact.path`, which is *data* we'd rather not rewrite.
+    So: look for the file under MODELS_DIR, and fall back to the legacy data/ location when it isn't
+    there yet. A box that has run scripts/migrate_models.py reads from models/; one that hasn't keeps
+    working untouched. Returns the models/ path when neither exists, so new writes land in the new
+    home."""
+    p = Path(rel)
+    if p.is_absolute():
+        return str(p)
+    parts = p.parts
+    # strip a leading data/ or models/ so either spelling maps onto the same relative tail
+    tail = parts[1:] if parts and parts[0] in ("data", "models") else parts
+    new = MODELS_DIR.joinpath(*tail)
+    if new.exists():
+        return str(new)
+    legacy = DATA_DIR.joinpath(*tail)
+    return str(legacy if legacy.exists() else new)
 
 # ----------------------------- AOI size caps (#3) -----------------------------
 # Guardrails so a user can't draw a huge box and blow up compute/download time. All
@@ -58,11 +86,6 @@ AOI_TESSERA_MAX_TILES = int(os.getenv("AOI_TESSERA_MAX_TILES", "6"))  # ~6 x 150
 # blob is treated as speckle and dropped, so mining "objects" come out clean, not as pixel confetti.
 SEGMENT_MIN_AREA_HA = float(os.getenv("SEGMENT_MIN_AREA_HA", "0.5"))
 
-# spurious-water de-spuriing threshold (#13 wk11): the annual water layer holds a pixel as water only
-# if the fortnight model called it water in at least this many fortnights, so a road water-logged for
-# one fortnight (or S1 speckle) doesn't survive. A correction in infer.annual_water_mask, not a UI knob.
-WATER_MIN_FORTNIGHTS = int(os.getenv("WATER_MIN_FORTNIGHTS", "2"))
-
 # Ground-truth assets (per instructions.txt). Marked with access status as of
 # last check on 2026-05-23 against project modern-mystery-398416.
 GT_ASSETS = {
@@ -86,6 +109,21 @@ OPTIONAL_ASSETS = {
 # `earthengine authenticate` token. This is how someone else (e.g. Saharsh) runs the container against
 # OUR project without our personal login. Falls back to the normal token flow when unset.
 EE_SERVICE_ACCOUNT_KEY = os.getenv("EE_SERVICE_ACCOUNT_KEY", "")
+
+
+# ----------------------------- Logging -----------------------------
+# How chatty the service is: debug | info | error. Flipping this in .env changes granularity with no
+# code change; logs land in data/logs/corestack-lulc/ so they survive the container. See
+# src/logging_setup.py.
+LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
+
+
+# ----------------------------- Frontend runtime config -----------------------------
+# Where the browser should send its /api calls. EMPTY (the default) means "relative to the page",
+# which is what you want for the normal single-container deploy — it works at the domain root and
+# under a reverse-proxy subpath alike. Set it only to point the UI at a different backend host.
+# Served to the page as /config.js, so retargeting the UI is an .env change, never a code edit.
+API_BASE_URL = os.getenv("API_BASE_URL", "").rstrip("/")
 
 
 # ----------------------------- Airflow job orchestration -----------------------------
