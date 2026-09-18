@@ -16,8 +16,14 @@ services:
     env_file:
       - .env
     volumes:
-      # the app CODE + data, straight from this checkout — `git pull` to update, no rebuild
-      - .:/app
+      # Three separate bind-mounts (cluster checklist #1). They default to this checkout so a laptop
+      # needs no setup, and on the cluster you point them at the host's real dirs in .env:
+      #   CORESTACK_CODE_HOST=/srv/corestack-lulc/code
+      #   CORESTACK_MODELS_HOST=/srv/corestack-lulc/models
+      #   CORESTACK_DATA_HOST=/srv/corestack-lulc/data
+      - ${CORESTACK_CODE_HOST:-.}:/app                      # code: `git pull` + restart, no rebuild
+      - ${CORESTACK_MODELS_HOST:-./models}:/app/models      # trained weights
+      - ${CORESTACK_DATA_HOST:-./data}:/app/data            # inputs, caches, outputs, logs
       # Earth Engine service-account key (headless auth). Point EE_SERVICE_ACCOUNT_KEY at it in .env.
       # - ./deploy/ee-key.json:/app/ee-key.json:ro
     restart: unless-stopped

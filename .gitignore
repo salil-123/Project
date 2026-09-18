@@ -21,6 +21,9 @@ CLAUDE.md
 # scratch / backups
 test_data/
 
+# runtime logs (cluster checklist #5 puts them here; they're host state, not source)
+data/logs/
+
 # the model zoo is its OWN git repo (pushed to zoo_database.git); not nested inside this one
 data/catalogue/
 
