@@ -51,13 +51,6 @@ button.stub { background: #232a33; color: #7e8794; font-style: italic; }
 .status { font-size: 12px; color: #9aa3af; margin-top: 8px; min-height: 16px; }
 .hint { font-size: 11px; color: #7e8794; margin: 10px 0 4px; }
 .aoi-size { margin: 2px 0 4px; font-variant-numeric: tabular-nums; }
-/* water controls: date · Map water · Water frequency in one row. min-width:0 lets the flex items
-   shrink so nothing overruns the panel edge; labels wrap if tight. */
-.water-row { align-items: flex-end; gap: 6px; }
-.water-row span { flex: 1 1 0; min-width: 0; }
-.water-row button { flex: 1 1 0; width: auto; min-width: 0; margin-top: 0; padding: 8px 4px;
-  font-size: 12px; line-height: 1.15; }
-.water-row input[type="date"] { width: 100%; min-width: 0; }
 .aoi-size.warn { color: #d7301f; font-weight: 600; }   /* AOI over a size cap (#3) */
 .meta { font-size: 12px; color: #9aa3af; margin-top: 10px; line-height: 1.6; }
 .hidden { display: none !important; }   /* must beat display-setting classes like .run-row (flex) */

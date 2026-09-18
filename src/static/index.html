@@ -4,10 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Core Stack — LULC</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+  <!-- Leaflet is vendored, not pulled from a CDN: the campus proxy blocks unpkg on the deploy host,
+       which left the page with a dead map. Every href here is RELATIVE so the app also works when
+       it's served under a reverse-proxy subpath (/corestack-lulc/) instead of the domain root. -->
+  <link rel="stylesheet" href="vendor/leaflet.css" />
+  <link rel="stylesheet" href="vendor/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="/style.css?v=31" />
+  <link rel="stylesheet" href="style.css?v=32" />
 </head>
 <body>
   <aside id="sidebar">
@@ -32,16 +35,6 @@
       </div>
       <div class="run-row">
         <button id="dlTif" class="ghost" title="Download the classified area as a GeoTIFF">⬇ GeoTIFF</button>
-      </div>
-      <div class="run-row water-row">
-        <span><label>Fortnight</label>
-          <input id="waterDate" type="date" value="2024-07-14"></span>
-        <button id="runWater" class="ghost" title="Water vs non-water on this date, from raw Sentinel-1/2">💧 Map water</button>
-        <button id="runWaterFreq" class="ghost" title="How many fortnights each pixel held water across the year">💧× Water frequency</button>
-      </div>
-      <div class="run-row">
-        <button id="runSegment" class="ghost" title="Vectorize the mining class into cleaned polygon segments">⛏ Segment mining</button>
-        <button id="dlSegment" class="ghost hidden" title="Download the mining segments as GeoJSON">⬇ GeoJSON</button>
       </div>
       <div id="status" class="status"></div>
     </section>
@@ -208,8 +201,11 @@
     </div>
   </div>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://unpkg.com/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
-  <script src="/app.js?v=35"></script>
+  <script src="vendor/leaflet.js"></script>
+  <script src="vendor/leaflet.draw.js"></script>
+  <!-- runtime config from the server (API base, build info). Served, not baked, so retargeting the
+       UI at another backend is an .env change rather than a code edit. Must load before app.js. -->
+  <script src="config.js"></script>
+  <script src="app.js?v=36"></script>
 </body>
 </html>

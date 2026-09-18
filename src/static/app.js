@@ -151,7 +151,7 @@ function currentBbox() {
 async function fetchEstimate(algo) {
   try {
     const [w, s, e, n] = currentBbox();
-    const d = await getJSON(`/api/estimate?west=${w}&south=${s}&east=${e}&north=${n}&algo=${algo || "linearsvc"}`);
+    const d = await getJSON(api(`/api/estimate?west=${w}&south=${s}&east=${e}&north=${n}&algo=${algo || "linearsvc"}`));
     return d.total_s;
   } catch { return null; }
 }
@@ -203,6 +203,14 @@ function requireValidBbox() {
   return bb;
 }
 
+// ---- where the backend lives ----
+// Every call below writes a plain "/api/…" path; api() is the single place that turns one into a
+// real URL. Default is RELATIVE to the page, so the app works unchanged at the domain root or under
+// a reverse-proxy subpath (/corestack-lulc/). config.js can override it from the server's .env,
+// which is how you point the UI at a different backend without touching this file.
+const API_BASE = (window.CORESTACK_CFG?.apiBase || "").replace(/\/$/, "");
+const api = (path) => API_BASE + path;
+
 const getJSON = async (url) => (await fetch(url)).json();
 const postJSON = async (url, body) => (await fetch(url,
   { method: "POST", headers: { "Content-Type": "application/json" },
@@ -224,7 +232,7 @@ async function readJson(r) {
 async function triggerDagAndPoll(conf, { interval = 3000, onState } = {}) {
   console.log("[dag] triggering via backend", conf);
   // 1) fire the run — the backend triggers Airflow and returns the dag_run_id it minted
-  const r = await postJSON("/api/dag/run", { conf });
+  const r = await postJSON(api("/api/dag/run"), { conf });
   const start = await readJson(r);
   if (!r.ok) throw new Error(start.detail || `trigger failed (HTTP ${r.status})`);
   const runId = start.dag_run_id;
@@ -233,7 +241,7 @@ async function triggerDagAndPoll(conf, { interval = 3000, onState } = {}) {
   // 2) poll that id till the run reaches a terminal state
   while (true) {
     await new Promise((res) => setTimeout(res, interval));
-    const pr = await fetch(`/api/dag/status?run_id=${encodeURIComponent(runId)}`);
+    const pr = await fetch(api(`/api/dag/status?run_id=${encodeURIComponent(runId)}`));
     const s = await readJson(pr);
     if (!pr.ok) throw new Error(s.detail || `poll failed (HTTP ${pr.status})`);
     console.log("[dag]", runId, "state:", s.state);
@@ -354,7 +362,7 @@ async function refreshModelFamilies() {
   const algo = $("algo"); if (!algo) return;
   const src = ($("embedding") && $("embedding").value === "tessera") ? "tessera" : "alphaearth";
   let fams;
-  try { fams = (await getJSON(`/api/model-families?source=${src}`)).families; }
+  try { fams = (await getJSON(api(`/api/model-families?source=${src}`))).families; }
   catch { return; }
   const keep = algo.value;
   algo.innerHTML = "";
@@ -412,7 +420,7 @@ function opSummary(e) {
 async function renderOps() {
   const box = $("ops");
   let ops = [];
-  try { ops = (await getJSON(`/api/oplog?since=${sessionStartSeq || 0}`)).ops || []; } catch { ops = []; }
+  try { ops = (await getJSON(api(`/api/oplog?since=${sessionStartSeq || 0}`))).ops || []; } catch { ops = []; }
   if (!ops.length) {
     box.innerHTML = `<p class="hint">No steps yet this session. Split, add, merge, or retrain a class
       and the sequence that builds your scheme shows up here.</p>`;
@@ -443,7 +451,7 @@ async function updateDataDist() {
   if (sibs.length < 2) { box.innerHTML = ""; return; }   // nothing to compare against
 
   let sum = {};
-  try { sum = await getJSON("/api/examples/summary"); } catch { return; }
+  try { sum = await getJSON(api("/api/examples/summary")); } catch { return; }
   const rows = sibs.map((c) => ({ c, n: (sum[c] || {}).positive || 0 }));
   const counts = rows.map((r) => r.n);
   if (Math.max(...counts) === 0) { box.innerHTML = ""; return; }   // no added data yet, stay hidden
@@ -473,7 +481,7 @@ async function updateDataDist() {
 let currentOpSeq = 0;         // the op-log head the server last reported (#4)
 
 async function refreshTree(data) {
-  data = data || await getJSON("/api/tree");
+  data = data || await getJSON(api("/api/tree"));
   TREE = data.tree; COLORS = data.colors;
   if (data.op_seq != null) currentOpSeq = data.op_seq;
   if (!TREE[selected]) selected = "root";
@@ -485,14 +493,14 @@ async function refreshTree(data) {
 // the active merges feed the tree (source tags + virtual nodes). Drop ticks for leaves that no
 // longer exist so a stale selection can't leak into the next merge.
 async function loadMerges() {
-  try { MERGES = (await getJSON("/api/merge")).rules || []; } catch { MERGES = []; }
+  try { MERGES = (await getJSON(api("/api/merge"))).rules || []; } catch { MERGES = []; }
   for (const c of [...mergeSel]) if (!TREE[c] || (TREE[c].children || []).length) mergeSel.delete(c);
   renderTree();
 }
 
 // ---------------- init ----------------
 async function init() {
-  const r = await getJSON("/api/presets");
+  const r = await getJSON(api("/api/presets"));
   PRESETS = r.presets;
   const sel = $("preset");
   Object.keys(PRESETS).forEach((k) => sel.add(new Option(k, k)));
@@ -507,9 +515,9 @@ async function init() {
   sessionStartSeq = stored != null ? Number(stored) : currentOpSeq;
   localStorage.setItem("sessionStartSeq", sessionStartSeq);
   await refreshZooBadge();
-  try { TESSERA_SITES = (await getJSON("/api/tessera-sites")).sites || {}; } catch { /* Tessera opt is best-effort */ }
-  try { STANDARDS = await getJSON("/api/standards"); } catch { /* pick-list is best-effort */ }
-  try { INFER_OPTS = await getJSON("/api/inference-options"); } catch { /* year picker is best-effort */ }
+  try { TESSERA_SITES = (await getJSON(api("/api/tessera-sites"))).sites || {}; } catch { /* Tessera opt is best-effort */ }
+  try { STANDARDS = await getJSON(api("/api/standards")); } catch { /* pick-list is best-effort */ }
+  try { INFER_OPTS = await getJSON(api("/api/inference-options")); } catch { /* year picker is best-effort */ }
   await loadRuleRegistry();          // the index vars for a rule split (#12)
   if ($("embedding")) $("embedding").onchange = refreshModelFamilies;   // data drives the model list (#1)
   await refreshModelFamilies();
@@ -524,7 +532,7 @@ async function init() {
 // scheme reseeds the tree (destructive, so we confirm); picking the current one just proceeds.
 async function showBaseOnboard() {
   let b;
-  try { b = await getJSON("/api/base"); } catch { return; }   // no base endpoint -> skip onboarding
+  try { b = await getJSON(api("/api/base")); } catch { return; }   // no base endpoint -> skip onboarding
   const box = $("baseOptions"); box.innerHTML = "";
   Object.entries(b.schemes).forEach(([k, v]) => {
     const div = document.createElement("div");
@@ -542,7 +550,7 @@ async function chooseBase(scheme, active) {
     if (!await uiConfirm(`Start from "${scheme}"?\n\nThis sets your base classes and clears any ` +
                          `existing splits/merges.`, { okText: "Switch base", danger: true })) return;
     setStatus(`Setting base to ${scheme}…`, "work");
-    const r = await postJSON("/api/base/select", { scheme });
+    const r = await postJSON(api("/api/base/select"), { scheme });
     const d = await r.json();
     if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
     await refreshTree(d);
@@ -599,7 +607,7 @@ async function maybeResetForNewArea() {
 // do the actual reset: reseed the base, empty the example canvas (#4), start a fresh session (#4)
 async function performReset() {
   setStatus("Resetting to the base scheme…", "work");
-  const r = await postJSON("/api/session/reset", {});
+  const r = await postJSON(api("/api/session/reset"), {});
   const d = await r.json();
   if (!r.ok) { setStatus("Reset failed: " + (d.detail || r.status), "err"); return false; }
   await refreshTree(d);
@@ -648,7 +656,7 @@ async function runClassify() {
   const year = inferYear;
   // which base classes the DAG should build on — fetch the live one, fall back to indiasat
   let base_scheme = "indiasat";
-  try { base_scheme = (await getJSON("/api/base")).active || base_scheme; } catch {}
+  try { base_scheme = (await getJSON(api("/api/base"))).active || base_scheme; } catch {}
   setStatus("Triggering the DAG…", "work");
   $("run").disabled = true;
   drawAoi();
@@ -662,7 +670,7 @@ async function runClassify() {
     // the same classification as EE tiles so there's a visible result on the map (#7).
     setStatus("DAG done — rendering the classified map…", "work");
     const data = await getJSON(
-      `/api/classify?west=${w}&south=${s}&east=${e}&north=${n}&mode=realistic&year=${year}`);
+      api(`/api/classify?west=${w}&south=${s}&east=${e}&north=${n}&mode=realistic&year=${year}`));
     predLayer.clearLayers();
     if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
     if (data.render === "tiles") {
@@ -684,94 +692,6 @@ async function runClassify() {
 }
 $("run").onclick = runClassify;
 
-// ---------------- water on a fortnight (5, 7) ----------------
-// separate from the annual LULC: raw Sentinel classified for one date, rendered as EE tiles.
-async function runWater() {
-  const bb = requireValidBbox(); if (!bb) return;
-  const [w, s, e, n] = bb;
-  const date = $("waterDate").value;
-  if (!date) { setStatus("Pick a date for the water map.", "err"); return; }
-  setStatus(`Mapping water for ${date}…`, "work");
-  $("runWater").disabled = true;
-  drawAoi();
-  try {
-    const d = await getJSON(`/api/water?west=${w}&south=${s}&east=${e}&north=${n}&date=${date}`);
-    if (d.detail) { setStatus(d.detail, "err"); $("runWater").disabled = false; return; }
-    predLayer.clearLayers();
-    if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
-    rasterLayer = L.tileLayer(d.tile_url, { opacity: 0.75, bounds: [[s, w], [n, e]] }).addTo(map);
-    map.fitBounds([[s, w], [n, e]]);
-    overlayVisible = true;
-    if ($("eyeToggle")) { $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off"); }
-    setStatus(`Water on ${date}: ${JSON.stringify(d.counts)}`);
-  } catch (err) { setStatus("Water error: " + err, "err"); }
-  $("runWater").disabled = false;
-}
-$("runWater").onclick = runWater;
-
-// ---------------- water frequency over a year (#11 wk10) ----------------
-// counts how many fortnights each pixel held water; served as a blue-ramp tile layer.
-async function runWaterFreq() {
-  const bb = requireValidBbox(); if (!bb) return;
-  const [w, s, e, n] = bb;
-  setStatus("Counting water fortnights over the year… (runs the model ~24×)", "work");
-  $("runWaterFreq").disabled = true;
-  drawAoi();
-  try {
-    const d = await getJSON(`/api/water-frequency?west=${w}&south=${s}&east=${e}&north=${n}&year=${inferYear}`);
-    if (d.detail) { setStatus(d.detail, "err"); return; }
-    predLayer.clearLayers();
-    if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
-    rasterLayer = L.tileLayer(d.tile_url, { opacity: 0.8, bounds: [[s, w], [n, e]] }).addTo(map);
-    map.fitBounds([[s, w], [n, e]]);
-    overlayVisible = true;
-    if ($("eyeToggle")) { $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off"); }
-    setStatus(`Water frequency ${d.stats.year}: 0–${d.stats.max} fortnights (mean ${d.stats.mean})`);
-  } catch (err) { setStatus("Water-frequency error: " + err, "err"); }
-  finally { $("runWaterFreq").disabled = false; }
-}
-$("runWaterFreq").onclick = runWaterFreq;
-
-// ---------------- mining segmentation (vectorize a class) (#4 wk10) ----------------
-// turn the mining pixels into discrete cleaned polygons drawn as outlines, with per-segment area.
-let segmentGeojson = null;
-let segmentClass = "mining";       // which class the last segmentation ran on (for the download name)
-async function runSegment() {
-  const bb = requireValidBbox(); if (!bb) return;
-  const [w, s, e, n] = bb;
-  // segment the class the user has selected (any leaf), not a hard-wired one (#10). Fall back to
-  // mining when nothing useful is selected, since that's the canonical example.
-  const cls = (TREE[selected] && !(TREE[selected].children || []).length && selected !== "root")
-    ? selected : "mining";
-  segmentClass = cls;
-  setStatus(`Segmenting ${cls}…`, "work");
-  $("runSegment").disabled = true;
-  drawAoi();
-  try {
-    const d = await getJSON(`/api/segment?west=${w}&south=${s}&east=${e}&north=${n}&cls=${cls}&year=${inferYear}`);
-    if (d.detail) { setStatus(d.detail, "err"); return; }
-    predLayer.clearLayers();
-    if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
-    segmentGeojson = d.geojson;
-    L.geoJSON(d.geojson, { style: { color: "#ff7b00", weight: 2, fillColor: "#ff7b00", fillOpacity: 0.35 },
-      onEachFeature: (f, l) => l.bindTooltip(`${cls} · ${f.properties.area_ha} ha`) }).addTo(predLayer);
-    if (d.summary.n_segments) map.fitBounds(L.geoJSON(d.geojson).getBounds());
-    overlayVisible = true;
-    if ($("eyeToggle")) { $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off"); }
-    $("dlSegment").classList.toggle("hidden", !d.summary.n_segments);
-    setStatus(`${cls}: ${d.summary.n_segments} segments, ${d.summary.total_area_ha} ha total`);
-  } catch (err) { setStatus("Segment error: " + err, "err"); }
-  finally { $("runSegment").disabled = false; }
-}
-$("runSegment").onclick = runSegment;
-$("dlSegment").onclick = () => {
-  if (!segmentGeojson) return;
-  const blob = new Blob([JSON.stringify(segmentGeojson)], { type: "application/geo+json" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob); a.download = `${segmentClass}_segments.geojson`; a.click();
-  URL.revokeObjectURL(a.href);
-};
-
 // ---------------- IndiaSAT EE-native RF models (#13 wk10) ----------------
 // tree/crop (SAR) and farm/shrub (Alpha Earth, per-AEZ) both train + classify in Earth Engine, so
 // they come back as tile layers just like the base map. They are pickable *models* in the Model Zoo
@@ -780,7 +700,7 @@ $("dlSegment").onclick = () => {
 // apply an ee_rf card as a refinement of greenery: it updates the hierarchy (greenery gains the
 // model's classes) and then classifies, so the tree and the map both follow the model (#13).
 async function useEeRfModel(cardId, targetNode) {
-  const c = await getJSON(`/api/cards/${cardId}`);
+  const c = await getJSON(api(`/api/cards/${cardId}`));
   // attach to the node the user picked (a selected class in the tree); if none, fall back to the
   // model's suggested default (its parent_class, usually greenery). Any node is allowed (#5 wk11).
   const parent = (targetNode && TREE[targetNode] && targetNode !== "root") ? targetNode
@@ -788,7 +708,7 @@ async function useEeRfModel(cardId, targetNode) {
   const pname = (TREE[parent] || {}).name || parent;
   setStatus(`Applying "${c.name}" to ${pname}…`, "work");
   try {
-    const r = await postJSON("/api/apply-eerf", { card_id: cardId, parent });
+    const r = await postJSON(api("/api/apply-eerf"), { card_id: cardId, parent });
     const d = await r.json();
     if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
     closeZoo();
@@ -816,7 +736,7 @@ $("dlTif").onclick = async () => {
   setStatus("Preparing GeoTIFF (server-side export)…", "work");
   $("dlTif").disabled = true;                     // guard against double-firing concurrent exports (#10)
   try {
-    const d = await getJSON(`/api/classify.tif?west=${w}&south=${s}&east=${e}&north=${n}&year=${inferYear}`);
+    const d = await getJSON(api(`/api/classify.tif?west=${w}&south=${s}&east=${e}&north=${n}&year=${inferYear}`));
     if (!d.url) { setStatus("GeoTIFF export failed: " + (d.detail || "no url"), "err"); return; }
     window.open(d.url, "_blank");                 // EE serves the .tif; the browser downloads it
     const legend = (d.classes || []).map((c, i) => `${i}=${c}`).join(", ");
@@ -829,7 +749,7 @@ $("dlTif").onclick = async () => {
 $("addDrawn").onclick = async () => {
   if (!lastGeometry) { setStatus("Draw a polygon on the map first.", "err"); return; }
   try {
-    const r = await postJSON("/api/examples",
+    const r = await postJSON(api("/api/examples"),
       { node: selected, geometry: lastGeometry, role: $("role").value });
     const d = await readJson(r);
     if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
@@ -848,7 +768,7 @@ $("upload").onchange = async () => {
   fd.append("file", f); fd.append("node", selected); fd.append("role", $("role").value);
   setStatus(`Uploading ${f.name} → "${selected}"…`, "work");
   try {
-    const r = await fetch("/api/examples/upload", { method: "POST", body: fd });
+    const r = await fetch(api("/api/examples/upload"), { method: "POST", body: fd });
     const d = await readJson(r);      // a bad file used to 500 with plain text, hanging this toast
     const ds = d.dataset ? ` (dataset card ${d.dataset} updated)` : "";
     setStatus(r.ok ? `Uploaded ${f.name}: "${selected}" now has ${d.total} examples${ds}.`
@@ -862,7 +782,7 @@ $("upload").onchange = async () => {
 $("doSplit").onclick = async () => {
   const names = $("splitNames").value.split(",").map((s) => s.trim()).filter(Boolean);
   if (names.length < 2) { setStatus("Give at least two child names.", "err"); return; }
-  const r = await postJSON("/api/split",
+  const r = await postJSON(api("/api/split"),
     { parent: selected, children: names.map((name) => ({ name })) });
   const d = await r.json();
   if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
@@ -874,7 +794,7 @@ $("doSplit").onclick = async () => {
 // ---------------- rule-based split (#12) ----------------
 let RULE_VARS = {};
 async function loadRuleRegistry() {
-  try { RULE_VARS = (await getJSON("/api/rules/registry")).variables || {}; }
+  try { RULE_VARS = (await getJSON(api("/api/rules/registry"))).variables || {}; }
   catch { return; }
   const sel = $("ruleVar"); if (!sel) return;
   sel.innerHTML = "";
@@ -897,7 +817,7 @@ function buildRule() {
 $("doRuleSplit").onclick = async () => {
   let rule;
   try { rule = buildRule(); } catch (e) { setStatus(e.message, "err"); return; }
-  const r = await postJSON("/api/split/rule", { parent: selected, rule });
+  const r = await postJSON(api("/api/split/rule"), { parent: selected, rule });
   const d = await r.json();
   if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
   $("ruleTrue").value = ""; $("ruleFalse").value = ""; $("ruleExpr").value = "";
@@ -909,7 +829,7 @@ $("doRuleSplit").onclick = async () => {
 $("doAdd").onclick = async () => {
   const name = $("addName").value.trim();
   if (!name) { setStatus("Enter a class name.", "err"); return; }
-  const r = await postJSON("/api/add", { parent: selected, name });
+  const r = await postJSON(api("/api/add"), { parent: selected, name });
   const d = await r.json();
   if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
   $("addName").value = "";
@@ -930,22 +850,40 @@ $("doRetrain").onclick = async () => {
   // trains, so the run has a real progress signal instead of a static "working…".
   const est = await fetchEstimate($("algo").value);
   const stopTimer = startWorkTimer(`Retraining "${selected}"${yearNote}`, est);
+  const params = { node: selected, balance: $("balance").value,
+                   years: years.length ? years : null, algo: $("algo").value, embedding };
+  const teNote = embedding === "tessera" ? " (Tessera: scored + carded; not on the tile map)" : "";
   try {
-    const r = await postJSON("/api/retrain",
-      { node: selected, balance: $("balance").value, years: years.length ? years : null,
-        algo: $("algo").value, embedding });
-    stopTimer();
-    const d = await r.json();
-    if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); }
-    else {
+    let report = null, nTest = null;
+    if (window.CORESTACK_CFG?.airflow) {
+      // Airflow is wired: ride the SAME conf the export path already takes, with export:false so it
+      // trains and stops. No second DAG to register: the backend does the training either way.
+      const run = await triggerDagAndPoll({ retrain: params, export: false }, {
+        onState: (state, runId) => setStatus(`DAG ${runId} - retraining (${state})...`, "work"),
+      });
+      stopTimer();
+      // the poll only hands back run state, so read the metrics off the card the retrain just minted
+      const card = await getJSON(api(`/api/cards/mc_${selected}_v1`)).catch(() => null);
+      report = card?.metrics; nTest = card?.metrics?.n_test;
+      await refreshTree();          // the DAG reply carries no tree, so pull the current one
+      setStatus(`DAG ${run.dag_run_id}: retrained "${selected}"${teNote} - re-rendering...`, "ok");
+    } else {
+      const r = await postJSON(api("/api/retrain"), params);
+      stopTimer();
+      const d = await readJson(r);
+      if (!r.ok) {
+        setStatus("Error: " + (d.detail || r.status), "err");
+        btn.disabled = false; btn.textContent = "Retrain & apply";
+        return;
+      }
       await refreshTree(d);
-      $("metrics").textContent = formatReport(d.report, d.n_test);
-      const teNote = embedding === "tessera" ? " (Tessera — scored + carded; not on the tile map)" : "";
-      setStatus(`Retrained "${selected}"${teNote} — re-rendering the map…`, "ok");
-      await refreshZooBadge();                          // the new model card just landed
-      if (isZooOpen()) await loadZooFull();
-      await runClassify();
+      report = d.report; nTest = d.n_test;
+      setStatus(`Retrained "${selected}"${teNote} - re-rendering the map...`, "ok");
     }
+    $("metrics").textContent = formatReport(report, nTest);
+    await refreshZooBadge();                            // the new model card just landed
+    if (isZooOpen()) await loadZooFull();
+    await runClassify();
   } catch (err) { stopTimer(); setStatus("Error: " + err, "err"); }
   btn.disabled = false; btn.textContent = "Retrain & apply";
 };
@@ -959,7 +897,7 @@ $("doMerge").onclick = async () => {
   const name = $("mergeName").value.trim();
   if (sources.length < 2) { setStatus("Tick at least two leaf classes in the Hierarchy to merge.", "err"); return; }
   if (!name) { setStatus("Name the merged class.", "err"); return; }
-  const r = await postJSON("/api/merge", { name, sources, color: $("mergeColor").value });
+  const r = await postJSON(api("/api/merge"), { name, sources, color: $("mergeColor").value });
   const d = await r.json();
   if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
   $("mergeName").value = "";
@@ -973,7 +911,7 @@ $("doMerge").onclick = async () => {
 
 // undo a merge (the ✕ on its virtual node in the tree): the source leaves come back on their own.
 async function removeMerge(target) {
-  const r = await fetch(`/api/merge/${target}`, { method: "DELETE" });
+  const r = await fetch(api(`/api/merge/${target}`), { method: "DELETE" });
   const d = await r.json();
   if (!r.ok) { setStatus("Error removing merge.", "err"); return; }
   await refreshTree(d);
@@ -990,9 +928,9 @@ async function removeMerge(target) {
 $("exportHier").onclick = async () => {
   setStatus("Preparing project download…", "work");     // busy feedback so a slow export isn't a dead button (#10)
   try {
-    const data = await getJSON(`/api/hierarchy/export?since=${sessionStartSeq || 0}`);
+    const data = await getJSON(api(`/api/hierarchy/export?since=${sessionStartSeq || 0}`));
     let base = "indiasat";
-    try { base = (await getJSON("/api/base")).active || "indiasat"; } catch { /* best-effort */ }
+    try { base = (await getJSON(api("/api/base"))).active || "indiasat"; } catch { /* best-effort */ }
     const project = {
       kind: "corestack-lulc-project", version: 1, created: new Date().toISOString(),
       aoi: currentBbox(), year: inferYear, base_scheme: base,
@@ -1014,7 +952,7 @@ $("exportStacd").onclick = async () => {
   try {
     const [w, s, e, n] = currentBbox();
     const doc = await getJSON(
-      `/api/stacd?west=${w}&south=${s}&east=${e}&north=${n}&year=${inferYear}&since=${sessionStartSeq || 0}`);
+      api(`/api/stacd?west=${w}&south=${s}&east=${e}&north=${n}&year=${inferYear}&since=${sessionStartSeq || 0}`));
     const blob = new Blob([JSON.stringify(doc, null, 2)], { type: "application/json" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -1045,8 +983,8 @@ $("importHier").onchange = async () => {
   if (file.year) { inferYear = Number(file.year); localStorage.setItem("inferYear", inferYear); }
   if (file.base_scheme) {
     try {
-      const cur = (await getJSON("/api/base")).active;
-      if (cur !== file.base_scheme) await postJSON("/api/base/select", { scheme: file.base_scheme });
+      const cur = (await getJSON(api("/api/base"))).active;
+      if (cur !== file.base_scheme) await postJSON(api("/api/base/select"), { scheme: file.base_scheme });
     } catch { /* base switch is best-effort */ }
   }
 
@@ -1054,7 +992,7 @@ $("importHier").onchange = async () => {
   const body = file.hierarchy
     ? { hierarchy: file.hierarchy, op_log: file.sequence || file.op_log || [] }
     : { hierarchy: file };
-  const r = await postJSON("/api/hierarchy/import", body);
+  const r = await postJSON(api("/api/hierarchy/import"), body);
   const d = await r.json();
   $("importHier").value = "";
   if (!r.ok) {
@@ -1079,7 +1017,7 @@ const isZooOpen = () => !$("zoo-overlay").classList.contains("hidden");
 
 async function refreshZooBadge() {
   try {
-    const s = await getJSON("/api/zoo/status");
+    const s = await getJSON(api("/api/zoo/status"));
     const loc = (s.uncommitted || []).length;
     const txt = loc ? `· ${loc} unpublished` : "· all published";
     $("zooBadge").textContent = txt;
@@ -1094,7 +1032,7 @@ function openZoo() {
 function closeZoo() { $("zoo-overlay").classList.add("hidden"); }
 
 async function loadZooFull() {
-  zooCards = (await getJSON("/api/catalogue")).cards;
+  zooCards = (await getJSON(api("/api/catalogue"))).cards;
   // "only for current view": keep cards whose extent overlaps the AOI (#3). Polygon datasets
   // have real localized extents, so this actually discriminates; India-wide feature sources
   // overlap any India AOI and stay (as they should).
@@ -1197,7 +1135,7 @@ function dsChips(ids) {
 
 async function showCardFull(id) {
   zooSelected = id;
-  const c = await getJSON(`/api/cards/${id}`);
+  const c = await getJSON(api(`/api/cards/${id}`));
   $("zoo-detail").innerHTML = id.startsWith("mc_") ? modelDetail(c) : datasetDetail(c);
   renderGrid();   // refresh selection highlight
   // a polygon dataset: compute + fill the spread right away, so every polygon card shows it, not just
@@ -1351,7 +1289,7 @@ async function saveAnnotation(id) {
   if (v("an_contrib")) localStorage.setItem("contributor", v("an_contrib"));   // remember for publish (#6)
   setStatus("Saving annotation…", "work");
   try {                                            // guard so a network throw can't strand the toast (#10)
-    const r = await postJSON(`/api/cards/${id}/annotate`,
+    const r = await postJSON(api(`/api/cards/${id}/annotate`),
       { about: { description: v("an_desc"), intended_use: v("an_use"),
                  limitations: v("an_lim"), evidence: v("an_ev") },
         contributor: v("an_contrib"), std_mapping: std });
@@ -1411,7 +1349,7 @@ async function recomputeSpread(id, cell) {
   try {
     const b = currentBbox();   // judge coverage against the area we're about to classify (#4)
     const aoi = b ? `&w=${b[0]}&s=${b[1]}&e=${b[2]}&n=${b[3]}` : "";
-    const q = await getJSON(`/api/cards/${id}/spread?cell=${cell}${aoi}`);
+    const q = await getJSON(api(`/api/cards/${id}/spread?cell=${cell}${aoi}`));
     if (out) out.innerHTML = spreadValueHTML(q.spatial_diversity, q.occupied_cells, q.n_polygons, q.cell, q.coverage, q.missing);
   } catch {
     if (out) out.innerHTML = `<div class="prose">couldn't recompute at this grid</div>`;
@@ -1457,7 +1395,7 @@ async function fillCardRegions(id) {
   if (!out) return;
   out.textContent = "naming districts / states…";
   try {
-    const r = await getJSON(`/api/cards/${id}/regions`);
+    const r = await getJSON(api(`/api/cards/${id}/regions`));
     if (!r.available) { out.textContent = ""; return; }
     const states = (r.states || []).join(", ");
     const districts = (r.districts || []).slice(0, 8).join(", ");
@@ -1525,21 +1463,21 @@ function extentLine(extent) {
 // sources (Alpha Earth / Tessera / pixel tables) have no polygons, so fall back to the bbox/label.
 async function showOnMap(id) {
   if (id.startsWith("mc_")) { await showModelStrongRegion(id); return; }
-  const geo = await getJSON(`/api/cards/${id}/geometry`);
+  const geo = await getJSON(api(`/api/cards/${id}/geometry`));
   if (geo.drawable && (geo.features || []).length) { drawPolygons(geo); return; }
-  const c = await getJSON(`/api/cards/${id}`);
+  const c = await getJSON(api(`/api/cards/${id}`));
   drawExtent(c.extent);
 }
 
 // a model's strong region is where its training data lives (#7): draw those polygons, gathered across
 // its training datasets. Falls back to the extent for a model with no polygon training data.
 async function showModelStrongRegion(id) {
-  const c = await getJSON(`/api/cards/${id}`);
+  const c = await getJSON(api(`/api/cards/${id}`));
   const ds = (c.training && c.training.datasets) || [];
   const feats = [];
   for (const d of ds) {
     try {
-      const g = await getJSON(`/api/cards/${d}/geometry`);
+      const g = await getJSON(api(`/api/cards/${d}/geometry`));
       if (g.drawable) feats.push(...(g.features || []));
     } catch { /* a dataset without drawable polygons just contributes nothing */ }
   }
@@ -1595,7 +1533,7 @@ async function publishCard(id) {
   // dataset links (#3) are set on each dataset card's detail pane — so publish is one quiet click.
   setStatus(`Publishing "${id}" to the zoo…`, "work");
   try {                                            // a push can fail on the network; don't strand the toast (#10)
-    const r = await postJSON("/api/publish", { card_ids: [id], contributor: contributor() });
+    const r = await postJSON(api("/api/publish"), { card_ids: [id], contributor: contributor() });
     const d = await r.json();
     setStatus(d.pushed ? `Published "${id}" — pushed to the zoo.`
               : (d.committed ? `Committed "${id}" locally (${d.note}).` : d.note || "Nothing to publish."),
@@ -1614,7 +1552,7 @@ $("zooPublishSel").onclick = async () => {
   const ids = [...pubSel];
   if (!ids.length) return;
   setStatus(`Publishing ${ids.length} selected card(s)…`, "work");
-  const r = await postJSON("/api/publish", { card_ids: ids, contributor: contributor() });
+  const r = await postJSON(api("/api/publish"), { card_ids: ids, contributor: contributor() });
   const d = await r.json();
   setStatus(d.committed || d.pushed ? `Published ${ids.length} card(s) (${d.note || "done"}).`
             : (d.note || "Nothing to publish."), r.ok ? "ok" : "err");
@@ -1623,7 +1561,7 @@ $("zooPublishSel").onclick = async () => {
 };
 $("zooPublishAll").onclick = async () => {
   setStatus("Publishing all unpublished cards…", "work");
-  const r = await postJSON("/api/publish", { contributor: contributor() });
+  const r = await postJSON(api("/api/publish"), { contributor: contributor() });
   const d = await r.json();
   setStatus(d.committed ? `Published the zoo (${d.note}).` : (d.note || "Nothing to publish."),
             r.ok ? "ok" : "err");
@@ -1662,7 +1600,7 @@ $("zoo-detail").addEventListener("change", async (e) => {
 async function saveDatasetLink(id) {
   const url = ($("dsLink") ? $("dsLink").value : "").trim();
   setStatus("Saving source link…", "work");
-  const r = await postJSON(`/api/cards/${id}/annotate`, { source_url: url });
+  const r = await postJSON(api(`/api/cards/${id}/annotate`), { source_url: url });
   if (!r.ok) { setStatus("Error saving link.", "err"); return; }
   setStatus(url ? "Saved public source link." : "Cleared the source link.", "ok");
   await loadZooFull();
@@ -1674,7 +1612,7 @@ async function saveDatasetLink(id) {
 // an incompatible base class the server answers 409 and we ask "proceed anyway?" before forcing (#11).
 async function applyModel(id, targetNode = null, force = false) {
   setStatus(`Applying "${id}" to the map…`, "work");
-  const r = await postJSON("/api/apply", { card_id: id, target_node: targetNode, force });
+  const r = await postJSON(api("/api/apply"), { card_id: id, target_node: targetNode, force });
   const d = await r.json();
   if (r.status === 409 && !force) {
     // detail can be a string or the {message, needs_confirm} object we send from the guard
@@ -1697,7 +1635,7 @@ async function deleteCardUI(id) {
   if (!await uiConfirm(`Delete "${id}" from the zoo?\n\nThis removes the card (and any archived copy).`,
                        { okText: "Delete", danger: true })) return;
   setStatus(`Deleting "${id}"…`, "work");
-  const r = await fetch(`/api/cards/${id}`, { method: "DELETE" });
+  const r = await fetch(api(`/api/cards/${id}`), { method: "DELETE" });
   const d = await r.json();
   if (!r.ok) { setStatus("Error: " + ((d.detail && d.detail.message) || d.detail || r.status), "err"); return; }
   zooSelected = null;
@@ -1706,12 +1644,16 @@ async function deleteCardUI(id) {
   setStatus(`Deleted "${id}".`, "ok");
 }
 
+// Two shapes land here: sklearn's report (inline retrain) and a model card's metrics (after a DAG
+// retrain, where the card is all we can read back). Same numbers, different spelling of f1.
 function formatReport(rep, nTest) {
   if (!rep) return "";
-  const lines = [`held-out: ${nTest} px   acc ${(rep.accuracy ?? 0).toFixed(3)}`];
-  for (const [k, v] of Object.entries(rep)) {
-    if (["accuracy", "macro avg", "weighted avg"].includes(k)) continue;
-    lines.push(`${k.padEnd(14)} P${v.precision.toFixed(2)} R${v.recall.toFixed(2)} F${v["f1-score"].toFixed(2)}`);
+  const perClass = rep.per_class || rep;
+  const lines = [`held-out: ${nTest ?? rep.n_test ?? "?"} px   acc ${(rep.accuracy ?? 0).toFixed(3)}`];
+  for (const [k, v] of Object.entries(perClass)) {
+    if (["accuracy", "macro avg", "weighted avg"].includes(k) || typeof v !== "object") continue;
+    const f1 = v["f1-score"] ?? v.f1 ?? 0;
+    lines.push(`${k.padEnd(14)} P${v.precision.toFixed(2)} R${v.recall.toFixed(2)} F${f1.toFixed(2)}`);
   }
   return lines.join("\n");
 }
