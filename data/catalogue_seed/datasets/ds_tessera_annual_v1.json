@@ -1,0 +1,41 @@
+{
+  "id": "ds_tessera_annual_v1",
+  "name": "Tessera annual embeddings (128-d) \u2014 model input features",
+  "description": "The 128-d Tessera embedding, downloaded as 0.1 degree tiles and sampled at 10 m. Usable for 2024 over India; a local feature source, not served in EE. No labels \u2014 this is an inference input.",
+  "type": "inference",
+  "kind": "embedding_table",
+  "definition": {
+    "type": "embedding_table",
+    "source": "geotessera",
+    "note": "0.1 degree tiles downloaded on demand; 2024 over India"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "embedding": {
+    "source": "tessera",
+    "dim": 128,
+    "year": 2024
+  },
+  "provenance": {
+    "annotator": "Tessera (geotessera)",
+    "method": "learned embedding",
+    "evidence": [
+      "geotessera"
+    ],
+    "license": null
+  },
+  "version": 1,
+  "created": "2026-07-22T01:27:20.496729+00:00"
+}

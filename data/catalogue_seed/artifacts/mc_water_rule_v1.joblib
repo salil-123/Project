@@ -1,0 +1,52 @@
+{
+  "root": {
+    "class": "root",
+    "name": "All land",
+    "parent": null,
+    "color": null,
+    "classifier": null,
+    "children": [
+      "greenery",
+      "water",
+      "built_up",
+      "barren"
+    ],
+    "source": null
+  },
+  "greenery": {
+    "class": "greenery",
+    "name": "Greenery",
+    "parent": "root",
+    "color": "#2e8b2e",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "water": {
+    "class": "water",
+    "name": "Water",
+    "parent": "root",
+    "color": "#1e88e5",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "built_up": {
+    "class": "built_up",
+    "name": "Built-up",
+    "parent": "root",
+    "color": "#d7301f",
+    "classifier": null,
+    "children": [],
+    "source": null
+  },
+  "barren": {
+    "class": "barren",
+    "name": "Barren",
+    "parent": "root",
+    "color": "#c2a05a",
+    "classifier": null,
+    "children": [],
+    "source": null
+  }
+}

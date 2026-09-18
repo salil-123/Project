@@ -1,0 +1,49 @@
+{
+  "id": "ds_trees_polygons_v1",
+  "name": "Trees expert polygons",
+  "description": "User-marked example polygons for the 'Trees' class.",
+  "type": "training",
+  "kind": "polygons",
+  "classes": [
+    {
+      "class": "trees",
+      "name": "Trees",
+      "count": 145
+    }
+  ],
+  "definition": {
+    "type": "polygons",
+    "path": "data/examples/trees.geojson"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        72.94958,
+        9.40333,
+        95.80036,
+        34.52493
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "provenance": {
+    "annotator": "user contribution",
+    "method": "drawn/uploaded polygons",
+    "evidence": [],
+    "license": null,
+    "notes": "marked between 2026-06-11T13:56:52.766628+00:00 and 2026-06-11T13:56:52.772347+00:00"
+  },
+  "quality": {
+    "n_polygons": 145,
+    "occupied_cells": 81,
+    "spatial_diversity": 0.84,
+    "class_balance": {
+      "trees": 1.0
+    }
+  },
+  "version": 1,
+  "created": "2026-06-23T16:41:30.390870+00:00"
+}

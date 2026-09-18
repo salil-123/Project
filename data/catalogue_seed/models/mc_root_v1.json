@@ -1,0 +1,97 @@
+{
+  "id": "mc_root_v1",
+  "name": "Core Stack base map \u2014 4-class LULC (India)",
+  "node": "root",
+  "parent_class": null,
+  "topology": "base_pooled",
+  "produces": [
+    {
+      "class": "barren"
+    },
+    {
+      "class": "built_up"
+    },
+    {
+      "class": "greenery"
+    },
+    {
+      "class": "other"
+    },
+    {
+      "class": "water"
+    }
+  ],
+  "training": {
+    "datasets": [],
+    "embedding": {
+      "source": "alphaearth",
+      "dim": 64
+    },
+    "algo": "StandardScaler->LinearSVC",
+    "class_weight": null,
+    "balancing": {
+      "method": "worldcover_upweight",
+      "wc_weight": 2.0
+    }
+  },
+  "inference": {
+    "dataset": "ds_alphaearth_annual_v1",
+    "embedding": {
+      "source": "alphaearth",
+      "dim": 64,
+      "year": 2024
+    }
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "metrics": {
+    "accuracy": 0.8,
+    "eval": "random India (real-world mix)",
+    "secondary": {
+      "accuracy": 0.89,
+      "eval": "balanced expert hold-out"
+    },
+    "note": "greenery near-perfect; rare classes are the hard part"
+  },
+  "artifact": {
+    "path": "data/model_pooled.joblib",
+    "format": "sklearn-joblib",
+    "published_path": "artifacts/mc_root_v1.joblib"
+  },
+  "deployment": {
+    "ee_asset": null,
+    "tile_url": null,
+    "expressible_as_bandmath": true
+  },
+  "lineage": {
+    "base_model": null,
+    "derived_from": null
+  },
+  "about": {
+    "description": "Core Stack base map \u2014 4-class LULC (India)",
+    "intended_use": "Coarse 4-class LULC across India at 10 m.",
+    "limitations": "Linear model; rare-class recall limited.",
+    "evidence": ""
+  },
+  "zoo": {
+    "published": true,
+    "valid_region_label": "India",
+    "contributor": ""
+  },
+  "version": 10,
+  "created": "2026-07-22T01:18:25.700451+00:00",
+  "base_scheme": "indiasat",
+  "updated": "2026-07-28T19:54:32.099791+00:00"
+}

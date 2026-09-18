@@ -1,0 +1,50 @@
+{
+  "id": "ds_tea_polygons_v1",
+  "name": "Tea expert polygons",
+  "description": "User-marked example polygons for the 'Tea' class.",
+  "type": "training",
+  "kind": "polygons",
+  "classes": [
+    {
+      "class": "tea",
+      "name": "Tea",
+      "count": 105
+    }
+  ],
+  "definition": {
+    "type": "polygons",
+    "path": "data/examples/tea.geojson"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        94.83222,
+        27.18731,
+        95.9866,
+        27.75589
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "provenance": {
+    "annotator": "user contribution",
+    "method": "drawn/uploaded polygons",
+    "evidence": [],
+    "license": null,
+    "notes": "marked between 2026-06-24T03:14:23.327074+00:00 and 2026-06-24T03:14:23.337539+00:00"
+  },
+  "quality": {
+    "n_polygons": 105,
+    "occupied_cells": 13,
+    "spatial_diversity": 0.446,
+    "class_balance": {
+      "tea": 1.0
+    }
+  },
+  "version": 10,
+  "created": "2026-07-14T15:41:32.805339+00:00",
+  "updated": "2026-07-14T15:41:32.806601+00:00"
+}

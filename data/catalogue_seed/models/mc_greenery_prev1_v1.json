@@ -1,0 +1,101 @@
+{
+  "id": "mc_greenery_prev1_v1",
+  "name": "Greenery split (non_tea / tea) \u2014 superseded",
+  "node": "greenery",
+  "parent_class": "root",
+  "topology": "per_node_split",
+  "produces": [
+    {
+      "class": "non_tea"
+    },
+    {
+      "class": "tea"
+    }
+  ],
+  "training": {
+    "datasets": [
+      "ds_tea_polygons_v1",
+      "ds_non_tea_polygons_v1"
+    ],
+    "embedding": {
+      "source": "alphaearth",
+      "dim": 64
+    },
+    "algo": "StandardScaler->LinearSVC",
+    "class_weight": "balanced",
+    "balancing": {
+      "method": "class_weight_balanced",
+      "residual_cap": 8000
+    }
+  },
+  "inference": {
+    "dataset": "ds_alphaearth_annual_v1",
+    "embedding": {
+      "source": "alphaearth",
+      "dim": 64,
+      "year": 2024
+    }
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        94.83222,
+        27.1446,
+        96.05811,
+        27.81492
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "metrics": {
+    "accuracy": 0.963,
+    "macro_f1": 0.961,
+    "eval": "polygon-holdout",
+    "n_test": 2150,
+    "per_class": {
+      "non_tea": {
+        "precision": 0.927,
+        "recall": 0.984,
+        "f1": 0.954,
+        "support": 850
+      },
+      "tea": {
+        "precision": 0.989,
+        "recall": 0.949,
+        "f1": 0.969,
+        "support": 1300
+      }
+    }
+  },
+  "artifact": {
+    "path": "data/refine/archive/greenery__1784043692.joblib",
+    "format": "sklearn-joblib",
+    "published_path": "artifacts/mc_greenery_prev1_v1.joblib"
+  },
+  "deployment": {
+    "ee_asset": null,
+    "tile_url": null,
+    "expressible_as_bandmath": true
+  },
+  "lineage": {
+    "base_model": "mc_root_v1",
+    "derived_from": "mc_greenery_v1"
+  },
+  "about": {
+    "description": "A previous greenery split, kept after a newer model replaced it so it isn't lost.",
+    "intended_use": "Layered on the India base map.",
+    "limitations": "Archived reference model, not the live classifier for this node.",
+    "evidence": ""
+  },
+  "zoo": {
+    "published": true,
+    "valid_region_label": "India",
+    "contributor": ""
+  },
+  "version": 18,
+  "updated": "2026-07-14T16:28:19.847712+00:00",
+  "created": "2026-07-14T16:17:44.506619+00:00"
+}

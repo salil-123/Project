@@ -1,0 +1,41 @@
+{
+  "id": "ds_alphaearth_annual_v1",
+  "name": "Alpha Earth annual embeddings (64-d) \u2014 model input features",
+  "description": "The feature space LULC models run on: Google Satellite Embedding V1 annual, sampled server-side at 10 m. No labels \u2014 this is the inference input.",
+  "type": "inference",
+  "kind": "ee_asset",
+  "definition": {
+    "type": "ee_asset",
+    "asset": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
+    "scale": 10
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "embedding": {
+    "source": "alphaearth",
+    "dim": 64,
+    "year": 2024
+  },
+  "provenance": {
+    "annotator": "Google DeepMind / Alpha Earth",
+    "method": "learned embedding",
+    "evidence": [
+      "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL"
+    ],
+    "license": null
+  },
+  "version": 1,
+  "created": "2026-06-23T16:41:24.234160+00:00"
+}

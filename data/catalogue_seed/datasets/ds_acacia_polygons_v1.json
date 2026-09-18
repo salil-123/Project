@@ -1,0 +1,50 @@
+{
+  "id": "ds_acacia_polygons_v1",
+  "name": "acacia expert polygons",
+  "description": "User-marked example polygons for the 'acacia' class.",
+  "type": "training",
+  "kind": "polygons",
+  "classes": [
+    {
+      "class": "acacia",
+      "name": "acacia",
+      "count": 100
+    }
+  ],
+  "definition": {
+    "type": "polygons",
+    "path": "data/examples/acacia.geojson"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.58471,
+        9.00493,
+        87.76123,
+        34.05857
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "provenance": {
+    "annotator": "user contribution",
+    "method": "drawn/uploaded polygons",
+    "evidence": [],
+    "license": null,
+    "notes": "marked between 2026-07-15T04:23:36.114228+00:00 and 2026-07-15T04:23:36.138566+00:00"
+  },
+  "quality": {
+    "n_polygons": 100,
+    "occupied_cells": 65,
+    "spatial_diversity": 0.867,
+    "class_balance": {
+      "acacia": 1.0
+    }
+  },
+  "version": 15,
+  "created": "2026-07-15T04:23:36.252310+00:00",
+  "updated": "2026-07-15T04:23:36.262300+00:00"
+}

@@ -53,6 +53,12 @@ def init_local():
     if not is_repo():
         _git("init")
         _git("checkout", "-b", "main")          # stable default branch name
+    # a fresh container has no git identity, so `git commit` on publish would blow up with an uncaught
+    # 500. Set a local identity (repo-scoped, doesn't touch the host) if none is configured.
+    code, _ = _git("config", "user.email")
+    if code != 0:
+        _git("config", "user.email", "zoo@core-stack.org")
+        _git("config", "user.name", "corestack-zoo")
     (REPO / ".gitignore").write_text(GITIGNORE)
     url = remote_url()
     if url:                                      # point 'origin' at the zoo (reset if changed)

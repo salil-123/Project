@@ -1,0 +1,49 @@
+{
+  "id": "ds_crops_polygons_v1",
+  "name": "Crops expert polygons",
+  "description": "User-marked example polygons for the 'Crops' class.",
+  "type": "training",
+  "kind": "polygons",
+  "classes": [
+    {
+      "class": "crops",
+      "name": "Crops",
+      "count": 110
+    }
+  ],
+  "definition": {
+    "type": "polygons",
+    "path": "data/examples/crops.geojson"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        69.50128,
+        8.13829,
+        87.82965,
+        31.45308
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "provenance": {
+    "annotator": "user contribution",
+    "method": "drawn/uploaded polygons",
+    "evidence": [],
+    "license": null,
+    "notes": "marked between 2026-06-11T13:56:52.032354+00:00 and 2026-06-11T13:56:52.084036+00:00"
+  },
+  "quality": {
+    "n_polygons": 110,
+    "occupied_cells": 77,
+    "spatial_diversity": 0.889,
+    "class_balance": {
+      "crops": 1.0
+    }
+  },
+  "version": 1,
+  "created": "2026-06-23T16:41:30.359159+00:00"
+}

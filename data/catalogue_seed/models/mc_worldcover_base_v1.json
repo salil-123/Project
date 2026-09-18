@@ -1,0 +1,98 @@
+{
+  "id": "mc_worldcover_base_v1",
+  "name": "WorldCover base \u2014 7-class LULC (India)",
+  "node": "root",
+  "parent_class": null,
+  "topology": "base_pooled",
+  "base_scheme": "worldcover",
+  "produces": [
+    {
+      "class": "bare"
+    },
+    {
+      "class": "built_up"
+    },
+    {
+      "class": "cropland"
+    },
+    {
+      "class": "grassland"
+    },
+    {
+      "class": "shrubland"
+    },
+    {
+      "class": "tree"
+    },
+    {
+      "class": "water"
+    }
+  ],
+  "training": {
+    "datasets": [
+      "ds_worldcover_train_v1"
+    ],
+    "embedding": {
+      "source": "alphaearth",
+      "dim": 64
+    },
+    "algo": "StandardScaler->LinearSVC",
+    "class_weight": "balanced",
+    "balancing": {
+      "method": "class_weight_balanced"
+    }
+  },
+  "inference": {
+    "dataset": "ds_alphaearth_annual_v1",
+    "embedding": {
+      "source": "alphaearth",
+      "dim": 64,
+      "year": 2024
+    }
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "metrics": {
+    "note": "weak ESA WorldCover labels; trails the IndiaSAT base. An alternate starting scheme, not a more accurate one."
+  },
+  "artifact": {
+    "path": "data/model_worldcover_base.joblib",
+    "format": "sklearn-joblib",
+    "published_path": "artifacts/mc_worldcover_base_v1.joblib"
+  },
+  "deployment": {
+    "ee_asset": null,
+    "tile_url": null,
+    "expressible_as_bandmath": true
+  },
+  "lineage": {
+    "base_model": null,
+    "derived_from": null
+  },
+  "about": {
+    "description": "WorldCover base: the well-supported India classes (tree, shrubland, grassland, cropland, built-up, bare, water) learned from Alpha Earth embeddings.",
+    "intended_use": "An alternate starting scheme to IndiaSAT's four classes.",
+    "limitations": "Weak ESA WorldCover labels; rare classes dropped for lack of India support.",
+    "evidence": ""
+  },
+  "zoo": {
+    "published": true,
+    "valid_region_label": "India",
+    "contributor": ""
+  },
+  "version": 8,
+  "created": "2026-08-09T12:18:23.253867+00:00",
+  "updated": "2026-08-13T06:43:59.120908+00:00"
+}

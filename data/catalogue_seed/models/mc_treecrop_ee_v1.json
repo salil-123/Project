@@ -1,0 +1,73 @@
+{
+  "id": "mc_treecrop_ee_v1",
+  "name": "Tree vs crop (IndiaSAT SAR RF)",
+  "node": "treecrop",
+  "parent_class": "greenery",
+  "topology": "ee_rf",
+  "produces": [
+    {
+      "class": "cropland"
+    },
+    {
+      "class": "tree"
+    }
+  ],
+  "training": {
+    "datasets": [],
+    "embedding": {
+      "source": "sar_ts"
+    },
+    "algo": "smileRandomForest(100)",
+    "training_asset": "projects/ee-indiasat/assets/Rasterized_Groundtruth/L2_TrainingData_SAR_TimeSeries_1Year"
+  },
+  "inference": {
+    "dataset": null,
+    "embedding": {
+      "source": "sar_ts"
+    }
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "note": "trained on the fly per request; year/date is a run param"
+    }
+  },
+  "metrics": {
+    "note": "server-side EE Random Forest (IndiaSAT production model); trained in Earth Engine, not held out here"
+  },
+  "artifact": {
+    "path": "ee://projects/ee-indiasat/assets/Rasterized_Groundtruth/L2_TrainingData_SAR_TimeSeries_1Year",
+    "format": "ee-smileRandomForest (recipe, re-trained on demand from the asset)"
+  },
+  "deployment": {
+    "ee_asset": "projects/ee-indiasat/assets/Rasterized_Groundtruth/L2_TrainingData_SAR_TimeSeries_1Year",
+    "tile_url": null,
+    "expressible_as_bandmath": false
+  },
+  "lineage": {
+    "base_model": null,
+    "derived_from": "projects/ee-indiasat/assets/Rasterized_Groundtruth/L2_TrainingData_SAR_TimeSeries_1Year"
+  },
+  "about": {
+    "description": "IndiaSAT/CoRE-stack Tree vs crop (IndiaSAT SAR RF). An Earth-Engine Random Forest on the Sentinel-1 SAR 16-day time series, trained + classified server-side and served as map tiles.",
+    "intended_use": "Split a vegetation class using the lab's production classifier instead of a locally-trained one.",
+    "limitations": "Re-trained per request in EE; renders as its own overlay (full hierarchy compositing is a follow-up); needs read access to the training asset.",
+    "evidence": ""
+  },
+  "zoo": {
+    "published": true,
+    "valid_region_label": "India",
+    "contributor": "IndiaSAT (Raman)"
+  },
+  "version": 2,
+  "created": "2026-07-28T07:56:24.683791+00:00",
+  "updated": "2026-07-28T19:54:32.118750+00:00"
+}

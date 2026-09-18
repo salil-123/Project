@@ -1,0 +1,76 @@
+{
+  "id": "mc_farmshrub_ee_v1",
+  "name": "Farm / plantation / scrubland (IndiaSAT AEZ RF)",
+  "node": "farmshrub",
+  "parent_class": "greenery",
+  "topology": "ee_rf",
+  "produces": [
+    {
+      "class": "farm"
+    },
+    {
+      "class": "plantation"
+    },
+    {
+      "class": "scrubland"
+    }
+  ],
+  "training": {
+    "datasets": [],
+    "embedding": {
+      "source": "alphaearth"
+    },
+    "algo": "smileRandomForest(100)",
+    "training_asset": "projects/raman-461708/assets/gee_samples_all"
+  },
+  "inference": {
+    "dataset": null,
+    "embedding": {
+      "source": "alphaearth"
+    }
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "note": "trained on the fly per request; year/date is a run param"
+    }
+  },
+  "metrics": {
+    "note": "server-side EE Random Forest (IndiaSAT production model); trained in Earth Engine, not held out here"
+  },
+  "artifact": {
+    "path": "ee://projects/raman-461708/assets/gee_samples_all",
+    "format": "ee-smileRandomForest (recipe, re-trained on demand from the asset)"
+  },
+  "deployment": {
+    "ee_asset": "projects/raman-461708/assets/gee_samples_all",
+    "tile_url": null,
+    "expressible_as_bandmath": false
+  },
+  "lineage": {
+    "base_model": null,
+    "derived_from": "projects/raman-461708/assets/gee_samples_all"
+  },
+  "about": {
+    "description": "IndiaSAT/CoRE-stack Farm / plantation / scrubland (IndiaSAT AEZ RF). An Earth-Engine Random Forest on the Alpha Earth embedding, trained + classified server-side and served as map tiles.",
+    "intended_use": "Split a vegetation class using the lab's production classifier instead of a locally-trained one.",
+    "limitations": "Re-trained per request in EE; renders as its own overlay (full hierarchy compositing is a follow-up); needs read access to the training asset.",
+    "evidence": ""
+  },
+  "zoo": {
+    "published": true,
+    "valid_region_label": "India",
+    "contributor": "IndiaSAT (Raman)"
+  },
+  "version": 2,
+  "created": "2026-07-28T07:56:24.857439+00:00",
+  "updated": "2026-07-28T19:54:32.038764+00:00"
+}
