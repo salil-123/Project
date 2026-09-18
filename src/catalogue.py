@@ -25,15 +25,18 @@ from pathlib import Path
 import jsonschema
 from jsonschema import Draft7Validator, RefResolver
 
+import config
 import hierarchy
 
 ROOT = Path(__file__).resolve().parent.parent
-CATALOGUE_DIR = ROOT / "data" / "catalogue"
+# anchored through config so a relocated CORESTACK_DATA_DIR (a mounted volume) is honoured here too,
+# instead of these silently staying inside the checkout
+CATALOGUE_DIR = Path(config.project_path("data/catalogue"))
 DATASETS_DIR = CATALOGUE_DIR / "datasets"
-MODELS_DIR = CATALOGUE_DIR / "models"
+MODELS_DIR = CATALOGUE_DIR / "models"          # note: card JSONs, not weights (those are models/)
 INDEX_PATH = CATALOGUE_DIR / "index.json"
-SCHEMA_DIR = ROOT / "schema"
-EXAMPLES_DIR = ROOT / "data" / "examples"
+SCHEMA_DIR = Path(config.project_path("schema"))
+EXAMPLES_DIR = Path(config.project_path("data/examples"))
 
 # the one feature source every Alpha-Earth model runs on (the "inference dataset")
 AE_INFERENCE_ID = "ds_alphaearth_annual_v1"
@@ -192,6 +195,37 @@ def load_index():
     if INDEX_PATH.exists():
         return json.load(open(INDEX_PATH))
     return {"cards": rebuild_index(), "generated": _now()}
+
+
+# the version-controlled copy of the zoo shipped in the repo. data/catalogue itself is gitignored
+# (runtime-mutable + its own repo), so a fresh clone/deploy has no cards — this is how the full zoo
+# rides along with a plain `git pull` instead of needing a remote + push creds on the deploy box.
+SEED_DIR = Path(config.project_path("data/catalogue_seed"))
+
+
+def seed_from_bundled():
+    """Fill the live (gitignored) catalogue from the repo's catalogue_seed on startup, so a deploy
+    shows the whole zoo instead of only what backfill can regenerate. Copies any card/artifact the
+    live dir is missing — never clobbers one edited on this box — then rebuilds the index. No-op if
+    the seed isn't present (e.g. a dev checkout that already has its own catalogue)."""
+    if not SEED_DIR.exists():
+        return 0
+    import shutil
+    copied = 0
+    for sub in ("models", "datasets", "artifacts"):
+        src_dir = SEED_DIR / sub
+        if not src_dir.exists():
+            continue
+        dst_dir = CATALOGUE_DIR / sub
+        dst_dir.mkdir(parents=True, exist_ok=True)
+        for f in src_dir.iterdir():
+            dst = dst_dir / f.name
+            if f.is_file() and not dst.exists():      # missing here -> bring it in from the seed
+                shutil.copy2(f, dst)
+                copied += 1
+    if copied:
+        rebuild_index()                               # index now reflects the seeded cards
+    return copied
 
 
 def std_classes_for_card(card):
@@ -391,7 +425,6 @@ def named_regions(card_id, max_points=400):
     if len(cents) > max_points:
         random.Random(0).shuffle(cents)
         cents = cents[:max_points]
-    import config
     ee = config.ee_init()
     pts = ee.FeatureCollection([ee.Feature(ee.Geometry.Point(list(c))) for c in cents])
     gaul = ee.FeatureCollection("FAO/GAUL/2015/level2")   # districts (ADM2) with their state (ADM1)
@@ -609,7 +642,7 @@ def mint_worldcover_base_card():
     card); carries base_scheme='worldcover' so the backend routes 'apply' to a base switch.
     Returns the card id, or None if the WorldCover base hasn't been trained yet."""
     import joblib
-    path = ROOT / "data" / "model_worldcover_base.joblib"
+    path = Path(config.model_path("model_worldcover_base.joblib"))
     if not path.exists():
         return None
     bundle = joblib.load(path)
@@ -877,7 +910,7 @@ def snapshot_model(node):
     src = ROOT / _artifact_path(node)
     if node == hierarchy.ROOT or not src.exists():
         return None
-    arch = ROOT / "data" / "refine" / "archive"
+    arch = Path(config.model_path("refine/archive"))
     arch.mkdir(parents=True, exist_ok=True)
     dst = arch / f"{node}__{int(time.time())}.joblib"
     shutil.copy2(src, dst)
@@ -949,7 +982,7 @@ def sync_node_model_cards():
             continue
         if get_card(f"mc_{node}_v1"):
             continue
-        jb = ROOT / "data" / "refine" / f"{node}.joblib"
+        jb = Path(config.model_path(f"refine/{node}.joblib"))
         if jb.exists():
             try:
                 register_retrain(node, joblib.load(jb))
@@ -989,7 +1022,7 @@ def backfill():
                                "embedding_table", "data/water_extra.csv")
 
     # base model card (no held-out report in its bundle -> known headline metrics)
-    base_path = ROOT / "data" / "model_pooled.joblib"
+    base_path = Path(config.model_path("model_pooled.joblib"))
     if base_path.exists():
         base = joblib.load(base_path)
         mint_model_card(
@@ -1005,7 +1038,7 @@ def backfill():
     for node, n in tree.items():
         if node == hierarchy.ROOT or not n.get("classifier"):
             continue
-        jb = ROOT / "data" / "refine" / f"{node}.joblib"
+        jb = Path(config.model_path(f"refine/{node}.joblib"))
         if jb.exists():
             register_retrain(node, joblib.load(jb))
     return load_index()

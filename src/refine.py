@@ -95,16 +95,23 @@ def model_families(source="alphaearth"):
     ]
 
 import config
+import logging_setup
 import hierarchy
 import examples
 import sampling                    # YEAR default + interior-point/alpha sampling
 
+log = logging_setup.get(__name__)
+
 # all anchored to the project root so training/loading works from any CWD (Docker/Airflow)
-REFINE_DIR = config.project_path("data/refine")
+# Two different things used to share data/refine/, so they're named apart now: the trained WEIGHTS
+# belong on the models/ mount (checklist #1), while the sampled training tables are regenerable data
+# and stay under data/. model_path() keeps reading the old location until migrate_models.py runs.
+REFINE_DIR = config.model_path("refine")                  # weights: models/refine/<node>.joblib
+TRAIN_CACHE_DIR = config.project_path("data/refine")      # sampled training tables (*_train.csv)
 WC_CSV = config.project_path("data/worldcover_train.csv")
 FULL_CSV = config.project_path("data/master_alpha_full.csv")
-BASE_MODEL_PATH = config.project_path("data/model_pooled.joblib")
-WORLDCOVER_BASE_PATH = config.project_path("data/model_worldcover_base.joblib")
+BASE_MODEL_PATH = config.model_path("model_pooled.joblib")
+WORLDCOVER_BASE_PATH = config.model_path("model_worldcover_base.joblib")
 AE_COLS = [f"ae_{i:03d}" for i in range(64)]
 TE_COLS = [f"te_{i:03d}" for i in range(128)]      # Tessera embedding columns (#16)
 RESIDUAL_CAP = 8000              # max residual rows, so a split stays roughly balanced
@@ -170,17 +177,17 @@ def _child_frame(tree, child, n_pix, year=sampling.YEAR, embedding="ae"):
                          "Tessera splits train from example polygons only.")
     if kind == "worldcover":
         df = _wc_rows(src["code"], child)
-        print(f"  {child}: {len(df)} WorldCover rows")
+        log.debug(f"  {child}: {len(df)} WorldCover rows")
     elif kind == "residual":
         of = src.get("of", src.get("core_class"))
         df = _residual_rows(of, child, n_pix=n_pix, year=year)
-        print(f"  {child}: {len(df)} residual rows (of {of})")
+        log.debug(f"  {child}: {len(df)} residual rows (of {of})")
         df = pd.concat([df, _sibling_negatives(tree, child, n_pix, year=year)], ignore_index=True)
     else:  # examples — sample the chosen embedding
         te = embedding == "tessera"
         df = examples.build_training_frame(child, with_tessera=te, n_pix=n_pix, year=year)
         df = df[["label", "poly"] + cols]
-        print(f"  {child}: {len(df)} expert pixels ({embedding}) from {df.poly.nunique()} polygons")
+        log.debug(f"  {child}: {len(df)} expert pixels ({embedding}) from {df.poly.nunique()} polygons")
     return df
 
 
@@ -199,7 +206,7 @@ def _sibling_negatives(tree, residual_child, n_pix, year=sampling.YEAR):
             frames.append(neg[["label", "poly"] + AE_COLS])
     if frames:
         out = pd.concat(frames, ignore_index=True)
-        print(f"  {residual_child}: +{len(out)} hard-negative rows from siblings")
+        log.debug(f"  {residual_child}: +{len(out)} hard-negative rows from siblings")
         return out
     return pd.DataFrame(columns=["label", "poly"] + AE_COLS)
 
@@ -241,9 +248,9 @@ def build_split_dataset(parent="greenery", n_pix=50, resample=False, years=None,
     stem = parent if years == [sampling.YEAR] else f"{parent}_" + "_".join(str(y) for y in years)
     if embedding == "tessera":                       # keep te caches separate from the ae ones (#16)
         stem += "_te"
-    cache = os.path.join(REFINE_DIR, f"{stem}_train.csv")
+    cache = os.path.join(TRAIN_CACHE_DIR, f"{stem}_train.csv")
     if os.path.exists(cache) and not resample:
-        print(f"using cached training data {cache}")
+        log.debug(f"using cached training data {cache}")
         return pd.read_csv(cache)
 
     tree = hierarchy.load()
@@ -252,13 +259,13 @@ def build_split_dataset(parent="greenery", n_pix=50, resample=False, years=None,
     frames = []
     for y in years:
         if len(years) > 1:
-            print(f"sampling year {y}…")
+            log.debug(f"sampling year {y}…")
         frames += [_child_frame(tree, child, n_pix, year=y, embedding=embedding)
                    for child in tree[parent]["children"]]
     data = pd.concat(frames, ignore_index=True)
-    os.makedirs(REFINE_DIR, exist_ok=True)
+    os.makedirs(TRAIN_CACHE_DIR, exist_ok=True)
     data.to_csv(cache, index=False)
-    print(f"assembled {len(data)} rows ({len(years)} year(s)) -> {cache}")
+    log.info(f"assembled {len(data)} rows ({len(years)} year(s)) -> {cache}")
     return data
 
 
@@ -322,17 +329,17 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
         acc = accuracy_score(y[te], m.predict(X[te]))
         scored.append((acc, name, m))
         if algo == "auto":
-            print(f"  bake-off {name:10} held-out acc {acc:.3f}")
+            log.debug(f"  bake-off {name:10} held-out acc {acc:.3f}")
     scored.sort(key=lambda t: t[0], reverse=True)
     best_acc, best_algo, model = scored[0]
     if algo == "auto":
-        print(f"  -> best linear model: {best_algo} ({best_acc:.3f})")
+        log.debug(f"  -> best linear model: {best_algo} ({best_acc:.3f})")
 
     pred = model.predict(X[te])
-    print(f"\n=== {parent} split ({balance}, {best_algo}, {embedding}): held-out report ({len(te)} px) ===")
-    print(classification_report(y[te], pred, digits=3))
-    print("confusion (rows=true, cols=pred):", labels)
-    print(confusion_matrix(y[te], pred, labels=labels))
+    log.info(f"\n=== {parent} split ({balance}, {best_algo}, {embedding}): held-out report ({len(te)} px) ===")
+    log.info(classification_report(y[te], pred, digits=3))
+    log.info("confusion (rows=true, cols=pred): %s", labels)
+    log.info(confusion_matrix(y[te], pred, labels=labels))
     report = classification_report(y[te], pred, output_dict=True, zero_division=0)
 
     Xall, yall = _rebalance(X, y, balance)
@@ -347,7 +354,7 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
     tree = hierarchy.load()
     tree[parent]["classifier"] = parent  # so inference knows to apply it
     hierarchy.save(tree)
-    print(f"\nsaved {out}; registered classifier on node {parent!r}")
+    log.info(f"\nsaved {out}; registered classifier on node {parent!r}")
     return bundle
 
 
@@ -391,7 +398,7 @@ def add_class_op(parent, new_name, examples_src=None, new_color=None, new_canoni
         tree[residual_id]["source"] = {"type": "residual", "of": parent}
         tree[new_id]["source"] = {"type": "examples"}
     hierarchy.save(tree)
-    print(f"added {new_id!r} under {parent!r}")
+    log.info(f"added {new_id!r} under {parent!r}")
 
     if examples_src is not None:
         examples.add_examples(new_id, examples_src, role="positive")
@@ -423,7 +430,7 @@ def split_op(parent, children, examples_srcs=None, n_pix=30, do_train=True):
         if tree[cid].get("source") is None:
             tree[cid]["source"] = {"type": "examples"}
     hierarchy.save(tree)
-    print(f"split {parent!r} -> {tree[parent]['children']}")
+    log.info(f"split {parent!r} -> {tree[parent]['children']}")
 
     for cid, src in (examples_srcs or {}).items():
         examples.add_examples(cid, src, role="positive")
@@ -454,7 +461,7 @@ def rule_split_op(parent, rule, colors=None):
     tree[parent]["rule"] = rule                  # the resolver for this node is a rule, not a joblib
     tree[parent]["classifier"] = None
     hierarchy.save(tree)
-    print(f"rule-split {parent!r} -> {classes} via {len(rule['clauses'])} clause(s)")
+    log.info(f"rule-split {parent!r} -> {classes} via {len(rule['clauses'])} clause(s)")
     return classes
 
 
@@ -491,11 +498,11 @@ def retrain_base(new_id=None, new_name=None, examples_src=None, new_color=None, 
         try:
             nf = examples.build_training_frame(cls, n_pix=n_pix).rename(columns={"label": "y"})
         except ValueError:
-            print(f"  (skip {cls!r}: no examples yet)")
+            log.debug(f"  (skip {cls!r}: no examples yet)")
             continue
         frames.append(nf[["y"] + AE_COLS])
         weights.append(np.ones(len(nf)))
-        print(f"  +{len(nf)} pixels for base class {cls!r}")
+        log.debug(f"  +{len(nf)} pixels for base class {cls!r}")
 
     pool = pd.concat(frames, ignore_index=True)
     w = np.concatenate(weights)
@@ -505,7 +512,7 @@ def retrain_base(new_id=None, new_name=None, examples_src=None, new_color=None, 
     bundle = {"model": model, "features": AE_COLS, "classes": sorted(pool.y.unique()),
               "wc_weight": wc_weight, "note": "pooled polygon+WorldCover (+ user base classes)"}
     joblib.dump(bundle, out_path)
-    print(f"saved base model -> {out_path} (classes={bundle['classes']})")
+    log.info(f"saved base model -> {out_path} (classes={bundle['classes']})")
     return bundle
 
 
@@ -530,7 +537,7 @@ def train_worldcover_base(out_path=WORLDCOVER_BASE_PATH, min_support=50):
               "scheme": "worldcover",
               "note": "effective WorldCover base — well-supported India classes only"}
     joblib.dump(bundle, out_path)
-    print(f"saved WorldCover base -> {out_path} (classes={bundle['classes']}, n={len(df)})")
+    log.info(f"saved WorldCover base -> {out_path} (classes={bundle['classes']}, n={len(df)})")
     return bundle
 
 
@@ -554,7 +561,7 @@ def relabel(src, true_class, retrain=True, n_pix=30):
     tree = hierarchy.load()
     parent = tree[true_class]["parent"]
     examples.add_examples(true_class, src, role="positive")
-    print(f"relabelled -> positive examples of {true_class!r}")
+    log.info(f"relabelled -> positive examples of {true_class!r}")
     if retrain:
         train(parent, n_pix=n_pix, resample=True)
 
@@ -568,9 +575,9 @@ def add_hard_negatives(src, not_class, retrain=True, n_pix=30):
     examples.add_examples(not_class, src, role="negative")
     has_residual = any(sib == f"{parent}_other" for sib in tree[parent]["children"])
     if not has_residual:
-        print(f"note: {parent!r} has no residual child; these negatives won't be used "
-              f"until one exists (e.g. via an ADD).")
-    print(f"stored hard-negatives against {not_class!r}")
+        log.warning(f"{parent!r} has no residual child; these negatives won't be used "
+                    f"until one exists (e.g. via an ADD).")
+    log.info(f"stored hard-negatives against {not_class!r}")
     if retrain:
         train(parent, n_pix=n_pix, resample=True)
 
@@ -608,11 +615,11 @@ def bakeoff(parent="greenery", test_size=0.25):
         hier[sel] = split_model.predict(X[te][sel])
 
     labels = sorted(set(y))
-    print(f"\n=== bake-off on {parent}'s leaves, shared test ({len(te)} px) ===")
-    print("\n--- FLAT multiclass ---")
-    print(classification_report(y[te], flat_pred, labels=labels, digits=3, zero_division=0))
-    print("--- HIERARCHICAL (base -> split) ---")
-    print(classification_report(y[te], hier, labels=labels, digits=3, zero_division=0))
+    log.info(f"\n=== bake-off on {parent}'s leaves, shared test ({len(te)} px) ===")
+    log.info("\n--- FLAT multiclass ---")
+    log.info(classification_report(y[te], flat_pred, labels=labels, digits=3, zero_division=0))
+    log.info("--- HIERARCHICAL (base -> split) ---")
+    log.info(classification_report(y[te], hier, labels=labels, digits=3, zero_division=0))
     return labels
 
 

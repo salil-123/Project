@@ -27,9 +27,10 @@ CLASS_COLORS = {
 }
 
 # all anchored to the project root (config.project_path) so inference runs from any CWD
-MODEL_PATH = config.project_path("data/model_pooled.joblib")            # realistic mode: AE + WorldCover
-SOFTVOTE_PATH = config.project_path("data/model_softvote_reconciled.joblib")  # detailed: AE + Tessera
-REFINE_DIR = config.project_path("data/refine")
+# weights resolve through model_path: the models/ mount first, the old data/ home as a fallback
+MODEL_PATH = config.model_path("model_pooled.joblib")            # realistic mode: AE + WorldCover
+SOFTVOTE_PATH = config.model_path("model_softvote_reconciled.joblib")  # detailed: AE + Tessera
+REFINE_DIR = config.model_path("refine")
 ACTIVE_BASE_PATH = config.project_path("data/active_base.json")         # which base scheme is live (#5)
 
 
@@ -88,7 +89,7 @@ def load_refinements():
         return out
     for cls, node in tree.items():
         if node.get("classifier"):
-            path = os.path.join(REFINE_DIR, f"{node['classifier']}.joblib")
+            path = config.model_path(f"refine/{node['classifier']}.joblib")
             if os.path.exists(path):
                 out[cls] = joblib.load(path)
         elif node.get("rule"):                          # a rule split (#12): no joblib, evaluated in EE
@@ -546,7 +547,7 @@ def segment_class(bbox, year: int = 2024, cls: str = "mining", min_area_ha: floa
 
 
 # ----------------- per-fortnight water (raw Sentinel, linear -> band math) (#5, #7) -----------------
-WATER_FORTNIGHT_PATH = config.project_path("data/refine/water_fortnight.joblib")
+WATER_FORTNIGHT_PATH = config.model_path("refine/water_fortnight.joblib")
 _WATER_COLORS = {"water": "#1e88e5", "non_water": "#c2a05a"}
 
 
@@ -616,26 +617,6 @@ def water_frequency_tiles(bbox, year=2024, n=24, model_bundle=None):
         pass
     return tile_url, {"n_fortnights": n_used, "year": year, "max": n_used,
                       "mean": round(mean, 1) if mean is not None else None}
-
-
-def annual_water_mask(ee, region, year=2024, min_fortnights=None, n=24, model_bundle=None):
-    """The spurious-water filter (#13 wk11) as a CODE-LEVEL correction on the water output, not a UI
-    feature: an annual water/non-water mask that HOLDS a pixel as water only if it read water in at
-    least `min_fortnights` of the year's fortnights.
-
-    Sir's ask (point 13) was exactly this — "a filter that only over two fortnights and those we hold,
-    or some kinda threshold" — to stop the per-fortnight model's transient over-calls (a road with
-    monsoon water-logging, a wet field, S1 speckle, which flicker water for a fortnight or two) from
-    surviving into the water layer. It's the correction applied when the fortnight water model produces
-    an annual water layer for the LULC — the deferred water->LULC step — so it takes an `ee`/`region`
-    and returns an `ee.Image` (1 = water), to composite like any other band-math layer. Threshold
-    defaults to `config.WATER_MIN_FORTNIGHTS`."""
-    if model_bundle is None:
-        model_bundle = joblib.load(WATER_FORTNIGHT_PATH)
-    if min_fortnights is None:
-        min_fortnights = getattr(config, "WATER_MIN_FORTNIGHTS", 2)
-    count, _ = _water_count_image(ee, region, year, n, model_bundle)
-    return count.gte(min_fortnights).rename("water")       # 1 = held (persistent) water, 0 = filtered
 
 
 def _grid(bbox, n):
