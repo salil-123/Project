@@ -43,9 +43,12 @@ src/                 the application (FastAPI backend + Leaflet frontend)
 ├─ sentinel.py       raw Sentinel-1/2 per-fortnight water model
 ├─ stacd.py          STACD provenance emitter (STAC 1.1.0 Item + DAG)
 ├─ aoi.py            bounding-box guardrails
+├─ logging_setup.py  LOG_LEVEL -> stdout + data/logs/corestack-lulc/app.log
 └─ static/           the Leaflet web UI (index.html, app.js, style.css)
 
 config.py            central config + Earth Engine init + path anchors (runs from any CWD)
+models/              trained weights, on their own mount (see models/README.md)
+outputs.yaml         retention policy for everything written under data/ (public/keep/delete)
 schema/              JSON schemas for the zoo's dataset/model cards
 scripts/             offline data-prep + training scripts (GEDI biomass, acacia, water, …)
 data/                runtime state (hierarchy, op-log), trained .joblib models, zoo cards, examples
@@ -62,6 +65,40 @@ Engine auth → verify → Airflow). Copy **[`deploy/.env.example`](deploy/.env.
 it in — §4/§5 explain every variable. The image is **dependencies-only**: the code is bind-mounted, so
 updating the app is just `git pull` + restart, no rebuild. For STACD onboarding see `deploy/stacd/` (the
 DAG / algorithm / dataset YAMLs).
+
+## Cluster deployment (CoRE Stack tower)
+
+Built against the [Cluster Service Checklist](https://docs.core-stack.org/server/cluster-service-checklist/);
+status per item is in **[`docs/cluster_checklist.md`](docs/cluster_checklist.md)**, and the required
+architecture diagram (what triggers compute, and from where) is in
+**[`docs/architecture.md`](docs/architecture.md)**.
+
+**Three mounts.** `code/` → `/app`, `models/` → `/app/models`, `data/` → `/app/data`. They default to
+this checkout, so a laptop needs no setup; point them at the host's real dirs with
+`CORESTACK_CODE_HOST` / `CORESTACK_MODELS_HOST` / `CORESTACK_DATA_HOST` in `.env`. Trained weights
+resolve through `config.model_path()` — `models/` first, the historical `data/` location as a
+fallback — so `python scripts/migrate_models.py` can move them whenever you like, with nothing
+breaking before or after.
+
+**Logging.** `LOG_LEVEL=debug|info|error` in `.env`; output goes to stdout *and*
+`data/logs/corestack-lulc/app.log` (rotating, 10 MB x 5), so it survives the container:
+
+```bash
+docker compose -f docker-compose.hub.yml logs -f lulc   # stdout
+tail -f data/logs/corestack-lulc/app.log                # on the host
+```
+
+`debug` adds request query strings, job params and Airflow polling. Credentials are scrubbed at every
+level. **Outputs**: retention for each path under `data/` is declared in
+[`outputs.yaml`](outputs.yaml) for the host data service to act on.
+
+**Frontend API base.** The page takes its API base from `/config.js`, which the backend generates
+from `API_BASE_URL`. Leave it empty (the default) and the UI uses paths relative to itself, so it
+works at the domain root *and* behind a reverse-proxy subpath. Set it only to point the UI at a
+different backend. Leaflet is vendored under `src/static/vendor/` rather than loaded from a CDN,
+which a campus proxy may block.
+
+**Not yet wired:** Google SSO (#4) and central Postgres (#9), parked pending further advice.
 
 ## Airflow DAG orchestration
 The long ops (classify/export) can run through an **Airflow DAG** instead of inline. A browser can't call
@@ -83,6 +120,17 @@ still runs, `/api/dag/*` just returns 503):
 | `AIRFLOW_USERNAME` / `AIRFLOW_PASSWORD` | Basic-auth creds (or `AIRFLOW_TOKEN` for bearer auth) |
 | `AIRFLOW_DAG_ID` | DAG to trigger (default `corestack_lulc`) |
 | `CORESTACK_API_BASE` | Where the Airflow worker reaches **this** backend (a LAN IP/host, not `localhost`) |
+
+**Retraining rides the same DAG.** A retrain isn't a second DAG — it travels in the *same*
+`op="export"` conf, and the backend trains before it classifies:
+
+```jsonc
+{ "retrain": { "node": "greenery", "algo": "logreg" },
+  "export": false }        // false = train and stop; omit to train, then classify + export
+```
+
+So there's one DAG and one STACD algorithm registration to maintain. Training always runs inside this
+container (the DAG just drives it over HTTP), so weights, hierarchy and zoo cards stay consistent.
 
 Full env + API reference (proxy API, raw Airflow API, CORS notes): **[`deploy/AIRFLOW_API.md`](deploy/AIRFLOW_API.md)**.
 </content>

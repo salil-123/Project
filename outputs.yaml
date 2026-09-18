@@ -1,0 +1,76 @@
+# Output retention policy (cluster checklist #10).
+#
+# Every path this service writes under data/, and what the host data service should do with it:
+#   public             may be published (catalogue, GeoServer, download)
+#   private_persistent keep on disk, don't publish, survive restarts
+#   delete             remove after ttl_days
+#
+# Note on the real deliverable: a classify/export run's *product* is a *Google Earth Engine asset*
+# plus the STAC Item describing it — not a file under data/. The GEE asset lives under EE_ASSET_ROOT
+# in Earth Engine and is governed there, so it isn't listed below. What data/ holds is the state that
+# produced it (the class scheme, the zoo, the examples) and the job bookkeeping.
+application: corestack-lulc
+outputs:
+  - path: data/catalogue/
+    mode: public
+    ttl_days: null
+    description: >
+      The model zoo: dataset + model cards and their published artifacts, plus index.json. This is
+      the thing meant to be shared — it's a git-backed repo of its own and gets pushed to ZOO_REMOTE
+      on publish.
+
+  - path: data/examples/
+    mode: private_persistent
+    ttl_days: null
+    description: >
+      User-drawn training polygons per class. The user's own input data — it must survive restarts
+      (it's what a retrain re-samples from) but isn't ours to publish.
+
+  - path: data/hierarchy.json
+    mode: private_persistent
+    ttl_days: null
+    description: The live class tree. Session state; losing it resets the user's scheme to the base.
+
+  - path: data/op_log.json
+    mode: private_persistent
+    ttl_days: null
+    description: >
+      The ordered operations that built the current scheme. Feeds the provenance view and the STAC
+      Item's op_sequence, so it has to persist alongside the hierarchy.
+
+  - path: data/active_base.json
+    mode: private_persistent
+    ttl_days: null
+    description: Which base scheme (indiasat / worldcover) is live.
+
+  - path: data/merge_rules.json
+    mode: private_persistent
+    ttl_days: null
+    description: Active merge/relabel rules applied at inference time.
+
+  - path: data/refine/
+    mode: private_persistent
+    ttl_days: null
+    description: >
+      Sampled training tables (*_train.csv) cached per node so a retrain doesn't re-hit Earth Engine.
+      Regenerable, but expensive to rebuild. Trained weights are NOT here — they're on the models/
+      mount (see models/README.md).
+
+  - path: data/logs/
+    mode: private_persistent
+    ttl_days: null
+    description: >
+      Application logs at data/logs/corestack-lulc/ (checklist #5). Rotating, 10 MB x 5, so they're
+      self-capping rather than needing a TTL.
+
+  - path: data/jobs/
+    mode: delete
+    ttl_days: 7
+    description: >
+      One small JSON per Airflow-orchestrated job (state, params, result). Pure bookkeeping for the
+      trigger/poll handshake — worthless once the frontend has read the result.
+
+  - path: data/inputs/
+    mode: private_persistent
+    ttl_days: null
+    description: Ground-truth inputs the offline scripts read (seasonal water polygons, etc).
