@@ -1,0 +1,60 @@
+{
+  "id": "ds_seasonal_water_v1",
+  "name": "Seasonal water ground truth (water / non-water by date)",
+  "description": "Water-present vs water-absent polygons for farm ponds / water bodies, marked across ~10 dates each (2019-2025). Downloaded from github.com/kshavv/floodMappingPipelines.",
+  "type": "training",
+  "kind": "polygons",
+  "classes": [
+    {
+      "class": "water",
+      "name": "Water",
+      "count": 720
+    },
+    {
+      "class": "non_water",
+      "name": "Non-water",
+      "count": 156
+    }
+  ],
+  "definition": {
+    "type": "polygons",
+    "path": "data/inputs/seasonal_water.geojson",
+    "label_col": "label"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        69.66117,
+        9.50331,
+        91.59197,
+        31.27444
+      ]
+    },
+    "temporal": {
+      "year": 2024,
+      "note": "polygons span 2019-2025"
+    }
+  },
+  "provenance": {
+    "annotator": "floodMappingPipelines dataset (downloaded)",
+    "method": "~10 dates per water body; water pixels inside the boundary, non-water from an outer ring",
+    "evidence": [
+      "https://github.com/kshavv/floodMappingPipelines"
+    ],
+    "license": null,
+    "notes": "Name = <waterbodyId><W|NW><DDMMYYYY>"
+  },
+  "quality": {
+    "n_polygons": 876,
+    "occupied_cells": 85,
+    "spatial_diversity": 0.606,
+    "class_balance": {
+      "water": 720,
+      "non_water": 156
+    }
+  },
+  "version": 2,
+  "created": "2026-07-14T20:26:14.087353+00:00",
+  "updated": "2026-07-14T21:20:02.086320+00:00"
+}

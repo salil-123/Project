@@ -1,0 +1,42 @@
+{
+  "id": "ds_water_extra_v1",
+  "name": "Extra water polygons",
+  "type": "training",
+  "kind": "embedding_table",
+  "classes": [
+    {
+      "class": "mixed",
+      "name": "Mixed land-cover labels"
+    }
+  ],
+  "definition": {
+    "type": "embedding_table",
+    "path": "data/water_extra.csv"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "embedding": {
+    "source": "alphaearth",
+    "dim": 64,
+    "year": 2024
+  },
+  "provenance": {
+    "annotator": "Core Stack",
+    "method": "Core Stack build",
+    "evidence": []
+  },
+  "version": 1,
+  "created": "2026-06-23T16:41:24.268573+00:00"
+}

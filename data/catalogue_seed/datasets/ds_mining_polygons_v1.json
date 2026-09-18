@@ -1,0 +1,50 @@
+{
+  "id": "ds_mining_polygons_v1",
+  "name": "mining expert polygons",
+  "description": "User-marked example polygons for the 'mining' class.",
+  "type": "training",
+  "kind": "polygons",
+  "classes": [
+    {
+      "class": "mining",
+      "name": "mining",
+      "count": 4
+    }
+  ],
+  "definition": {
+    "type": "polygons",
+    "path": "data/examples/mining.geojson"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        77.172,
+        28.525,
+        77.199,
+        28.549
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "provenance": {
+    "annotator": "user contribution",
+    "method": "drawn/uploaded polygons",
+    "evidence": [],
+    "license": null,
+    "notes": "marked between 2026-08-09T11:55:22.812163+00:00 and 2026-08-09T12:00:06.782874+00:00"
+  },
+  "quality": {
+    "n_polygons": 4,
+    "occupied_cells": 1,
+    "spatial_diversity": 0.0,
+    "class_balance": {
+      "mining": 1.0
+    }
+  },
+  "version": 8,
+  "created": "2026-08-09T12:00:40.145648+00:00",
+  "updated": "2026-08-09T12:00:40.158331+00:00"
+}

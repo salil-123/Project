@@ -1,0 +1,48 @@
+{
+  "id": "ds_worldcover_shrubs_v1",
+  "name": "ESA WorldCover slice (shrubs)",
+  "type": "training",
+  "kind": "ee_asset",
+  "classes": [
+    {
+      "class": "shrubs",
+      "name": "Shrubs"
+    }
+  ],
+  "definition": {
+    "type": "ee_asset",
+    "asset": "ESA/WorldCover/v200",
+    "band": "Map",
+    "code": 20
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "year": 2021
+    }
+  },
+  "embedding": {
+    "source": "alphaearth",
+    "dim": 64,
+    "year": 2024
+  },
+  "provenance": {
+    "annotator": "ESA WorldCover v200",
+    "method": "global automated classification (10 m)",
+    "evidence": [
+      "ESA WorldCover product"
+    ],
+    "license": "CC-BY-4.0",
+    "notes": "weak labels vs expert polygons; cached in worldcover_train.csv"
+  },
+  "version": 1,
+  "created": "2026-06-23T16:41:30.402231+00:00"
+}

@@ -1,0 +1,52 @@
+{
+  "id": "ds_barren_polygons_v1",
+  "name": "Barren expert polygons",
+  "description": "User-marked example polygons for the 'Barren' class.",
+  "type": "training",
+  "kind": "polygons",
+  "classes": [
+    {
+      "class": "barren",
+      "name": "Barren",
+      "count": 1
+    }
+  ],
+  "definition": {
+    "type": "polygons",
+    "path": "data/examples/barren.geojson"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        71.71652,
+        27.90192,
+        71.779,
+        27.95469
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "provenance": {
+    "annotator": "user contribution",
+    "method": "drawn/uploaded polygons",
+    "evidence": [],
+    "license": null,
+    "notes": "marked between 2026-08-04T15:56:14.574910+00:00 and 2026-08-04T15:56:14.574910+00:00",
+    "source_url": ""
+  },
+  "quality": {
+    "n_polygons": 1,
+    "occupied_cells": 1,
+    "spatial_diversity": 0.0,
+    "class_balance": {
+      "barren": 1.0
+    }
+  },
+  "version": 4,
+  "created": "2026-08-04T15:56:14.588493+00:00",
+  "updated": "2026-08-04T19:45:25.628640+00:00",
+  "source_url": ""
+}

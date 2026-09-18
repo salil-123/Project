@@ -1,0 +1,106 @@
+{
+  "id": "mc_water_fortnight_v1",
+  "name": "Seasonal water (per-fortnight, Sentinel-1/2)",
+  "node": "water_fortnight",
+  "parent_class": "water",
+  "topology": "flat_multiclass",
+  "produces": [
+    {
+      "class": "non_water"
+    },
+    {
+      "class": "water"
+    }
+  ],
+  "training": {
+    "datasets": [
+      "ds_seasonal_water_v1"
+    ],
+    "embedding": {
+      "source": "sentinel1+2 fortnight",
+      "dim": 9
+    },
+    "algo": "linearsvc",
+    "balancing": {
+      "method": "balanced"
+    }
+  },
+  "inference": {
+    "dataset": "ds_seasonal_water_v1",
+    "embedding": {
+      "source": "sentinel1+2 fortnight",
+      "dim": 9,
+      "bands": [
+        "VV",
+        "VH",
+        "VV_VH_ratio",
+        "NDWI",
+        "MNDWI",
+        "BSI",
+        "B3",
+        "B8",
+        "B11"
+      ]
+    }
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.5,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "note": "any fortnight with Sentinel coverage; date is a run param"
+    }
+  },
+  "metrics": {
+    "accuracy": 0.9736251402918069,
+    "n_test": 1782,
+    "per_class": {
+      "non_water": {
+        "precision": 0.9936988027725268,
+        "recall": 0.9770755885997522,
+        "f1-score": 0.9853170884098719,
+        "support": 1614.0
+      },
+      "water": {
+        "precision": 0.8102564102564103,
+        "recall": 0.9404761904761905,
+        "f1-score": 0.8705234159779615,
+        "support": 168.0
+      }
+    }
+  },
+  "artifact": {
+    "path": "data/refine/water_fortnight.joblib",
+    "format": "sklearn-joblib",
+    "published_path": "artifacts/mc_water_fortnight_v1.joblib"
+  },
+  "deployment": {
+    "ee_asset": null,
+    "tile_url": null,
+    "expressible_as_bandmath": true
+  },
+  "lineage": {
+    "base_model": null,
+    "derived_from": "ds_seasonal_water_v1"
+  },
+  "about": {
+    "description": "Water vs non-water for a single fortnight, from raw Sentinel-1 SAR + Sentinel-2 optical composited around a target date.",
+    "intended_use": "Which pixels held water on a given fortnight (e.g. 14 Jul) \u2014 the intra-annual water-seasonality signal the annual embedding can't give.",
+    "limitations": "One fortnight at a time; needs a cloud-lite S2 scene in the window; linear model, so it trades some accuracy for band-math serving.",
+    "evidence": ""
+  },
+  "zoo": {
+    "published": true,
+    "valid_region_label": "India",
+    "contributor": ""
+  },
+  "version": 7,
+  "created": "2026-07-28T08:11:19.827388+00:00",
+  "updated": "2026-07-28T19:54:32.167926+00:00"
+}

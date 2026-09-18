@@ -6,8 +6,8 @@ normalizes those into per-node stores and can sample them into a labeled, embedd
 training frame for Phase 4.
 
 An example attaches to the class it *exemplifies* (the child, e.g. `crops`), so a
-SPLIT trainer later just gathers a parent's children. Storage mirrors contributions.py:
-one GeoJSON FeatureCollection per node at data/examples/<node>.geojson.
+SPLIT trainer later just gathers a parent's children. Storage is one GeoJSON
+FeatureCollection per node at data/examples/<node>.geojson.
 """
 import json
 import os

@@ -1,0 +1,50 @@
+{
+  "id": "ds_non_acacia_polygons_v1",
+  "name": "Non Acacia expert polygons",
+  "description": "User-marked example polygons for the 'Non Acacia' class.",
+  "type": "training",
+  "kind": "polygons",
+  "classes": [
+    {
+      "class": "non_acacia",
+      "name": "Non Acacia",
+      "count": 576
+    }
+  ],
+  "definition": {
+    "type": "polygons",
+    "path": "data/examples/non_acacia.geojson"
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        77.17311,
+        28.52785,
+        77.20058,
+        28.54642
+      ]
+    },
+    "temporal": {
+      "year": 2024
+    }
+  },
+  "provenance": {
+    "annotator": "user contribution",
+    "method": "drawn/uploaded polygons",
+    "evidence": [],
+    "license": null,
+    "notes": "marked between 2026-07-14T16:54:19.319007+00:00 and 2026-07-14T16:54:19.343121+00:00"
+  },
+  "quality": {
+    "n_polygons": 576,
+    "occupied_cells": 1,
+    "spatial_diversity": 0.0,
+    "class_balance": {
+      "non_acacia": 1.0
+    }
+  },
+  "version": 12,
+  "created": "2026-07-15T03:50:58.966615+00:00",
+  "updated": "2026-07-15T03:50:58.968165+00:00"
+}

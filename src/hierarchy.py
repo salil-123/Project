@@ -19,7 +19,7 @@ inserting/patching a key. One node looks like:
     }
 
 Pure functions take a tree and return the modified tree; only load/save touch disk.
-Mirrors the conventions in contributions.py (relative data/ path, run from repo root).
+Paths are relative to data/ and anchored to the repo root, so it runs from any CWD.
 """
 import json
 import os
