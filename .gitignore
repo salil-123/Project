@@ -38,6 +38,12 @@ global_0.1_degree_representation/
 beyond_flat_classifier_paper.pdf
 stacd_paper.pdf
 data/refine/biomass_*.joblib
+models/refine/biomass_*.joblib
+
+# Trained weights live under models/ (cluster checklist #1). The small linear models ARE tracked --
+# they're a few KB each and the app classifies straight from a clone. Anything big is not: a weight
+# over ~50 MB belongs in deploy/fetch_models.sh, not in git. (A 553 MB artifact committed into the
+# zoo repo is exactly what jammed publishing for two months.)
 
 # Weekly working folders (notes, slides, plans, one-off experiments). Kept LOCAL — they're the
 # build diary, not the deliverable, and clutter the repo for anyone reading the code. The narrative

@@ -51,9 +51,13 @@ def set_active_base(scheme, model_path):
 
 
 def load_model(path: str = None):
-    """Load the live base model. With no path, follows the active base scheme (#5). The stored
-    model_path may be relative (older active_base.json), so resolve it against the root either way."""
-    return joblib.load(config.project_path(path or active_base().get("model_path", MODEL_PATH)))
+    """Load the live base model. With no path, follows the active base scheme (#5).
+
+    The path may be relative and, in an older active_base.json, still spelled 'data/model_*.joblib'
+    from before weights moved to the models/ mount. model_path() resolves either spelling, checking
+    models/ first and falling back to the historical data/ home, so a stored path keeps working
+    whether or not this box has run scripts/migrate_models.py."""
+    return joblib.load(config.model_path(path or active_base().get("model_path", MODEL_PATH)))
 
 
 def load_softvote(path: str = SOFTVOTE_PATH):
