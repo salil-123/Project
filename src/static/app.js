@@ -22,17 +22,22 @@ let TESSERA_SITES = {};          // bboxes where Tessera training is offered (#1
 // A browser can't call Airflow cross-origin (CORS blocks it) and shouldn't hold the creds anyway. So
 // Submit hits our same-origin proxy (/api/dag/*), and the backend triggers + polls Airflow server-side.
 
-const map = L.map("map", { center: [28.540, 77.185], zoom: 14 });   // IIT Delhi + Sanjay Van strip
+// attributionControl off: no credit box in the corner at all. Basemap is Esri World Imagery -- their
+// terms do ask for attribution, so if this ever goes public, credit them in the page chrome instead.
+const map = L.map("map", { center: [28.540, 77.185], zoom: 14, attributionControl: false });
 L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-  { attribution: "Esri", maxZoom: 19 }).addTo(map);
+  { maxZoom: 19 }).addTo(map);
 predLayer.addTo(map);
 drawnLayer.addTo(map);
 
-// draw tools: rectangle sets the AOI (#3); polygon + marker mark example geometry
+// draw tools: rectangle sets the AOI (#3), polygon marks example geometry. The marker is off: a
+// dropped point is still a valid example (sampling.interior_points passes a Point through as one
+// sample) but it contributes a single pixel against a polygon's ~30, so it was never worth the
+// toolbar slot. Flip marker back to true if you ever want per-pixel corrections.
 map.addControl(new L.Control.Draw({
   edit: false,   // no edit/delete toolbar (the pen + trash): we never wired a draw:edited handler, so
                  // reshaping a drawn box did nothing — drop them to declutter. Re-draw to change the AOI.
-  draw: { polygon: true, marker: true, rectangle: true, polyline: false,
+  draw: { polygon: true, marker: false, rectangle: true, polyline: false,
           circle: false, circlemarker: false },
 }));
 map.on(L.Draw.Event.CREATED, (e) => {
@@ -42,7 +47,7 @@ map.on(L.Draw.Event.CREATED, (e) => {
     customBbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     setPresetToCustom();
     drawAoi();
-    maybeResetForNewArea().then((didReset) => { if (!didReset) runClassify(); });
+    maybeResetForNewArea().then((didReset) => { if (!didReset) markStale("Area set"); });
     return;
   }
   drawnLayer.clearLayers();
@@ -224,11 +229,17 @@ async function readJson(r) {
   catch { return { detail: `server error (HTTP ${r.status})` }; }
 }
 
-// Trigger the Airflow DAG directly and poll its run till it finishes. Returns the final run object
-// (carries dag_run_id + state) on success; throws on a failed run or an HTTP error. Synchronous from
-// the caller's view — it just awaits the whole trigger->poll loop, so the UI stays in step with the DAG.
-// Trigger the DAG through our backend and poll its run till it finishes. Same-origin, so no CORS.
-// Returns the final status object on success; throws with the backend's reason on failure.
+// Nothing classifies on its own. An edit (split, merge, retrain, year change) leaves the map exactly
+// as it was and says so, because running a classification fires the DAG, which exports a GEE asset --
+// that should happen because you asked for it, not as a side effect of splitting a class.
+function markStale(msg) {
+  setStatus(`${msg} — press "Run classification" to update the map.`, "ok");
+}
+
+// Trigger the DAG through our backend and poll its run till it finishes. Same-origin, so no CORS, and
+// the creds stay server-side. Returns the final status object (carries dag_run_id + state) on success;
+// throws with the backend's reason on a failed run or an HTTP error. Synchronous from the caller's
+// view -- it awaits the whole trigger->poll loop, so the UI stays in step with the DAG.
 async function triggerDagAndPoll(conf, { interval = 3000, onState } = {}) {
   console.log("[dag] triggering via backend", conf);
   // 1) fire the run — the backend triggers Airflow and returns the dag_run_id it minted
@@ -556,7 +567,7 @@ async function chooseBase(scheme, active) {
     await refreshTree(d);
   }
   endBaseOnboard();
-  await runClassify();
+  markStale("Base classes set");
 }
 
 function endBaseOnboard() { $("base-onboard").classList.add("hidden"); }
@@ -580,7 +591,7 @@ async function onAreaSelect() {
   const changed = sel.value !== lastPreset;
   lastPreset = sel.value;
   const didReset = changed ? await maybeResetForNewArea() : false;
-  if (!didReset) await runClassify();
+  if (!didReset) markStale("Area changed");
 }
 
 // has the user grown the tree past the untouched base scheme? The base is root + its direct base
@@ -614,9 +625,8 @@ async function performReset() {
   bumpSession();
   select("root");
   await refreshZooBadge();
-  await runClassify();
   const cleared = (d.cleared_examples || []).length;
-  setStatus(`Reset to base${cleared ? ` — cleared ${cleared} example set(s)` : ""}.`, "ok");
+  markStale(`Reset to base${cleared ? ` — cleared ${cleared} example set(s)` : ""}`);
   return true;
 }
 
@@ -713,8 +723,7 @@ async function useEeRfModel(cardId, targetNode) {
     if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
     closeZoo();
     await refreshTree(d);                 // the tree now shows <parent> -> the model's classes
-    await runClassify();                  // and the map composites the model within that node
-    setStatus(`Applied "${c.name}" — ${pname} refined into ${(c.produces||[]).map(p=>p.class).join(" / ")}.`, "ok");
+    markStale(`Applied "${c.name}" — ${pname} refined into ${(c.produces||[]).map(p=>p.class).join(" / ")}`);
   } catch (err) { setStatus("Apply error: " + err, "err"); }
 }
 
@@ -822,8 +831,7 @@ $("doRuleSplit").onclick = async () => {
   if (!r.ok) { setStatus("Error: " + (d.detail || r.status), "err"); return; }
   $("ruleTrue").value = ""; $("ruleFalse").value = ""; $("ruleExpr").value = "";
   await refreshTree(d);
-  await runClassify();                     // rule renders as tiles right away — show it
-  setStatus(`Rule split "${selected}" → ${d.classes.join(" / ")}.`, "ok");
+  markStale(`Rule split "${selected}" → ${d.classes.join(" / ")}`);
 };
 
 $("doAdd").onclick = async () => {
@@ -883,7 +891,7 @@ $("doRetrain").onclick = async () => {
     $("metrics").textContent = formatReport(report, nTest);
     await refreshZooBadge();                            // the new model card just landed
     if (isZooOpen()) await loadZooFull();
-    await runClassify();
+    markStale(`Retrained "${selected}"`);
   } catch (err) { stopTimer(); setStatus("Error: " + err, "err"); }
   btn.disabled = false; btn.textContent = "Retrain & apply";
 };
@@ -905,8 +913,7 @@ $("doMerge").onclick = async () => {
   await refreshTree(d);
   await refreshZooBadge();                       // the merge just minted a local model card
   if (isZooOpen()) await loadZooFull();
-  setStatus(`Merged ${sources.join(" + ")} → "${name}". Re-classifying…`, "ok");
-  await runClassify();
+  markStale(`Merged ${sources.join(" + ")} → "${name}"`);
 };
 
 // undo a merge (the ✕ on its virtual node in the tree): the source leaves come back on their own.
@@ -917,8 +924,7 @@ async function removeMerge(target) {
   await refreshTree(d);
   await refreshZooBadge();                       // its local card is gone now
   if (isZooOpen()) await loadZooFull();
-  setStatus(`Removed merge "${target}". Re-classifying…`, "ok");
-  await runClassify();
+  markStale(`Removed merge "${target}"`);
 }
 
 // ---------------- save / resume project (#4 / #18 / #23) ----------------
@@ -1006,8 +1012,7 @@ $("importHier").onchange = async () => {
   await refreshZooBadge();
   const miss = (d.missing_classifiers || []).length
     ? ` — ${d.missing_classifiers.length} split(s) need retraining (${d.missing_classifiers.join(", ")})` : "";
-  setStatus(`Resumed project${miss}. Re-classifying…`, "ok");
-  await runClassify();
+  markStale(`Resumed project${miss}`);
 };
 
 // ---------------- model zoo (full-screen browser) ----------------
@@ -1591,8 +1596,7 @@ $("zoo-detail").addEventListener("change", async (e) => {
   else if (e.target.id === "zooYear") {
     inferYear = Number(e.target.value);
     localStorage.setItem("inferYear", inferYear);
-    setStatus(`Inference year set to ${inferYear} — re-running…`, "work");
-    runClassify();                          // auto-refresh so the map matches the year (#10)
+    markStale(`Inference year set to ${inferYear}`);
   }
 });
 
@@ -1626,8 +1630,7 @@ async function applyModel(id, targetNode = null, force = false) {
   if (!r.ok) { setStatus("Error: " + ((d.detail && d.detail.message) || d.detail || r.status), "err"); return; }
   await refreshTree(d);
   closeZoo();
-  setStatus(`Applied "${id}" — re-classifying…`, "ok");
-  await runClassify();
+  markStale(`Applied "${id}"`);
 }
 
 // drop a card from the zoo (#9): a superseded/dummy model the user no longer wants
