@@ -56,7 +56,7 @@ def score(name, model, X, y):
 
 
 def evaluate(model_path="data/model_pooled.joblib"):
-    model = joblib.load(config.project_path(model_path))["model"]
+    model = joblib.load(config.model_path(model_path))["model"]
     print(f"=== {model_path} ===")
     Xr, yr = random_india()
     Xb, yb = balanced_holdout()
