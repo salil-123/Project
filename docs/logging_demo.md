@@ -1,88 +1,33 @@
-# Demonstrating §5 (logging)
+# Showing the logs locally (checklist §5)
 
-Checklist item 5, and how to show it satisfied.
+A copy-paste run-through of the logging, on the laptop, no Docker. Every command below was run
+verbatim in Windows PowerShell 5.1 before it was written down.
+
 Reference: <https://docs.core-stack.org/server/cluster-service-checklist/>
 
-Two tracks, each runnable start to finish. Pick one:
-
-* **Track A — local, no Docker.** Runs on the laptop with `uvicorn`. Proves the `LOG_LEVEL` half of
-  the criterion completely. Use it to rehearse, or when Docker is not cooperating.
-* **Track B — container.** The same demo under `docker compose`. Proves **both** halves, so this is
-  the one for sign-off.
-
-Read "What has to be shown" first either way, because the difference between the tracks is exactly
-which claim you can make at the end.
+Docker is only needed for the container-recreate half of the acceptance criterion; that version is
+at the bottom under "For sign-off". Airflow is not needed at all: `AIRFLOW_API_BASE` is empty, so
+everything runs inline, which is checklist §2's laptop mode.
 
 ---
 
-## What has to be shown
+## Setup
 
-The acceptance criterion is two claims:
-
-> *"After a container recreate, logs remain under `data/logs/<application_name>/`.
-> Changing `LOG_LEVEL` switches granularity without a code change."*
-
-Claim 1 is about the **bind mount**: the log survives the container being destroyed, because the
-file lives on the host rather than in the container filesystem. **Only Track B shows this.** Track A
-shows a file surviving a process restart, which is a weaker and different statement. Say which one
-you are showing; do not let a process restart stand in for a container recreate.
-
-Claim 2 is about **`LOG_LEVEL`**: granularity changes from config alone. Both tracks show it fully.
-
-The sub-bullets, satisfied by either track: logs land under `data/logs/corestack-lulc/`,
-`.env.example` lists `LOG_LEVEL=info` with its allowed values, no secrets appear at any level, and
-the README documents the host path and how to tail it.
-
-Airflow is not needed. Leave `AIRFLOW_API_BASE` empty and everything runs inline, which is
-checklist §2's specified laptop mode, so either track demonstrates §2 as a side effect.
-
-## What each level should produce
-
-The table the checklist publishes, against what we emit for it:
-
-| Level | Checklist says | What you will see |
-|---|---|---|
-| `debug` | request traces, job params, Airflow poll, paths | request lines **with query strings**, job + export params, resolved root/data/models/catalogue paths |
-| `info` | startup, auth, compute trigger, job complete, DAG/run IDs | startup lines, one line per request with duration, `job <run_id> created op=...`, `export: classify + export...`, job outcome |
-| `error` | failures only | nothing at all on successful traffic; one line per failure |
-
-(`auth` stays empty until §4 Google SSO lands.)
-
----
-
-# Track A — local, no Docker
-
-Four steps, about three minutes. Everything runs from the repo root:
+Three PowerShell windows. All of them start with:
 
 ```powershell
 cd C:\Users\mrsal\Downloads\summer_attempt2
 ```
 
-## A0. Two windows
+| Window | Job |
+|---|---|
+| 1 | runs the app |
+| 2 | watches the log |
+| 3 | sends requests |
 
-**Window 1** runs the app. **Window 2** watches the log:
+### Clear the log first
 
-```powershell
-cd C:\Users\mrsal\Downloads\summer_attempt2
-Get-Content data\logs\corestack-lulc\app.log -Wait -Tail 20 -Encoding UTF8
-```
-
-`-Encoding UTF8` is not optional. The log is UTF-8, Windows PowerShell 5.1 reads ANSI by default,
-and without it a non-ASCII character renders as `â€"` mid-demo. If the file does not exist yet,
-start the app first (A1), then run this.
-
-### Clearing the log first
-
-Two ways, and the difference matters because the running app holds `app.log` open.
-
-**While the app is running** — truncate in place. The app keeps writing to the same handle, so
-nothing needs restarting:
-
-```powershell
-Clear-Content data\logs\corestack-lulc\app.log
-```
-
-**With the app stopped** — delete the whole directory for a true zero state:
+With the app **stopped**, for a true zero state:
 
 ```powershell
 Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
@@ -91,14 +36,19 @@ Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
 Remove-Item -Recurse -Force data\logs -ErrorAction SilentlyContinue
 ```
 
-`Remove-Item` on its own **fails while the app is running** with *"The process cannot access the
-file 'app.log' because it is being used by another process."* That is the rotating file handler
-holding it open, and it is an easy thing to trip over in front of an audience. Use `Clear-Content`
-if the app is up, or stop it first.
+With the app **running**, truncate in place instead:
 
-The app recreates the directory on startup, so deleting it is safe.
+```powershell
+Clear-Content data\logs\corestack-lulc\app.log
+```
 
-## A1. Start at `info`
+`Remove-Item` **fails while the app is up** — *"the process cannot access the file 'app.log' because
+it is being used by another process"* — because the rotating file handler holds it open. Use
+`Clear-Content` then, or stop the app first. The app recreates the directory on startup.
+
+---
+
+## 1. Start the app at `info`
 
 **Window 1:**
 
@@ -107,57 +57,69 @@ $env:LOG_LEVEL = "info"
 .venv\Scripts\python.exe -m uvicorn backend:app --app-dir src --port 8000
 ```
 
-Takes 30–60 seconds: it loads the models and initialises Earth Engine before it serves.
+Wait 30–60 seconds; it loads the models and initialises Earth Engine before serving.
 
-`$env:LOG_LEVEL` overrides the value in `.env` (`load_dotenv` runs with `override=False`, so the
-shell wins). That keeps the demo to one variable and leaves no file edits to undo afterwards.
+`$env:LOG_LEVEL` beats the value in `.env` (`load_dotenv` runs with `override=False`), so the whole
+demo is one variable and there are no file edits to undo.
 
-Worth showing before moving on:
+**Window 2** — this is PowerShell's `tail -f`:
 
 ```powershell
-Select-String -Path deploy\.env.example -Pattern "LOG_LEVEL"
+Get-Content data\logs\corestack-lulc\app.log -Wait -Tail 20 -Encoding UTF8
 ```
 
-`LOG_LEVEL=info` with its allowed values documented, which is one of §5's sub-bullets. And
-`APP_NAME = "corestack-lulc"` in `src/logging_setup.py` is what makes the path
-`data/logs/corestack-lulc/`, which is the naming the checklist asks for.
+`-Encoding UTF8` is not optional. The log is UTF-8 and PowerShell 5.1 reads ANSI by default, so
+without it an em-dash in a message renders as `â€"`.
 
-## A2. `info`: requests, then a job lifecycle
+---
 
-**Window 3** (or just click around <http://localhost:8000/>):
+## 2. `info` — one line per request, no query strings
+
+**Window 3:**
 
 ```powershell
 curl.exe -s "http://localhost:8000/api/health" | Out-Null
 curl.exe -s "http://localhost:8000/api/hierarchy/export?since=0" | Out-Null
 ```
 
-Use `curl.exe`, never bare `curl`: in Windows PowerShell `curl` is an alias for `Invoke-WebRequest`
-and takes different arguments.
+Use `curl.exe`, never bare `curl`: in PowerShell `curl` is an alias for `Invoke-WebRequest` and
+takes different arguments.
 
-Window 2 shows one line per request with a duration, and **no query strings**:
+Window 2:
 
 ```
+INFO  corestack.request | GET /api/health -> 200 (1 ms)
 INFO  corestack.request | GET /api/hierarchy/export -> 200 (3 ms)
 ```
 
-Now a job, which is the more interesting half of the `info` row:
+The second request had `?since=0` on it. At `info` the query string is not logged.
+
+---
+
+## 3. `info` — a job from trigger to outcome
+
+Still Window 3:
 
 ```powershell
 curl.exe -s -X POST "http://localhost:8000/api/jobs" -H "Content-Type: application/json" -d '{\"op\":\"export\",\"params\":{\"retrain\":{\"node\":\"greenery\"},\"export\":false}}' | Out-Null
 ```
 
 ```
-INFO  corestack.backend | job lulc__c379a33b... created op=export
+INFO  corestack.backend | job lulc__0548a2cf... created op=export
 INFO  corestack.backend | export: classify + export to a GEE asset
-INFO  corestack.backend | retrain node=greenery algo=linearsvc embedding=ae balance=balanced
-ERROR corestack.backend | job lulc__c379a33b... failed: 'greenery' has no sub-classes to train
+INFO  corestack.backend | retrain node=greenery algo=linearsvc embedding=ae balance=balanced years=None
+ERROR corestack.backend | job lulc__0548a2cf... failed: 'greenery' has no sub-classes to train — split it or add classes first.
+INFO  corestack.request | POST /api/jobs -> 200 (15 ms)
 ```
 
-That is §5's `info` row on one screen: compute trigger, run id, job outcome. The failure is real and
-fine to show. `greenery` has no children in the current hierarchy, so there is nothing to train, and
-it demonstrates that a failure stays legible without switching levels.
+That is §5's whole `info` row on one screen: compute trigger, run id, job outcome.
 
-## A3. Switch to `debug`, touching no code
+The failure is real and fine to show. `greenery` has no children in the current hierarchy, so there
+is nothing to train. It makes the point that a failure stays readable without changing level.
+
+---
+
+## 4. Switch to `debug` — no code touched
 
 **Window 1:** `Ctrl+C`, then:
 
@@ -166,23 +128,31 @@ $env:LOG_LEVEL = "debug"
 .venv\Scripts\python.exe -m uvicorn backend:app --app-dir src --port 8000
 ```
 
-Re-run both commands from A2. The same requests now carry their query strings:
+Two lines appear at startup that `info` never shows:
+
+```
+INFO  corestack | logging at DEBUG -> C:\...\data\logs\corestack-lulc\app.log
+DEBUG corestack.backend | paths root=C:\...\summer_attempt2 data=C:\...\data models=C:\...\models catalogue=C:\...\data\catalogue
+```
+
+The `paths` line is the one worth pointing at: on a cluster deploy it says exactly where that
+process reads and writes, which is the first question when a deploy misbehaves.
+
+Now repeat **both** commands from step 2 and step 3. Same requests, more detail:
 
 ```
 DEBUG corestack.request | GET /api/hierarchy/export?since=0 -> 200 (3 ms)
+DEBUG corestack.backend | job lulc__0ffd41bd... params={'retrain': {'node': 'greenery'}, 'export': False}
+DEBUG corestack.backend | export params year=2024 bbox=(None, None, None, None) roi_asset=None asset_id=None base_scheme=None
 ```
 
-And two things that exist only at `debug`:
+The query string is there now, and so are the job and export parameters.
 
-```
-DEBUG corestack.backend | paths root=... data=...\data models=...\models catalogue=...\data\catalogue
-DEBUG corestack.backend | job lulc__eb44c652... params={'retrain': {'node': 'greenery'}, 'export': False}
-```
+---
 
-The `paths` line is the one worth pointing at: on a cluster deploy it tells you exactly where that
-process reads and writes, which is the first question when a deploy misbehaves.
+## 5. Secrets stay scrubbed at the most verbose level
 
-Then the secrets check, at the most verbose level:
+**Window 3:**
 
 ```powershell
 curl.exe -s "http://localhost:8000/api/health?token=supersecret123&password=hunter2" | Out-Null
@@ -192,11 +162,13 @@ curl.exe -s "http://localhost:8000/api/health?token=supersecret123&password=hunt
 DEBUG corestack.request | GET /api/health?token=***&password=*** -> 200 (1 ms)
 ```
 
-Worth one sentence of why: redaction is implemented in the **log formatter**, not at the call sites,
-so it covers every line any module ever writes, including exception text and dict reprs. Nobody has
-to remember the rule when adding a log line later.
+Worth a sentence of why: redaction runs in the **log formatter**, not at the call sites. It covers
+every line any module ever writes, including exception text and dict reprs, so nobody has to
+remember the rule when adding a log line later.
 
-## A4. `error`: failures only
+---
+
+## 6. `error` — failures only
 
 **Window 1:** `Ctrl+C`, then:
 
@@ -205,88 +177,111 @@ $env:LOG_LEVEL = "error"
 .venv\Scripts\python.exe -m uvicorn backend:app --app-dir src --port 8000
 ```
 
+**Window 3:**
+
 ```powershell
 curl.exe -s "http://localhost:8000/api/health" | Out-Null
 curl.exe -s "http://localhost:8000/api/tree" | Out-Null
 ```
 
-Window 2 stays completely still. Two successful requests, zero lines. Then repeat the job command
-from A2 and exactly one line appears:
+Window 2 does not move. Two successful requests, **zero lines** (measured, not estimated).
+
+Now repeat the job command from step 3. Exactly **one** line appears:
 
 ```
-ERROR corestack.backend | job lulc__... failed: 'greenery' has no sub-classes to train
+ERROR corestack.backend | job lulc__... failed: 'greenery' has no sub-classes to train — split it or add classes first.
 ```
-
-## What Track A has shown
-
-Claim 2 in full: three levels, each matching the published table, switched by one environment
-variable with no code change. Plus the mandated path, and redaction at the level where a leak would
-actually happen.
-
-Claim 1 is **not** shown. The file did persist across three process restarts, which is worth
-saying, but it is not the container-recreate claim. Track B closes it.
 
 ---
 
-# Track B — container, for sign-off
-
-The same demo under Docker, which is what the acceptance line is actually about. **Start Docker
-Desktop first**, otherwise WSL shuts down between commands and takes the container with it.
-
-One structural difference: the recreate that switches you to `debug` **is** the container recreate
-that proves persistence. One action, two claims.
-
-## B1. Show the mount, then start at `info`
+## 7. The supporting evidence
 
 ```powershell
-docker compose -f docker-compose.yml config | Select-String "logs"
+Select-String -Path deploy\.env.example -Pattern "LOG_LEVEL"
 ```
 
-Shows `./data/logs/corestack-lulc` mounted to the container's log path by name, which is §5's mount
-sub-bullet.
-
-```powershell
-$env:LOG_LEVEL = "info"
-docker compose -f docker-compose.yml up -d
-```
-
-Allow about a minute. Watch it from Window 2 exactly as in A0, or with:
-
-```powershell
-docker compose -f docker-compose.yml logs -f lulc
-```
-
-## B2. Same traffic as A2
-
-Run A2's three commands unchanged. Same output.
-
-## B3. Switch to `debug`, which also recreates the container
-
-```powershell
-$env:LOG_LEVEL = "debug"
-docker compose -f docker-compose.yml up -d --force-recreate
-```
-
-Re-run A2's commands plus the secrets check from A3. Same output as Track A.
-
-## B4. Prove persistence
-
-The container from B1 no longer exists.
+`LOG_LEVEL=info` documented with its allowed values, which is one of §5's sub-bullets.
+`APP_NAME = "corestack-lulc"` in `src/logging_setup.py` is what puts the file at
+`data/logs/corestack-lulc/`, the naming the checklist asks for.
 
 ```powershell
 Select-String -Path data\logs\corestack-lulc\app.log -Pattern "INFO  corestack.request" -Encoding UTF8 | Measure-Object | Select-Object -ExpandProperty Count
 ```
 
-Non-zero. Those lines were written by a destroyed container, into a file on the **host**, under the
-mandated path. That is claim 1; with B3 it is the whole acceptance criterion.
+Non-zero: `info` lines written before two restarts are still in the file.
 
-## B5. Tidy up
+---
+
+## What this run proves, and what it does not
+
+The acceptance criterion is two claims:
+
+> *"After a container recreate, logs remain under `data/logs/<application_name>/`.
+> Changing `LOG_LEVEL` switches granularity without a code change."*
+
+**Claim 2 is fully shown.** Three levels, each matching the table the checklist publishes, switched
+by one environment variable, no code change. Plus the mandated path and redaction at the level where
+a leak would actually happen.
+
+**Claim 1 is not.** The file survived process restarts here, but the criterion is about a *container
+recreate* — the log outliving the container because it lives on a host bind mount. A process restart
+is a different and weaker statement. Say so rather than letting the two blur; the container version
+below is what closes it.
+
+---
+
+# For sign-off: the same demo in a container
+
+Start **Docker Desktop** first, otherwise WSL shuts down between commands and takes the container
+with it.
+
+The structural difference: the recreate that switches you to `debug` **is** the container recreate
+that proves persistence. One action, two claims.
+
+```powershell
+# 1. show the mount the checklist asks for, by name
+docker compose -f docker-compose.yml config | Select-String "logs"
+
+# 2. start at info (allow ~1 min)
+$env:LOG_LEVEL = "info"
+docker compose -f docker-compose.yml up -d
+```
+
+Run steps 2 and 3 above unchanged, then:
+
+```powershell
+# 3. switch to debug AND destroy the old container in one action
+$env:LOG_LEVEL = "debug"
+docker compose -f docker-compose.yml up -d --force-recreate
+```
+
+Run steps 4 and 5 unchanged. Then the proof:
+
+```powershell
+Select-String -Path data\logs\corestack-lulc\app.log -Pattern "INFO  corestack.request" -Encoding UTF8 | Measure-Object | Select-Object -ExpandProperty Count
+```
+
+Non-zero. Those lines were written by a container that no longer exists, into a file on the **host**,
+under the mandated path. That is claim 1; with the level switch it is the whole criterion.
 
 ```powershell
 docker compose -f docker-compose.yml down
 ```
 
 ---
+
+## What each level should contain
+
+The table the checklist publishes, against what we emit:
+
+| Level | Checklist says | What you saw |
+|---|---|---|
+| `debug` | request traces, job params, Airflow poll, paths | query strings on request lines, job + export params, resolved root/data/models/catalogue paths |
+| `info` | startup, auth, compute trigger, job complete, DAG/run IDs | startup lines, one line per request with duration, job created with run id, export trigger, job outcome |
+| `error` | failures only | nothing on successful traffic; one line per failure |
+
+`auth` stays empty until §4 Google SSO lands. `Airflow poll` only appears when
+`AIRFLOW_API_BASE` is set.
 
 ## PowerShell equivalents
 
