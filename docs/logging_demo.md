@@ -53,10 +53,12 @@ Select-String -Path .env -Pattern "^AIRFLOW_API_BASE"
 
 Should read `AIRFLOW_API_BASE=` with nothing after it.
 
-Open a second PowerShell window in the same folder to watch the log. This is PowerShell's `tail -f`:
+Open a second PowerShell window in the same folder to watch the log. This is PowerShell's `tail -f`.
+`-Encoding UTF8` is not optional: the log is UTF-8, Windows PowerShell 5.1 reads as ANSI by default,
+and without it any non-ASCII character in a message renders as `â€"` mid-demo:
 
 ```powershell
-Get-Content data\logs\corestack-lulc\app.log -Wait -Tail 20
+Get-Content data\logs\corestack-lulc\app.log -Wait -Tail 20 -Encoding UTF8
 ```
 
 ### 1. Show that the level is config, not code
@@ -142,7 +144,7 @@ container is reading and writing, which is the first question when a deploy beha
 Step 4 used `--force-recreate`. The container from step 2 is gone.
 
 ```powershell
-Select-String -Path data\logs\corestack-lulc\app.log -Pattern "INFO  corestack.request" | Measure-Object | Select-Object -ExpandProperty Count
+Select-String -Path data\logs\corestack-lulc\app.log -Pattern "INFO  corestack.request" -Encoding UTF8 | Measure-Object | Select-Object -ExpandProperty Count
 ```
 
 Non-zero. Those lines were written by a container that no longer exists, into a file on the host,
@@ -198,8 +200,8 @@ container recreate. They are not the same claim.
 
 | Unix | PowerShell |
 |---|---|
-| `tail -f file` | `Get-Content file -Wait -Tail 20` |
-| `tail -20 file` | `Get-Content file -Tail 20` |
+| `tail -f file` | `Get-Content file -Wait -Tail 20 -Encoding UTF8` |
+| `tail -20 file` | `Get-Content file -Tail 20 -Encoding UTF8` |
 | `grep X file` | `Select-String -Path file -Pattern X` |
 | `grep -c X file` | `(Select-String -Path file -Pattern X).Count` |
 | `curl url` | `curl.exe url` |
