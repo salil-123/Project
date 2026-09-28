@@ -10,6 +10,8 @@ params:
   - region          # bounding box [west, south, east, north]
   - year
   - base_scheme
+  - retrain         # optional: {node, algo, ...} -> train that node before classifying
+  - export          # optional: false -> train and stop (a retrain-only run, same DAG)
 alg_type_nodes:
   - CoreStack_LULC
 dataset_type_nodes:
@@ -36,6 +38,16 @@ params:
     type: integer
   - name: base_scheme
     type: string
+  # Declared so a conf carrying them survives generation. Retraining rides THIS algorithm rather
+  # than a second one: `retrain` names the node to train first, and `export: false` makes it a
+  # retrain-only run. If STACD passed only declared params, an undeclared `retrain` would be
+  # dropped and the run would quietly degrade into a plain export.
+  - name: retrain
+    type: object
+    required: false
+  - name: export
+    type: boolean
+    required: false
 input_datasets: []
 outputs:
   - CoreStack_LULC_Raster
