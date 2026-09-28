@@ -71,11 +71,32 @@ Get-Content data\logs\corestack-lulc\app.log -Wait -Tail 20 -Encoding UTF8
 and without it a non-ASCII character renders as `â€"` mid-demo. If the file does not exist yet,
 start the app first (A1), then run this.
 
-Optional clean slate, so the demo reads from zero:
+### Clearing the log first
+
+Two ways, and the difference matters because the running app holds `app.log` open.
+
+**While the app is running** — truncate in place. The app keeps writing to the same handle, so
+nothing needs restarting:
 
 ```powershell
+Clear-Content data\logs\corestack-lulc\app.log
+```
+
+**With the app stopped** — delete the whole directory for a true zero state:
+
+```powershell
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object { $_.CommandLine -like '*uvicorn*' } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
 Remove-Item -Recurse -Force data\logs -ErrorAction SilentlyContinue
 ```
+
+`Remove-Item` on its own **fails while the app is running** with *"The process cannot access the
+file 'app.log' because it is being used by another process."* That is the rotating file handler
+holding it open, and it is an easy thing to trip over in front of an audience. Use `Clear-Content`
+if the app is up, or stop it first.
+
+The app recreates the directory on startup, so deleting it is safe.
 
 ## A1. Start at `info`
 
