@@ -26,9 +26,9 @@ Three PowerShell windows. Each one starts with `cd C:\Users\mrsal\Downloads\summ
 
 ```powershell
 cd C:\Users\mrsal\Downloads\summer_attempt2
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-  Where-Object { $_.CommandLine -like '*uvicorn*' } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force }
 Remove-Item -Recurse -Force data\logs -ErrorAction SilentlyContinue
 ```
 
@@ -54,8 +54,23 @@ $env:LOG_LEVEL = "info"
 .venv\Scripts\python.exe -m uvicorn backend:app --app-dir src --port 8000
 ```
 
-Wait 30–60 seconds; it loads the models and initialises Earth Engine before serving. It is ready
-when the console prints `Application startup complete.`
+Wait 30–60 seconds; it loads the models and initialises Earth Engine before serving.
+
+**It is ready when the console prints `Uvicorn running on http://127.0.0.1:8000`** — not when it
+prints `Application startup complete`. Those are different things, and the difference matters:
+
+```
+INFO  uvicorn.error | Application startup complete.
+ERROR uvicorn.error | [Errno 10048] error while attempting to bind on address ('127.0.0.1', 8000):
+                      only one usage of each socket address ... is normally permitted
+INFO  uvicorn.error | Waiting for application shutdown.
+INFO  uvicorn.error | Application shutdown complete.
+```
+
+That is what a **port clash** looks like: something else is already listening on 8000, so the new
+process starts the app, fails to bind, and exits. The shutdown is the consequence, not the cause.
+Run the stop block in step 0 again — it targets whatever holds the port, including a server left
+running in another window with no visible console.
 
 `$env:LOG_LEVEL` beats the value in `.env` (`load_dotenv` runs with `override=False`), so the whole
 demo is one variable and there are no file edits to undo.
@@ -124,9 +139,9 @@ is nothing to train. It makes the point that a failure stays readable without ch
 **Window 1** — stop the app and start it again at the new level:
 
 ```powershell
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-  Where-Object { $_.CommandLine -like '*uvicorn*' } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force }
 $env:LOG_LEVEL = "debug"
 .venv\Scripts\python.exe -m uvicorn backend:app --app-dir src --port 8000
 ```
@@ -186,9 +201,9 @@ remember the rule when adding a log line later.
 **Window 1** — stop and restart once more:
 
 ```powershell
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-  Where-Object { $_.CommandLine -like '*uvicorn*' } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force }
 $env:LOG_LEVEL = "error"
 .venv\Scripts\python.exe -m uvicorn backend:app --app-dir src --port 8000
 ```
@@ -253,9 +268,9 @@ Select-String -Path data\logs\corestack-lulc\app.log -Pattern "INFO  corestack.r
 **Window 1:** `Ctrl+C`, or from anywhere:
 
 ```powershell
-Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
-  Where-Object { $_.CommandLine -like '*uvicorn*' } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
+  Select-Object -ExpandProperty OwningProcess -Unique |
+  ForEach-Object { Stop-Process -Id $_ -Force }
 ```
 
 **Window 2:** `Ctrl+C` to stop tailing.
