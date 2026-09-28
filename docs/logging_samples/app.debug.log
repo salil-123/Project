@@ -1,0 +1,17 @@
+2026-09-28 15:33:29 INFO  corestack | logging at DEBUG -> C:\Users\mrsal\Downloads\summer_attempt2\data\logs\corestack-lulc\app.log
+2026-09-28 15:33:29 DEBUG corestack.backend | paths root=C:\Users\mrsal\Downloads\summer_attempt2 data=C:\Users\mrsal\Downloads\summer_attempt2\data models=C:\Users\mrsal\Downloads\summer_attempt2\models catalogue=C:\Users\mrsal\Downloads\summer_attempt2\data\catalogue
+2026-09-28 15:33:29 INFO  uvicorn.error | Started server process [3260]
+2026-09-28 15:33:29 INFO  uvicorn.error | Waiting for application startup.
+2026-09-28 15:33:29 INFO  uvicorn.error | Application startup complete.
+2026-09-28 15:33:29 INFO  uvicorn.error | Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-09-28 15:33:36 INFO  corestack.request | GET /api/health -> 200 (3 ms)
+2026-09-28 15:33:37 INFO  corestack.request | GET /api/health -> 200 (1 ms)
+2026-09-28 15:33:37 DEBUG corestack.request | GET /api/hierarchy/export?since=0 -> 200 (4 ms)
+2026-09-28 15:33:37 INFO  corestack.backend | job lulc__2a7b22e412f44bb086a5b38e2b0ea1ed created op=export
+2026-09-28 15:33:37 DEBUG corestack.backend | job lulc__2a7b22e412f44bb086a5b38e2b0ea1ed params={'retrain': {'node': 'greenery'}, 'export': False}
+2026-09-28 15:33:37 INFO  corestack.backend | export: classify + export to a GEE asset
+2026-09-28 15:33:37 DEBUG corestack.backend | export params year=2024 bbox=(None, None, None, None) roi_asset=None asset_id=None base_scheme=None
+2026-09-28 15:33:37 INFO  corestack.backend | retrain node=greenery algo=linearsvc embedding=ae balance=balanced years=None
+2026-09-28 15:33:37 ERROR corestack.backend | job lulc__2a7b22e412f44bb086a5b38e2b0ea1ed failed: 'greenery' has no sub-classes to train — split it or add classes first.
+2026-09-28 15:33:37 INFO  corestack.request | POST /api/jobs -> 200 (25 ms)
+2026-09-28 15:33:37 DEBUG corestack.request | GET /api/health?token=***&password=*** -> 200 (1 ms)
