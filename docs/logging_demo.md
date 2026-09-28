@@ -136,17 +136,27 @@ is nothing to train. It makes the point that a failure stays readable without ch
 
 ## 4. Switch to `debug`
 
-**Window 1** — stop the app and start it again at the new level:
+**Window 1** — the app is running in the foreground here, so the prompt is busy. Press **`Ctrl+C`**
+first and wait for it to come back:
+
+```
+INFO  uvicorn.error | Shutting down
+INFO  uvicorn.error | Finished server process [18628]
+```
+
+Then, in that same window, set the level and start it again:
 
 ```powershell
-Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
-  Select-Object -ExpandProperty OwningProcess -Unique |
-  ForEach-Object { Stop-Process -Id $_ -Force }
 $env:LOG_LEVEL = "debug"
 .venv\Scripts\python.exe -m uvicorn backend:app --app-dir src --port 8000
 ```
 
-(`Ctrl+C` in Window 1 does the same as the stop block, if the app is in the foreground there.)
+Check the echoed level: the first log line must say **`logging at DEBUG`**. If it still says
+`logging at INFO`, the `$env:LOG_LEVEL` line did not run in the same window as the server, which is
+the one thing to watch for here.
+
+If `Ctrl+C` does not free the port (a server left over in another window), run the stop block from
+step 0 in **Window 3**, then start again in Window 1.
 
 No file was edited. Two lines appear at startup that `info` never showed:
 
@@ -198,14 +208,19 @@ remember the rule when adding a log line later.
 
 ## 6. `error`: failures only
 
-**Window 1** — stop and restart once more:
+**Window 1** — `Ctrl+C` again, wait for the prompt, then:
 
 ```powershell
-Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue |
-  Select-Object -ExpandProperty OwningProcess -Unique |
-  ForEach-Object { Stop-Process -Id $_ -Force }
 $env:LOG_LEVEL = "error"
 .venv\Scripts\python.exe -m uvicorn backend:app --app-dir src --port 8000
+```
+
+**Nothing at all prints, in the console or the log.** `error` suppresses the startup banner too,
+so the window just sits there and the log file stays 0 bytes. That is correct behaviour, not a hang.
+Confirm it is up from Window 3 instead:
+
+```powershell
+curl.exe -s "http://localhost:8000/api/health"
 ```
 
 **Window 3** — two requests that succeed:
