@@ -41,7 +41,8 @@ def trigger_conf(conf: dict) -> dict:
     Returns Airflow's response json (carries dag_run_id + state). Raises on a non-2xx."""
     auth, headers = _auth()
     url = f"{config.AIRFLOW_API_BASE}/dags/{config.AIRFLOW_DAG_ID}/dagRuns"
-    log.info("trigger POST %s conf=%s", url, conf)
+    log.info("trigger POST %s", url)
+    log.debug("trigger conf=%s", conf)   # job params are a debug-level item
     r = requests.post(url, json={"conf": conf}, auth=auth, headers=headers, timeout=_TIMEOUT)
     log.info("trigger <- HTTP %s %s", r.status_code, r.text[:400])
     r.raise_for_status()
@@ -56,7 +57,7 @@ def run_state(run_id: str) -> str | None:
         r = requests.get(url, auth=auth, headers=headers, timeout=_TIMEOUT)
         r.raise_for_status()
         state = r.json().get("state")
-        log.info("state %s -> %s", run_id, state)
+        log.debug("poll %s -> %s", run_id, state)   # Airflow polling is debug, not info
         return state
     except requests.RequestException as e:
         log.warning("state %s failed: %s", run_id, e)
