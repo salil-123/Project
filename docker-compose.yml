@@ -18,5 +18,8 @@ services:
       - ${CORESTACK_CODE_HOST:-.}:/app                      # code: `git pull` + restart, no rebuild
       - ${CORESTACK_MODELS_HOST:-./models}:/app/models      # trained weights
       - ${CORESTACK_DATA_HOST:-./data}:/app/data            # inputs, caches, outputs, logs
+      # logs called out explicitly (checklist #5 wants ./data/logs/<app> mounted to the log path).
+      # Redundant with the data mount above, but it makes the requirement visible at a glance.
+      - ${CORESTACK_DATA_HOST:-./data}/logs/corestack-lulc:/app/data/logs/corestack-lulc
       # - ./deploy/ee-key.json:/app/ee-key.json:ro   # EE service-account key (headless auth)
     restart: unless-stopped

@@ -17,7 +17,7 @@ import logging
 import tempfile
 from pathlib import Path
 
-log = logging.getLogger("corestack.dag")
+log = logging.getLogger("corestack.backend")   # jobs, export, DAG proxy, retrain
 
 # repo root holds shared infra (config.py, tessera_fast.py) + the data/ dir; put it
 # on the path so infer can import them whichever directory uvicorn is launched from.
@@ -51,6 +51,9 @@ _STATIC = Path(__file__).resolve().parent / "static"
 # captured too rather than logging into the void.
 logging_setup.configure(config.LOG_LEVEL)
 _req_log = logging_setup.get("request")
+# "paths" is one of the things the checklist puts at debug: where this process reads and writes
+log.debug("paths root=%s data=%s models=%s catalogue=%s",
+          config.PROJECT_ROOT, config.DATA_DIR, config.MODELS_DIR, catalogue.CATALOGUE_DIR)
 
 app = FastAPI(title="Core Stack LULC")
 
@@ -399,6 +402,9 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
     # train first when asked, so whatever we export below uses the model the user just built. The
     # DAG only drives us over HTTP, so the training happens in this process and the model, hierarchy
     # and zoo cards all stay consistent with each other.
+    log.info("export: classify + export to a GEE asset")
+    log.debug("export params year=%s bbox=%s roi_asset=%s asset_id=%s base_scheme=%s",
+              year, (west, south, east, north), roi_asset, asset_id, base_scheme)
     retrain_result = None
     if retrain:
         if isinstance(retrain, str):          # the pipeline stringifies params; accept JSON text too
@@ -495,6 +501,7 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
             "state": state, "task_id": out.get("task_id"), "classes": out.get("classes")}
     if retrain_result is not None:
         resp["retrain"] = retrain_result       # so one job can report "trained, then exported"
+    log.info("export complete: asset=%s state=%s", out["asset_id"], state)
     return resp
 
 
@@ -603,6 +610,8 @@ def create_job(body: JobIn):
     the frontend gets a run_id and polls GET /api/jobs/{run_id}. `done` is set when it finished inline."""
     run_id = jobs.new_run_id()
     jobs.create(run_id, body.op, body.params)
+    log.info("job %s created op=%s", run_id, body.op)
+    log.debug("job %s params=%s", run_id, body.params)
 
     if not airflow_client.configured():
         # no Airflow: do the work now so the poll flow still resolves
@@ -610,11 +619,14 @@ def create_job(body: JobIn):
             result = _run_op(body.op, body.params)
         except HTTPException as e:
             jobs.set_failed(run_id, str(e.detail))
+            log.error("job %s failed: %s", run_id, e.detail)
             return {"run_id": run_id, "done": True, "success": False, "error": e.detail}
         except Exception as e:
             jobs.set_failed(run_id, str(e))
+            log.exception("job %s failed", run_id)
             return {"run_id": run_id, "done": True, "success": False, "error": str(e)}
         jobs.set_result(run_id, result)
+        log.info("job %s complete (inline)", run_id)
         return {"run_id": run_id, "done": True, "success": True, "result": result}
 
     conf = {"op": body.op, "params": body.params, "run_id": run_id,
@@ -624,6 +636,7 @@ def create_job(body: JobIn):
     except Exception as e:
         jobs.set_failed(run_id, f"couldn't trigger Airflow DAG: {e}")
         raise HTTPException(502, f"couldn't trigger Airflow DAG: {e}")
+    log.info("job %s dispatched to Airflow DAG %s", run_id, config.AIRFLOW_DAG_ID)
     return {"run_id": run_id, "done": False, "state": "running"}
 
 
@@ -662,9 +675,11 @@ async def store_job_result(run_id: str, request: Request):
         raise HTTPException(400, "body must be JSON")
     if isinstance(body, dict) and body.get("ok") is False:
         jobs.set_failed(run_id, str(body.get("error", "job failed")))
+        log.error("job %s failed (reported by the DAG): %s", run_id, body.get("error"))
         return {"stored": True, "state": "failed"}
     result = body.get("result", body) if isinstance(body, dict) else body
     jobs.set_result(run_id, result)
+    log.info("job %s complete (result posted by the DAG)", run_id)
     return {"stored": True, "state": "success"}
 
 
