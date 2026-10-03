@@ -106,6 +106,11 @@ All configuration is environment variables (nothing is hardcoded). Edit `.env`:
 | `AIRFLOW_USERNAME`, `AIRFLOW_PASSWORD` | for DAG mode | Basic-auth creds for the Airflow API (or set `AIRFLOW_TOKEN` instead for bearer auth). |
 | `AIRFLOW_DAG_ID` | for DAG mode | DAG to trigger; default `corestack_lulc`. |
 | `CORESTACK_API_BASE` | for DAG mode | Where the Airflow worker reaches **this** backend to call `/api/export-asset` (a LAN IP/host, **not** `localhost`), e.g. `http://<this-host>:8000`. |
+| `GOOGLE_CLIENT_ID` | for sign-in | Google OAuth client id (Web application). Set → Google sign-in, verified on the server; unset → a local type-your-name login for laptops. See §12. |
+| `SESSION_SECRET` | with sign-in | Signs the session cookie. A long random string, the same on every replica. |
+| `SERVICE_TOKEN` | with sign-in + DAG | Lets the Airflow DAG call back without a browser session (`X-Service-Token`). Same value as `CORESTACK_SERVICE_TOKEN` on the Airflow side. |
+| `DATABASE_URL` | on the cluster | `postgresql://USER:PASSWORD@POSTGRES_HOST:5432/DBNAME` (the central Postgres). Unset → `data/corestack.db`, laptop only. |
+| `INTRO_VIDEO_URL` | optional | The front page's walkthrough video: a YouTube link or an mp4. |
 
 > `.env` also contains `docker_username` / `docker_pat` in the example — those are **build-time only**
 > (for pushing a new image) and are **not needed to run**. Leave them blank on the deploy machine.
@@ -294,3 +299,64 @@ curl http://localhost:8000/api/health
 Then set the algorithm URL in `deploy/stacd/corestack_lulc_algorithm_repo.yaml` and register the three
 YAMLs in STACD.
 </content>
+
+---
+
+## 12. Sign-in, the database, and rebuilding the image (week 18)
+
+The app now has users and projects (see the README). Three things make that work on the tower.
+
+### 12.1 Rebuild the image once
+
+Week 18 added dependencies (`sqlalchemy`, `psycopg2-binary`, `google-auth`, `itsdangerous`), and the
+image is dependencies-only, so it needs one rebuild; after that it's back to `git pull` + restart.
+
+```bash
+# on the build box (WSL docker here), from the repo root
+docker build -t salil2003/corestack-lulc:latest -t salil2003/corestack-lulc:$(cat VERSION) .
+docker push salil2003/corestack-lulc:latest && docker push salil2003/corestack-lulc:$(cat VERSION)
+# or: deploy/build_and_push.sh   (reads docker_username / docker_pat from .env)
+# then on the tower
+docker compose -f docker-compose.hub.yml pull && docker compose -f docker-compose.hub.yml up -d
+```
+
+Bump `VERSION` first so the tag says which build has sign-in.
+
+### 12.2 Google sign-in
+
+1. Google Cloud Console → *APIs & Services* → *Credentials* → **Create credentials → OAuth client ID**,
+   type **Web application**. (First time: fill the OAuth consent screen, *Internal* if it's an IIT
+   Workspace project, which also limits sign-in to institute accounts.)
+2. **Authorized JavaScript origins**: the exact origin users open, e.g. `https://core-stack.org` or
+   `http://<tower-host>:8000`. No path, no trailing slash. Add `http://localhost:8000` for testing.
+   No redirect URI is needed: the button hands the page a token directly.
+3. Put the id in `.env`: `GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com`. There's no client secret
+   in this flow, so nothing secret goes in git.
+4. Generate and set `SESSION_SECRET` (`python -c "import secrets; print(secrets.token_urlsafe(48))"`).
+5. Restart. The front page now shows **Sign in with Google**; the local login refuses to run.
+
+What the server does with it: `POST /api/auth/google` checks the token's signature, audience (your
+client id), expiry and verified email with `google-auth`, then sets an HttpOnly, signed session cookie
+(`Secure` when the proxy says `X-Forwarded-Proto: https`). Every write or compute call without that
+cookie gets 401, someone else's project 403, a public one read-only.
+
+Check it:
+```bash
+curl -s http://<host>:8000/api/auth/me          # {"user": null, "google_client_id": "...", "dev_login": false}
+curl -s -o /dev/null -w "%{http_code}
+" -X POST http://<host>:8000/api/projects   -H 'Content-Type: application/json' -d '{"name":"x","bbox":[77.17,28.53,77.19,28.55]}'   # 401
+```
+
+### 12.3 The database
+
+Set `DATABASE_URL` to the central Postgres (checklist #9). Tables (`users`, `projects`) are created on
+start. Everything bulky stays on the data mount under `data/projects/<id>/`, so back that folder up
+together with the database: the rows index the folders.
+
+### 12.4 Airflow, once sign-in is on
+
+The DAG calls back into the app without a browser, so give both sides the same token:
+`SERVICE_TOKEN=<value>` in this `.env`, `CORESTACK_SERVICE_TOKEN=<value>` for the Airflow worker. The
+bundled `airflow/dags/corestack_lulc_dag.py` already sends it. A STACD pipeline calling
+`/api/export-asset` must send the `X-Service-Token` header too, and pass `project_id` in the conf so the
+run classifies that project's classes rather than the shared default scheme.

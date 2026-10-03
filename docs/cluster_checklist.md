@@ -8,17 +8,18 @@ Service: **corestack-lulc** · against
 | 1 | Mount `code/`, `models/`, `data/`; output in `data/` | **done** | `docker-compose*.yml`, `models/README.md`, `config.MODELS_DIR` |
 | 2 | `AIRFLOW_API_BASE` set → Airflow, empty → local | **done** (was already) | `config.py`, `src/airflow_client.py`, `/api/dag/*` |
 | 3 | Image pushed to GHCR or Docker Hub | **done** | `salil2003/corestack-lulc` on Docker Hub, `VERSION` |
-| 4 | Google SSO | **parked** — awaiting advice | env names reserved in `deploy/.env.example` |
+| 4 | Google SSO | **built** (week 18), awaiting a client id | `src/auth.py`, the `Gate` middleware in `src/backend.py`, `GOOGLE_CLIENT_ID` |
 | 5 | Logs under `data/logs/<app>/`; `LOG_LEVEL` | **done** | `src/logging_setup.py` |
 | 6 | Frontend + backend in one Docker | **done** (was already) | one compose service, backend serves `src/static/` |
 | 7 | Frontend API base from `.env` | **done** | `/config.js` + `api()` in `app.js`, `API_BASE_URL` |
 | 8 | Architecture diagram | **done** | [`docs/architecture.md`](architecture.md) |
-| 9 | Postgres via `DATABASE_URL` | **N/A for now** | no database until #4 lands |
+| 9 | Postgres via `DATABASE_URL` | **done** (week 18) | `src/db.py` (users, projects); SQLite only when unset, on a laptop |
 | 10 | `outputs.yaml` retention policy | **done** | [`../outputs.yaml`](../outputs.yaml) |
 
-**8 done, 2 parked together.** #4 and #9 are one piece of work: the checklist marks #9 *"N/A if the
-service has no database"*, and the only tables we'd create (users, auth audit) are the ones SSO
-brings. Building them before the auth decision would be speculative.
+**9 done, #4 built.** #4 and #9 landed together in week 18: the only tables are the ones sign-in
+brings (users) plus the projects they own. #4 still needs an OAuth client id for the tower's origin;
+until then it has only been exercised through the local login, which shares everything after the
+token check (cookie, gate, ownership).
 
 ## Item-by-item notes
 
@@ -45,6 +46,17 @@ at debug.
 backend generates from `API_BASE_URL`. **Default is relative**, which is what fixed the blank page
 under a reverse-proxy subpath. Leaflet is vendored rather than loaded from unpkg, since the campus
 proxy can block the CDN.
+
+**4 — SSO.** Google's sign-in button hands the page a signed ID token; `POST /api/auth/google`
+verifies its signature, audience (`GOOGLE_CLIENT_ID`) and expiry with `google-auth`, then sets a
+signed HttpOnly session cookie. One middleware (`Gate`) enforces the rule for every request:
+no session, no compute and no writes (401); someone else's project, 403; a public project, read-only.
+The Airflow DAG calls back with `X-Service-Token` (`SERVICE_TOKEN`). Without a client id the app
+offers a local login for laptops, which refuses to run once one is set. This differs from the drone
+service on purpose: it trusts an `X-User-Email` header, which does not meet "validated on the backend".
+
+**9 — Postgres.** `DATABASE_URL` → the central Postgres; tables are created on start (`db.init`).
+Unset, it falls back to `data/corestack.db`, which is for a laptop only.
 
 **10 — outputs.** Note that a run's actual product is a **GEE asset + STAC Item**, governed in Earth
 Engine, not a file under `data/`. `outputs.yaml` therefore covers the state that produced it — zoo

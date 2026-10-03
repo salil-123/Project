@@ -28,6 +28,25 @@ uvicorn backend:app --reload --app-dir src      # http://127.0.0.1:8000/
 ```
 Earth Engine config goes in `.env` (see `deploy/.env.example`); headless servers use a service-account key.
 
+`/` is the front page (what the tool is, the walkthrough video, public projects, sign in); `/app` is
+the tool. On a laptop with no `GOOGLE_CLIENT_ID`, sign in by typing any name.
+
+## Users, projects, runs
+Everything happens inside a **project**: one area, one year, one base scheme, the classes grown on
+it, the example polygons, the models trained for it, and its **runs**. A user sees only their own
+projects (and any someone made public, read-only, copyable). Running classification is the only thing
+that draws a map; each run is kept with a frozen copy of the scheme that made it, so reopening a
+project shows its last map without re-running, and a later retrain never changes an old run.
+
+- Sign-in: Google, verified on the server (`src/auth.py`), then a signed session cookie. No session,
+  no compute and no writes.
+- State: users + projects in the database (`DATABASE_URL`, Postgres on the cluster; SQLite file on a
+  laptop), everything else in `data/projects/<id>/` on the data mount.
+- Splitting a class: use a zoo model and map its classes onto yours, or upload labelled polygons in
+  the standard format (a GeoJSON with a `class` on every polygon; the app serves an example at
+  `/api/upload-format/example.geojson`) and train.
+- Design and reasoning: `week18/app_design.md` (kept locally, with the other week folders).
+
 ## Repository structure
 ```
 src/                 the application (FastAPI backend + Leaflet frontend)
@@ -38,13 +57,15 @@ src/                 the application (FastAPI backend + Leaflet frontend)
 ├─ examples.py       user example polygons → embedded training frames
 ├─ sampling.py       shared Alpha Earth / Tessera sampling
 ├─ catalogue.py      the model-zoo card database (+ zoo_git.py for git-backed publish)
+├─ db.py / auth.py   users + projects tables; Google sign-in verified server side, session cookie
+├─ projects.py       a project's folder under data/projects/, its runs, copy and zip
 ├─ rules.py          interpretable index-based splits (NDVI/NDWI/…) that ride the tile map
 ├─ ee_rf.py          IndiaSAT EE-native RandomForest models (tree/crop, farm/shrub)
 ├─ sentinel.py       raw Sentinel-1/2 per-fortnight water model
 ├─ stacd.py          STACD provenance emitter (STAC 1.1.0 Item + DAG)
 ├─ aoi.py            bounding-box guardrails
 ├─ logging_setup.py  LOG_LEVEL -> stdout + data/logs/corestack-lulc/app.log
-└─ static/           the Leaflet web UI (index.html, app.js, style.css)
+└─ static/           the front page (landing.html) + the Leaflet tool (index.html, app.js, style.css)
 
 config.py            central config + Earth Engine init + path anchors (runs from any CWD)
 models/              trained weights, on their own mount (see models/README.md)
@@ -98,7 +119,7 @@ works at the domain root *and* behind a reverse-proxy subpath. Set it only to po
 different backend. Leaflet is vendored under `src/static/vendor/` rather than loaded from a CDN,
 which a campus proxy may block.
 
-**Not yet wired:** Google SSO (#4) and central Postgres (#9), parked pending further advice.
+**Sign-in and database (#4, #9):** see *Users, projects, runs* above; env in `deploy/.env.example`.
 
 ## Airflow DAG orchestration
 The long ops (classify/export) can run through an **Airflow DAG** instead of inline. A browser can't call

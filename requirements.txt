@@ -20,7 +20,7 @@ numcodecs
 pandas
 pyarrow
 numpy
-scikit-learn
+scikit-learn==1.8.0   # pinned: every saved model was pickled with 1.8; a newer sklearn warns and may misread them
 joblib
 xgboost           # non-linear learner for Tessera splits (#7); optional, point-grid render only
 
@@ -32,6 +32,11 @@ uvicorn
 aiohttp
 tqdm
 python-dotenv
+# users + projects (week 18): Postgres on the cluster via DATABASE_URL, SQLite on a laptop
+sqlalchemy>=2.0
+psycopg[binary]    # Postgres driver (v3); db.py pins the URL to it explicitly
+google-auth        # verifies the Google sign-in token server side (EE pulls it in too; pinned here on purpose)
+itsdangerous       # signs the session cookie
 requests          # backend -> Airflow REST (job trigger/poll); also pulled in transitively by EE
 
 # --- Notebook / dev ---

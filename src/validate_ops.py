@@ -8,9 +8,8 @@ outright wrong (errors), and what would import but not be live yet (warnings) â€
 """
 from pathlib import Path
 
-import hierarchy
-
-_REFINE = Path(__file__).resolve().parent.parent / "data" / "refine"
+import hierarchy          # puts the repo root on sys.path, so config imports after it
+import config
 
 # op verb -> the args it must carry, mirroring what backend logs to the op-log. An uploaded log
 # with an unknown verb or a dropped arg is a tell that the file was hand-edited or came from an
@@ -27,6 +26,8 @@ KNOWN_OPS = {
     "apply":            ["card_id"],
     "apply_eerf":       ["card_id"],
     "import_hierarchy": [],
+    "create":           ["name"],                 # week 18: a project's first step
+    "upload":           ["node"],                 # week 18: a standard-format upload
 }
 
 
@@ -35,7 +36,7 @@ def missing_classifiers(tree):
     until retrained. One source of truth, shared by import and the pre-flight below."""
     return [cls for cls, node in tree.items()
             if node.get("classifier") and node["classifier"] != hierarchy.ROOT
-            and not (_REFINE / f"{node['classifier']}.joblib").exists()]
+            and not Path(config.weights_path(node['classifier'])).exists()]
 
 
 def validate_envelope(body):

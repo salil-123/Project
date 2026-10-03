@@ -19,20 +19,26 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
 import config
 
-OPLOG_PATH = config.project_path("data/op_log.json")  # anchored to root, CWD-independent
+# a fixed path only when a self-test pins one; otherwise it lives in the current workspace
+# (the open project's folder, or data/), see config.ws_path
+OPLOG_PATH = None
+
+
+def _file():
+    return OPLOG_PATH or config.ws_path("op_log.json")
 
 
 def load() -> list:
     """The ordered list of operations (empty if none yet)."""
-    if not os.path.exists(OPLOG_PATH):
+    if not os.path.exists(_file()):
         return []
-    with open(OPLOG_PATH) as fh:
+    with open(_file()) as fh:
         return json.load(fh)
 
 
 def _save(entries: list) -> None:
-    os.makedirs(os.path.dirname(OPLOG_PATH), exist_ok=True)
-    with open(OPLOG_PATH, "w") as fh:
+    os.makedirs(os.path.dirname(_file()), exist_ok=True)
+    with open(_file(), "w") as fh:
         json.dump(entries, fh, indent=2)
 
 

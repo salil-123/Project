@@ -19,22 +19,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
 import config
 
-MERGE_PATH = config.project_path("data/merge_rules.json")  # anchored to root, CWD-independent
+# a fixed path only when a self-test pins one; otherwise it lives in the current workspace
+# (the open project's folder, or data/), see config.ws_path
+MERGE_PATH = None
+
+
+def _file():
+    return MERGE_PATH or config.ws_path("merge_rules.json")
 
 # fallback colours for merge targets that don't bring their own (kept off the base palette)
 _PALETTE = ["#8e44ad", "#16a085", "#e67e22", "#c0392b", "#2980b9", "#d35400"]
 
 
 def load() -> list:
-    if not os.path.exists(MERGE_PATH):
+    if not os.path.exists(_file()):
         return []
-    with open(MERGE_PATH) as fh:
+    with open(_file()) as fh:
         return json.load(fh)
 
 
 def save(rules: list) -> None:
-    os.makedirs(os.path.dirname(MERGE_PATH), exist_ok=True)
-    with open(MERGE_PATH, "w") as fh:
+    os.makedirs(os.path.dirname(_file()), exist_ok=True)
+    with open(_file(), "w") as fh:
         json.dump(rules, fh, indent=2)
 
 

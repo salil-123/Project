@@ -1,7 +1,7 @@
 # Upload manifest — what to ship to sir's workstation
 
 Target: run the LULC web app (FastAPI + Leaflet + the model zoo) on Aaditeshwar sir's workstation,
-driven by Docker / Airflow / nginx. Paths are now CWD-independent (see `path_relativization_plan.md`),
+driven by Docker / Airflow / nginx. Paths are CWD-independent (`config.project_path`),
 so the app runs from any directory as long as `data/` sits next to `src/` (or `CORESTACK_DATA_DIR`
 points at it).
 

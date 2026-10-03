@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%232e8b2e'/%3E%3Crect x='8' width='8' height='8' fill='%231e88e5'/%3E%3Crect y='8' width='8' height='8' fill='%23c2a05a'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23d7301f'/%3E%3C/svg%3E">
+  <title>Custom LULC</title>
+  <style>
+    /* the front page (point 8). Same palette as the app so stepping in doesn't feel like a new site */
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    :root { --bg: #0f1217; --card: #161b22; --line: #262b34; --ink: #e6e8ec; --mute: #9aa3af;
+            --accent: #4ea1ff; --btn: #2f6df6; }
+    body { background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+           line-height: 1.55; }
+    a { color: var(--accent); }
+    .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+    header { border-bottom: 1px solid var(--line); }
+    header .wrap { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+    .brand { font-weight: 700; font-size: 18px; }
+    .brand span { color: var(--accent); }
+    header nav a { color: var(--mute); text-decoration: none; font-size: 14px; margin-left: 18px; }
+    header nav a:hover { color: var(--ink); }
+
+    .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; padding: 56px 0 40px; align-items: start; }
+    @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }
+    .kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+    h1 { font-size: 38px; line-height: 1.15; margin: 10px 0 16px; }
+    .lede { color: #c3c8d0; font-size: 16px; }
+    .signin { margin-top: 26px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+    .signin h3 { font-size: 14px; margin-bottom: 10px; }
+    .signin .row { display: flex; gap: 8px; }
+    .signin input { flex: 1; padding: 9px 11px; background: #1d232c; border: 1px solid #2c333d; color: var(--ink);
+                    border-radius: 6px; font-size: 14px; }
+    .btn { display: inline-block; padding: 10px 16px; background: var(--btn); color: #fff; border: none;
+           border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; }
+    .btn:hover { background: #4079ff; }
+    .btn.ghost { background: none; border: 1px solid #2c333d; color: var(--mute); font-weight: 500; }
+    .note { font-size: 12px; color: var(--mute); margin-top: 10px; }
+    .err { color: #ff8a80; font-size: 13px; margin-top: 8px; min-height: 18px; }
+
+    .video { background: #000; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; aspect-ratio: 16 / 9; }
+    .video iframe, .video video { width: 100%; height: 100%; border: 0; display: block; }
+    .video .ph { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                 color: var(--mute); gap: 8px; text-align: center; padding: 20px;
+                 background: repeating-linear-gradient(45deg, #11151b, #11151b 12px, #13181f 12px, #13181f 24px); }
+    .video .ph b { color: var(--ink); font-size: 15px; }
+    .caption { font-size: 12px; color: var(--mute); margin-top: 8px; }
+
+    section.band { padding: 36px 0; border-top: 1px solid var(--line); }
+    h2 { font-size: 20px; margin-bottom: 18px; }
+    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+    @media (max-width: 760px) { .steps { grid-template-columns: 1fr; } }
+    .step { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+    .step .n { width: 26px; height: 26px; border-radius: 50%; background: var(--btn); color: #fff; font-size: 13px;
+               display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
+    .step h3 { font-size: 15px; margin: 10px 0 6px; }
+    .step p { font-size: 14px; color: #b7bdc6; }
+
+    .pub { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+    .pcard { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+             padding: 14px; color: var(--ink); text-decoration: none; transition: border-color .15s; }
+    .pcard:hover { border-color: var(--accent); }
+    .pcard .t { font-weight: 600; }
+    .pcard .m { font-size: 12px; color: var(--mute); margin-top: 4px; }
+    footer { border-top: 1px solid var(--line); padding: 20px 0 30px; font-size: 13px; color: var(--mute); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="brand">Core Stack <span>LULC</span></div>
+      <nav>
+        <a href="#how">How it works</a>
+        <a href="#public">Public projects</a>
+        <a href="https://core-stack.org/" target="_blank" rel="noopener">core-stack.org</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="hero">
+      <div>
+        <div class="kicker">Land use, land cover, your own classes</div>
+        <h1>Map any part of India at 10&nbsp;m, in the classes <em>you</em> need.</h1>
+        <p class="lede">Start from a base map of greenery, water, built-up and barren land. Split any class
+          into finer ones, using a model someone already trained or a few polygons of your own,
+          and the map follows. Every model is shared in a model zoo so the next person starts further ahead.</p>
+
+        <div class="signin" id="signin">
+          <h3 id="signinHead">Sign in to start a project</h3>
+          <div id="gsi"></div>
+          <div id="devBox" class="row" style="display:none">
+            <input id="devName" type="text" placeholder="Your name (local sign-in)">
+            <button class="btn" id="devGo">Continue</button>
+          </div>
+          <div id="signedIn" style="display:none">
+            <a class="btn" href="app">Open your projects</a>
+            <button class="btn ghost" id="signOut">Sign out</button>
+          </div>
+          <p class="note" id="signinNote"></p>
+          <div class="err" id="err"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="video" id="video"></div>
+        <p class="caption">A short walk through: start a project, split a class, run it, share it.</p>
+      </div>
+    </div>
+
+    <section class="band" id="how">
+      <h2>How it works</h2>
+      <div class="steps">
+        <div class="step"><span class="n">1</span><h3>Start a project</h3>
+          <p>Pick an area and a year. Choose the base classes to start from: IndiaSAT's four or WorldCover's seven.</p></div>
+        <div class="step"><span class="n">2</span><h3>Split the classes you care about</h3>
+          <p>Use a model from the zoo and say what its classes mean to you, or upload labelled polygons
+            (one GeoJSON, a <code>class</code> on each) and train your own in minutes.</p></div>
+        <div class="step"><span class="n">3</span><h3>Run, keep, share</h3>
+          <p>Every run is saved with the scheme that made it. Download the GeoTIFF or the whole project,
+            and make it public when it's ready.</p></div>
+      </div>
+      <p class="note" style="margin-top:14px">Under the hood: Google's Alpha Earth embeddings, classified as band math
+        inside Earth Engine, so a whole district renders as map tiles with nothing downloaded.</p>
+    </section>
+
+    <section class="band" id="public">
+      <h2>Public projects</h2>
+      <div class="pub" id="pubList"><p class="note">Loading…</p></div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="wrap">Part of <a href="https://core-stack.org/" target="_blank" rel="noopener">CoRE Stack</a>,
+      IIT Delhi.</div>
+  </footer>
+
+  <script src="config.js"></script>
+  <script>
+    // the front page: say what this is, play the video, sign in, list what others made public
+    const CFG = window.CORESTACK_CFG || {};
+    const API = (CFG.apiBase || "").replace(/\/$/, "");
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+    // the video: a YouTube link becomes an embed, an mp4 plays in place, nothing set -> a placeholder
+    function showVideo(url) {
+      const box = $("video");
+      if (!url) {
+        box.innerHTML = `<div class="ph"><b>Video coming soon</b>
+          <span>The walkthrough goes up on the CoRE Stack YouTube channel and plays here.</span></div>`;
+        return;
+      }
+      const yt = url.match(/(?:youtu\.be\/|v=|embed\/)([\w-]{11})/);
+      box.innerHTML = yt
+        ? `<iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}" title="Core Stack LULC walkthrough"
+             allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen></iframe>`
+        : `<video src="${esc(url)}" controls preload="metadata"></video>`;
+    }
+
+    async function signedInAs(user) {
+      $("signinHead").textContent = `Signed in as ${user.name}`;
+      $("gsi").style.display = "none";
+      $("devBox").style.display = "none";
+      $("signedIn").style.display = "block";
+      $("signinNote").textContent = "";
+    }
+
+    async function post(path, body) {
+      const r = await fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify(body || {}) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      return d;
+    }
+
+    // Google hands the page a signed ID token; the server checks it and sets the session cookie
+    function setupGoogle(clientId) {
+      const s = document.createElement("script");
+      s.src = "https://accounts.google.com/gsi/client"; s.async = true;
+      s.onload = () => {
+        google.accounts.id.initialize({
+          client_id: clientId,
+          callback: async (resp) => {
+            try { await post("/api/auth/google", { credential: resp.credential }); location.href = "app"; }
+            catch (e) { $("err").textContent = e.message; }
+          },
+        });
+        google.accounts.id.renderButton($("gsi"), { theme: "filled_blue", size: "large", text: "signin_with" });
+      };
+      s.onerror = () => { $("err").textContent = "Couldn't load Google sign-in (is accounts.google.com reachable?)."; };
+      document.head.appendChild(s);
+      $("signinNote").textContent = "Institutional access through Google sign-in.";
+    }
+
+    async function init() {
+      showVideo(CFG.introVideo);
+      const me = await (await fetch(API + "/api/auth/me")).json().catch(() => ({}));
+      if (me.user) signedInAs(me.user);
+      else if (me.google_client_id) setupGoogle(me.google_client_id);
+      else if (me.dev_login) {
+        $("devBox").style.display = "flex";
+        $("signinNote").textContent = "Local sign-in: this server has no Google client id set, so any name works. It switches off once Google sign-in is configured.";
+      }
+      const pub = (await (await fetch(API + "/api/projects/public")).json().catch(() => ({}))).projects || [];
+      $("pubList").innerHTML = pub.length ? pub.map((p) =>
+        `<a class="pcard" href="app?project=${p.id}"><div class="t">${esc(p.name)}</div>
+           <div class="m">${esc(p.owner_name)} · ${p.year} · ${p.current_run ? p.current_run + " run(s)" : "not run yet"}</div></a>`).join("")
+        : `<p class="note">Nothing public yet. Projects show up here when their owners share them.</p>`;
+    }
+    $("devGo").onclick = async () => {
+      try { await post("/api/auth/dev", { name: $("devName").value }); location.href = "app"; }
+      catch (e) { $("err").textContent = e.message; }
+    };
+    $("devName").onkeydown = (e) => { if (e.key === "Enter") $("devGo").click(); };
+    $("signOut").onclick = async () => { await post("/api/auth/logout"); location.reload(); };
+    init();
+  </script>
+</body>
+</html>

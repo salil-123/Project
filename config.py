@@ -60,6 +60,76 @@ def model_path(rel) -> str:
     legacy = DATA_DIR.joinpath(*tail)
     return str(legacy if legacy.exists() else new)
 
+
+# ----------------------------- Per-project workspace (week 18) -----------------------------
+# A user's scheme state (hierarchy, op log, merges, examples, the weights trained for it) used to be
+# one global set of files in data/, so two users, or two projects that both split greenery, trod on
+# each other. Now each request runs against a workspace: a project's own folder when the request
+# names one, else data/ itself, which is exactly the old behaviour for scripts and the DAG.
+# A ContextVar, not a global, because FastAPI serves requests on a thread pool; each request carries
+# its own value and the thread pool copies it along.
+import contextvars
+
+PROJECTS_DIR = DATA_DIR / "projects"
+_workspace = contextvars.ContextVar("corestack_workspace", default=None)
+
+
+def use_workspace(path):
+    """Point this request (or script) at a workspace folder; returns a token for reset_workspace."""
+    return _workspace.set(Path(path) if path else None)
+
+
+def reset_workspace(token):
+    _workspace.reset(token)
+
+
+def workspace_dir() -> Path:
+    """Where scheme state lives right now: the active project's folder, or data/."""
+    return _workspace.get() or DATA_DIR
+
+
+def in_project() -> bool:
+    return _workspace.get() is not None
+
+
+def ws_path(rel) -> str:
+    """A scheme-state file inside the current workspace, e.g. ws_path('hierarchy.json')."""
+    return str(workspace_dir() / rel)
+
+
+def weights_path(clf) -> str:
+    """Where a split classifier's weights live. Inside a project that's its own weights/ folder, so
+    two projects never share a joblib; outside one it's the shared models/refine/ home as before.
+    No fallback to the shared copy on purpose: a project missing its file must say so, not quietly
+    load some other scheme's greenery.joblib with different classes. Zoo applies copy weights in."""
+    if in_project():
+        return str(workspace_dir() / "weights" / f"{clf}.joblib")
+    return model_path(f"refine/{clf}.joblib")
+
+
+def weights_write_path(clf) -> str:
+    """Where a freshly trained split gets saved (never the shared copy from inside a project)."""
+    if in_project():
+        d = workspace_dir() / "weights"
+        d.mkdir(parents=True, exist_ok=True)
+        return str(d / f"{clf}.joblib")
+    return model_path(f"refine/{clf}.joblib")
+
+
+# ----------------------------- Users, sign-in, front page (week 18) -----------------------------
+# DATABASE_URL: Postgres on the cluster (checklist #9). Unset on a laptop -> a SQLite file in data/.
+DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{(DATA_DIR / 'corestack.db').as_posix()}"
+# The Google OAuth client id is public by design (it ships to the browser). Unset -> the dev login.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+# Signs the session cookie. Must be set on any shared deploy; the fallback is only fit for a laptop.
+SESSION_SECRET = os.getenv("SESSION_SECRET", "")
+SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
+# Lets the Airflow DAG (and scripts) call back without a browser session, like Susmit's
+# X-Service-Token. Unset -> the callback paths stay open as they were; set it on the tower.
+SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "")
+# The explainer video on the front page: a YouTube embed url or an mp4 path. Empty -> a placeholder.
+INTRO_VIDEO_URL = os.getenv("INTRO_VIDEO_URL", "")
+
 # ----------------------------- AOI size caps (#3) -----------------------------
 # Guardrails so a user can't draw a huge box and blow up compute/download time. All
 # admin-tunable via .env (a server admin sizing the deployment can loosen/tighten these;
@@ -79,7 +149,7 @@ EE_ASSET_ROOT = os.getenv("EE_ASSET_ROOT", f"projects/{EE_PROJECT}/assets/corest
 STAC_ASSET_BASE = os.getenv("STAC_ASSET_BASE", "")
 
 AOI_TILE_CAP_KM2 = float(os.getenv("AOI_TILE_CAP_KM2", "40000"))     # ~200x200 km
-AOI_GEOTIFF_CAP_KM2 = float(os.getenv("AOI_GEOTIFF_CAP_KM2", "600"))  # ~25x25 km
+AOI_GEOTIFF_CAP_KM2 = float(os.getenv("AOI_GEOTIFF_CAP_KM2", "250"))  # ~16x16 km; measured: 256 km2 exports, 368 hits EE memory
 AOI_TESSERA_MAX_TILES = int(os.getenv("AOI_TESSERA_MAX_TILES", "6"))  # ~6 x 150 MB
 
 # minimum polygon area (hectares) when vectorizing a class into segments (#4 wk10). Below this a

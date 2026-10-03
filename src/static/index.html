@@ -3,144 +3,141 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Core Stack — LULC</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%232e8b2e'/%3E%3Crect x='8' width='8' height='8' fill='%231e88e5'/%3E%3Crect y='8' width='8' height='8' fill='%23c2a05a'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23d7301f'/%3E%3C/svg%3E">
+  <title>Custom LULC</title>
   <!-- Leaflet is vendored, not pulled from a CDN: the campus proxy blocks unpkg on the deploy host,
        which left the page with a dead map. Every href here is RELATIVE so the app also works when
        it's served under a reverse-proxy subpath (/corestack-lulc/) instead of the domain root. -->
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <link rel="stylesheet" href="vendor/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="style.css?v=32" />
+  <link rel="stylesheet" href="style.css?v=39" />
 </head>
 <body>
   <aside id="sidebar">
-    <h1>Core Stack <span>LULC</span></h1>
+    <div class="topbar">
+      <h1><a href="./" class="home">Core Stack <span>LULC</span></a></h1>
+      <span id="whoami" class="whoami"></span>
+    </div>
 
-    <section>
-      <label>Area</label>
-      <select id="preset"></select>
-      <div id="custom" class="hidden">
-        <div class="row">
-          <span><label>Lat</label><input id="clat" type="number" step="0.001" value="28.540"></span>
-          <span><label>Lon</label><input id="clon" type="number" step="0.001" value="77.185"></span>
+    <!-- the open project: what it is, where, which year, and who can see it -->
+    <section id="projHead" class="hidden">
+      <div class="proj-top">
+        <div>
+          <div class="proj-name" id="projName"></div>
+          <div class="proj-meta" id="projMeta"></div>
         </div>
-        <label>Half-size (deg): <b id="halfval">0.010</b></label>
-        <input id="half" type="range" min="0.005" max="0.25" step="0.005" value="0.01">
+        <button id="switchProject" class="mini" title="Back to your projects">⇄ Switch</button>
       </div>
-      <p class="hint" id="aoihint">Pick a preset, draw a box (▭), or choose <b>Custom</b> and click the map.</p>
-      <p class="hint aoi-size" id="aoiSize"></p>
+      <div class="row proj-ctl">
+        <span><label>Year</label><select id="projYear"></select></span>
+        <span><label>Visibility</label>
+          <select id="projPublic">
+            <option value="0">Private</option>
+            <option value="1">Public</option>
+          </select></span>
+      </div>
+      <div id="readOnly" class="readonly hidden">
+        You're viewing someone else's public project.
+        <button id="copyProject" class="primary">Copy to my projects</button>
+      </div>
+    </section>
+
+    <!-- running is always a deliberate click (point 7); an edit only raises the banner -->
+    <section id="runBox" class="hidden">
+      <div id="stale" class="stale hidden"></div>
       <div class="run-row">
         <button id="run" class="primary">Run classification</button>
         <button id="eyeToggle" title="Hide / show the classification overlay">👁</button>
       </div>
-      <div class="run-row">
-        <button id="dlTif" class="ghost" title="Download the classified area as a GeoTIFF">⬇ GeoTIFF</button>
-      </div>
       <div id="status" class="status"></div>
+      <h3 class="runs-head">Runs</h3>
+      <div id="runsList" class="runs-list"><p class="hint">No runs yet.</p></div>
+      <div class="dl-row">
+        <button id="dlTif" class="ghost" disabled title="GeoTIFF of the run on the map">⬇ GeoTIFF</button>
+        <button id="dlProject" class="ghost" title="Scheme, examples, models and every run, as one zip">⬇ Project</button>
+        <button id="exportStacd" class="ghost" title="STAC Item + DAG provenance for the run">⬇ STACD</button>
+      </div>
     </section>
 
-    <section>
-      <h3>🌳 Hierarchy</h3>
+    <section id="hierBox" class="hidden">
+      <h3>🌳 Classes</h3>
       <!-- two ways to see the same scheme (#13): the logical tree, or the ordered steps that built it -->
       <div class="views">
         <button id="viewHier" class="vtab sel">By hierarchy</button>
         <button id="viewOps" class="vtab">By operations</button>
       </div>
-      <p class="hint">Click a class to select it, then use the panel on the right. Selected: <b id="selName">root</b></p>
+      <p class="hint">Pick a class to refine it. Selected: <b id="selName">nothing</b></p>
       <div id="tree"></div>
-      <!-- the operations / schema view: the sequence that defines the current scheme -->
       <div id="ops" class="hidden"></div>
-      <button id="startFresh" class="ghost">↺ Start fresh (reset to base)</button>
-    </section>
-
-    <section>
-      <h3>💾 Save / resume project</h3>
-      <button id="exportHier">Download project (JSON)</button>
-      <button id="exportStacd" class="ghost" title="STAC Item + DAG provenance for the current output">⬇ Provenance (STACD)</button>
-      <p class="hint">Resume a saved project:</p>
-      <input id="importHier" type="file" accept=".json">
+      <button id="startFresh" class="ghost">↺ Reset scheme to the base classes</button>
     </section>
 
     <section>
       <h3>🗂️ Model Zoo <span id="zooBadge" class="badge"></span></h3>
-      <button id="openZoo" class="primary">Open Model Zoo</button>
+      <button id="openZoo">Browse the Model Zoo</button>
     </section>
   </aside>
 
   <main id="map"></main>
 
-  <!-- right-hand contextual panel: what you can do with the class selected on the left (#8). The
-       blocks are always present (ids kept so handlers bind once) but shown/hidden per selection. -->
-  <aside id="context">
-    <h2 id="ctxHead">Pick a class</h2>
-    <p class="hint" id="ctxWhat">Select a class in the Hierarchy to begin.</p>
+  <!-- right-hand panel: hidden until a class is picked, then only what fits that class (points 9, 10).
+       Blocks keep their ids so handlers bind once; renderContext shows/hides them per selection. -->
+  <aside id="context" class="hidden">
+    <!-- a way out of the panel: back to the class you had before, or close it -->
+    <div class="ctx-nav">
+      <button id="ctxBack" class="mini" title="Back to the class you had open before">← Back</button>
+      <button id="ctxClose" class="mini" title="Close this panel">✕</button>
+    </div>
+    <h2 id="ctxHead"></h2>
+    <p class="hint" id="ctxWhat"></p>
 
-    <section id="ctxExamples" class="ctx-block">
-      <h3>① Mark example data</h3>
-      <p class="hint">Draw a polygon on the map, pick a role, then Add.</p>
-      <label>Role</label>
-      <select id="role">
-        <option value="positive">positive</option>
-        <option value="negative">negative</option>
-      </select>
-      <button id="addDrawn">Add drawn polygon</button>
-      <p class="hint">…or upload a GeoJSON / KML of polygons</p>
-      <input id="upload" type="file" accept=".geojson,.json,.kml">
-      <div id="dataDist" class="datadist"></div>
-    </section>
-
+    <!-- a leaf: split it. Using a model comes first, building your own second, as sir asked -->
     <section id="ctxSplit" class="ctx-block">
-      <h3>② Split into finer classes</h3>
-      <input id="splitNames" type="text" placeholder="e.g. cereal, orchard">
-      <button id="doSplit">Create split (mark your own data)</button>
-      <button id="splitFromZoo" class="ghost">Use a model from the Zoo</button>
-    </section>
-
-    <section id="ctxRuleSplit" class="ctx-block">
-      <h3>②′ Split by rule (no training)</h3>
-      <label>Index variable</label>
-      <select id="ruleVar"></select>
-      <p class="hint" id="ruleVarDesc"></p>
-      <div class="row">
-        <span><label>is</label>
-          <select id="ruleOp">
-            <option value="&gt;">&gt;</option>
-            <option value="&lt;">&lt;</option>
-            <option value="&gt;=">&ge;</option>
-            <option value="&lt;=">&le;</option>
-          </select></span>
-        <span><label>threshold</label><input id="ruleThresh" type="number" step="0.05" value="0.3"></span>
+      <h3>Split <span class="ctxcls"></span> into finer classes</h3>
+      <div class="path">
+        <div class="path-h"><span class="n">A</span> Use a model from the zoo</div>
+        <p class="hint">Pick a trained model, then say what each of its classes means in your scheme.</p>
+        <button id="splitFromZoo" class="primary">Choose a model…</button>
       </div>
-      <label>Class when true</label>
-      <input id="ruleTrue" type="text" placeholder="e.g. dense_veg">
-      <label>Class otherwise (default)</label>
-      <input id="ruleFalse" type="text" placeholder="e.g. sparse_veg">
-      <details class="advrule">
-        <summary>Advanced: raw expression</summary>
-        <input id="ruleExpr" type="text" placeholder="ndvi_annual > 0.3 && slope < 5">
-      </details>
-      <button id="doRuleSplit">Create rule split</button>
+      <div class="path">
+        <div class="path-h"><span class="n">B</span> Build your own</div>
+        <label class="filebtn"><input id="uploadLabelled" type="file" accept=".geojson,.json">
+          <span>⬆ Upload labelled polygons</span></label>
+        <p class="hint">One GeoJSON, a <code>class</code> on every polygon; the classes are read off the file.
+          <a href="api/upload-format/example.geojson" download>Example file</a> ·
+          <a href="#" id="fmtToggle">format</a></p>
+        <div id="fmtHelp" class="fmt hidden">
+          <b>Standard format</b> — a GeoJSON <i>FeatureCollection</i> in lon/lat (EPSG:4326).
+          Every feature is a <i>Polygon</i> or <i>MultiPolygon</i> with
+          <code>"class": "&lt;name&gt;"</code>. Optional: <code>"role": "negative"</code> for
+          "this is <i>not</i> that class", and a free-text <code>"note"</code>. Everything else is ignored.
+          At least two classes for a new split, and the polygons must fall inside the project's area.
+        </div>
+        <p class="or">or name the classes and draw them yourself</p>
+        <input id="splitNames" type="text" placeholder="e.g. acacia, non acacia">
+        <button id="doSplit">Create split</button>
+      </div>
     </section>
 
-    <section id="ctxAdd" class="ctx-block">
-      <h3>③ Add a class</h3>
-      <input id="addName" type="text" placeholder="new class name">
-      <button id="doAdd">Add class</button>
-    </section>
-
-    <section id="ctxMerge" class="ctx-block">
-      <h3>④ Merge classes</h3>
-      <p class="hint">Tick two or more leaves in the Hierarchy, name them, then Merge. Undo with ✕ in the tree.</p>
-      <label>New class name</label>
-      <input id="mergeName" type="text" placeholder="e.g. extractive land">
-      <label class="mergecolor">Colour <input id="mergeColor" type="color" value="#8e44ad"></label>
-      <button id="doMerge">Create merge</button>
-    </section>
-
-    <section id="ctxRetrain" class="ctx-block">
-      <h3>⑤ Retrain this split</h3>
-      <!-- balancing + multi-year are training-your-own-model options; shown only in that flow (#12) -->
-      <div id="retrainAdvanced">
+    <!-- a node with a split: improve it (more data, train) or replace it -->
+    <section id="ctxImprove" class="ctx-block">
+      <h3>Train the <span class="ctxcls"></span> split</h3>
+      <div id="dataDist" class="datadist"></div>
+      <label>Add examples to</label>
+      <select id="exChild"></select>
+      <p class="hint">Draw a polygon (⬠ on the map) and add it, or upload a file. A file with a
+        <code>class</code> on each polygon fills every class; one without goes to the class picked above.</p>
+      <div class="btn-pair">
+        <button id="addDrawn">Add drawn polygon</button>
+        <label class="filebtn"><input id="uploadMore" type="file" accept=".geojson,.json,.kml">
+          <span>⬆ Upload file</span></label>
+      </div>
+      <!-- examples by default; counter-examples are the rare case, so they're a tick, not a choice -->
+      <label class="check counter"><input type="checkbox" id="role">
+        <span>counter-example: these are <b>not</b> <span id="roleCls">it</span></span></label>
+      <details class="opts">
+        <summary>Model options</summary>
         <label>Algorithm</label>
         <select id="algo">
           <option value="linearsvc">LinearSVC (default)</option>
@@ -161,23 +158,141 @@
           <option value="undersample">undersample the majority</option>
           <option value="oversample">oversample the minority</option>
         </select>
-        <label>Train across years (blank = 2024)</label>
+        <label>Train across years (blank = the project year)</label>
         <input id="trainYears" type="text" placeholder="e.g. 2019, 2021, 2023" />
-      </div>
-      <button id="doRetrain" class="primary">Retrain & apply</button>
+      </details>
+      <button id="doRetrain" class="primary">Train</button>
       <pre id="metrics" class="metrics"></pre>
+      <details class="opts">
+        <summary>Replace this split with a zoo model</summary>
+        <p class="hint">Swaps the classes under <span class="ctxcls"></span> for the model's (you map them next).</p>
+        <button id="replaceFromZoo">Choose a model…</button>
+      </details>
+    </section>
+
+    <!-- a leaf inside a split: its own examples, for the parent's model -->
+    <section id="ctxExamples" class="ctx-block">
+      <h3>Examples of <span class="ctxcls"></span></h3>
+      <p class="hint">They train the <b id="exParent"></b> split. Draw a polygon and add it, or upload
+        GeoJSON / KML polygons of this class.</p>
+      <div class="btn-pair">
+        <button id="addDrawnLeaf">Add drawn polygon</button>
+        <label class="filebtn"><input id="uploadLeaf" type="file" accept=".geojson,.json,.kml">
+          <span>⬆ Upload file</span></label>
+      </div>
+      <label class="check counter"><input type="checkbox" id="roleLeaf">
+        <span>counter-example: these are <b>not</b> <span class="ctxcls"></span></span></label>
+      <button id="gotoParent" class="ghost">Go to the split to train it</button>
+    </section>
+
+    <details id="ctxRuleSplit" class="ctx-block opts">
+      <summary>Split by a rule instead (no training)</summary>
+      <label>Index variable</label>
+      <select id="ruleVar"></select>
+      <p class="hint" id="ruleVarDesc"></p>
+      <div class="row">
+        <span><label>is</label>
+          <select id="ruleOp">
+            <option value="&gt;">&gt;</option>
+            <option value="&lt;">&lt;</option>
+            <option value="&gt;=">&ge;</option>
+            <option value="&lt;=">&le;</option>
+          </select></span>
+        <span><label>threshold</label><input id="ruleThresh" type="number" step="0.05" value="0.3"></span>
+      </div>
+      <label>Class when true</label>
+      <input id="ruleTrue" type="text" placeholder="e.g. dense_veg">
+      <label>Class otherwise</label>
+      <input id="ruleFalse" type="text" placeholder="e.g. sparse_veg">
+      <details class="advrule">
+        <summary>Advanced: raw expression</summary>
+        <input id="ruleExpr" type="text" placeholder="ndvi_annual > 0.3 && slope < 5">
+      </details>
+      <button id="doRuleSplit">Create rule split</button>
+    </details>
+
+    <section id="ctxAdd" class="ctx-block">
+      <h3 id="addHead">Add a class</h3>
+      <p class="hint" id="addHint"></p>
+      <input id="addName" type="text" placeholder="new class name">
+      <button id="doAdd">Add class</button>
+    </section>
+
+    <section id="ctxMerge" class="ctx-block">
+      <h3>Merge classes</h3>
+      <p class="hint">Tick two or more classes in the tree, name the result, then merge. Undo with ✕ in the tree.</p>
+      <input id="mergeName" type="text" placeholder="e.g. extractive land">
+      <label class="mergecolor">Colour <input id="mergeColor" type="color" value="#8e44ad"></label>
+      <button id="doMerge">Create merge</button>
     </section>
   </aside>
 
   <div id="toast" class="toast hidden"></div>
 
-  <!-- first-run: pick the base classes to start from before doing anything else -->
-  <div id="base-onboard" class="hidden">
-    <div class="onboard-card">
-      <h2>Choose your base classes</h2>
-      <div id="baseOptions"></div>
-      <button id="baseSkip" class="ghost">Keep the current scheme</button>
+  <!-- start: new project or open one, nothing else (point 9) -->
+  <div id="start" class="hidden">
+    <header class="start-bar">
+      <a href="./" class="brand">Core Stack <span>LULC</span></a>
+      <span id="startWho" class="whoami"></span>
+    </header>
+    <div class="start-wrap">
+      <div class="start-top">
+        <h2>What are you working on?</h2>
+        <p>Start a new project, or pick up one you've already got.</p>
+      </div>
+      <div class="start-cols">
+        <div class="start-card">
+          <h3>New project</h3>
+          <p class="hint">An area, a year and the base classes to start from. The area is fixed once the project has a run.</p>
+          <label>Name</label>
+          <input id="npName" type="text" placeholder="e.g. Sanjay Van acacia">
+          <label>Area</label>
+          <div class="seg" id="npAreaMode">
+            <button data-mode="preset" class="sel">Preset</button>
+            <button data-mode="coords">Coordinates</button>
+            <button data-mode="draw">Draw on map</button>
+          </div>
+          <div id="npModePreset"><select id="npPreset"></select></div>
+          <div id="npModeCoords" class="hidden">
+            <div class="row">
+              <span><label>Latitude</label><input id="npLat" type="number" step="0.001" value="28.540"></span>
+              <span><label>Longitude</label><input id="npLon" type="number" step="0.001" value="77.185"></span>
+              <span><label>Box size (km)</label><input id="npKm" type="number" step="0.5" min="0.5" value="4"></span>
+            </div>
+          </div>
+          <p class="hint aoi-size" id="npArea"></p>
+          <div class="row">
+            <span><label>Year</label><select id="npYear"></select></span>
+            <span><label>Start from</label>
+              <select id="npBase">
+                <option value="indiasat">IndiaSAT (4 classes)</option>
+                <option value="worldcover">WorldCover (7 classes)</option>
+              </select></span>
+          </div>
+          <p class="hint" id="npBaseHint"></p>
+          <button id="npCreate" class="primary">Create project</button>
+        </div>
+        <div class="start-card">
+          <h3>Your projects</h3>
+          <div id="myProjects" class="plist"><p class="hint">Loading…</p></div>
+          <div class="import-row">
+            <label class="filebtn"><input id="importProject" type="file" accept=".zip,.json">
+              <span>⬆ Import a saved project (.zip or .json)</span></label>
+            <p class="hint">A project you downloaded here, or a <code>project.json</code> saved by the older version.</p>
+          </div>
+        </div>
+      </div>
+      <div class="start-card pub-card">
+        <h3>Public projects</h3>
+        <div id="pubProjects" class="plist pgrid"><p class="hint">Loading…</p></div>
+      </div>
     </div>
+  </div>
+
+  <!-- drawing a new project's area: a thin bar over the map while the start card is tucked away -->
+  <div id="drawBar" class="drawbar hidden">
+    Drag a box on the map with ▭ (top left) to set the area.
+    <button id="drawCancel" class="ghost">Cancel</button>
   </div>
 
   <!-- full-screen Model Zoo: browse the catalogue without crowding the sidebar -->
@@ -188,13 +303,14 @@
         <button class="ztab sel" data-tab="model">Models</button>
         <button class="ztab" data-tab="dataset">Datasets</button>
       </div>
-      <label class="zoo-aoi check"><input type="checkbox" id="zooAoi"> only for current view</label>
+      <label class="zoo-aoi check"><input type="checkbox" id="zooAoi"> only for this project's area</label>
       <div class="zoo-actions">
         <button id="zooPublishSel" disabled>Publish selected</button>
         <button id="zooPublishAll">Publish all</button>
         <button id="closeZoo">✕ Close</button>
       </div>
     </header>
+    <div id="zooPick" class="zoo-pick hidden"></div>
     <div class="zoo-body">
       <div id="zoo-grid" class="zoo-grid"></div>
       <aside id="zoo-detail" class="zoo-detail"><p class="hint">Select a card to see its details.</p></aside>
@@ -203,9 +319,9 @@
 
   <script src="vendor/leaflet.js"></script>
   <script src="vendor/leaflet.draw.js"></script>
-  <!-- runtime config from the server (API base, build info). Served, not baked, so retargeting the
-       UI at another backend is an .env change rather than a code edit. Must load before app.js. -->
+  <!-- runtime config from the server (API base, sign-in, Airflow). Served, not baked, so retargeting
+       the UI at another backend is an .env change rather than a code edit. Must load before app.js. -->
   <script src="config.js"></script>
-  <script src="app.js?v=39"></script>
+  <script src="app.js?v=46"></script>
 </body>
 </html>
