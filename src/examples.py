@@ -24,12 +24,18 @@ import config
 import hierarchy
 import sampling
 
-EXAMPLES_DIR = config.project_path("data/examples")  # anchored to root, CWD-independent
+# a fixed path only when a self-test pins one; otherwise it lives in the current workspace
+# (the open project's folder, or data/), see config.ws_path
+EXAMPLES_DIR = None
+
+
+def examples_dir():
+    return EXAMPLES_DIR or config.ws_path("examples")
 ROLES = ("positive", "negative")
 
 
 def _path(node):
-    return os.path.join(EXAMPLES_DIR, f"{node}.geojson")
+    return os.path.join(examples_dir(), f"{node}.geojson")
 
 
 def _empty_fc():
@@ -82,7 +88,7 @@ def add_examples(node, src, role="positive", name=None):
             "properties": {"node": node, "role": role, "name": name,
                            "ts": datetime.now(timezone.utc).isoformat()},
         })
-    os.makedirs(EXAMPLES_DIR, exist_ok=True)
+    os.makedirs(examples_dir(), exist_ok=True)
     with open(_path(node), "w") as fh:
         json.dump(fc, fh)
     return len(fc["features"])
@@ -104,25 +110,25 @@ def archive_all():
     a move, not a delete, so nothing's lost and trained models (which live as joblibs/zoo cards) are
     untouched. Returns the list of nodes whose examples were cleared."""
     import shutil
-    if not os.path.isdir(EXAMPLES_DIR):
+    if not os.path.isdir(examples_dir()):
         return []
-    files = [fn for fn in os.listdir(EXAMPLES_DIR) if fn.endswith(".geojson")]
+    files = [fn for fn in os.listdir(examples_dir()) if fn.endswith(".geojson")]
     if not files:
         return []
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
-    dest = os.path.join(EXAMPLES_DIR, "archive", stamp)
+    dest = os.path.join(examples_dir(), "archive", stamp)
     os.makedirs(dest, exist_ok=True)
     for fn in files:
-        shutil.move(os.path.join(EXAMPLES_DIR, fn), os.path.join(dest, fn))
+        shutil.move(os.path.join(examples_dir(), fn), os.path.join(dest, fn))
     return [fn[: -len(".geojson")] for fn in files]
 
 
 def summary():
     """Per-node example counts broken down by role — handy for the UI/debugging."""
     out = {}
-    if not os.path.isdir(EXAMPLES_DIR):
+    if not os.path.isdir(examples_dir()):
         return out
-    for fn in os.listdir(EXAMPLES_DIR):
+    for fn in os.listdir(examples_dir()):
         if not fn.endswith(".geojson"):
             continue
         node = fn[:-len(".geojson")]

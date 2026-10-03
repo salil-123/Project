@@ -273,20 +273,166 @@ button.ghost:hover { background: #1d232c; color: #cfd4db; }
 .merge-rule .rm { margin-left: auto; width: auto; padding: 2px 7px; font-size: 11px; }
 .cell-info b { color: #4ea1ff; text-transform: capitalize; }
 
-/* first-run base-class chooser: a centered modal over everything */
-#base-onboard { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center;
-  justify-content: center; background: rgba(8,10,14,.72); }
-#base-onboard.hidden { display: none; }
-.onboard-card { width: 460px; max-width: 92vw; background: #161b22; border: 1px solid #262b34;
-  border-radius: 12px; padding: 26px 26px 20px; color: #e6e8ec; box-shadow: 0 12px 40px rgba(0,0,0,.5); }
-.onboard-card h2 { font-size: 19px; margin-bottom: 6px; }
-.onboard-card > p { font-size: 13px; color: #8b919c; line-height: 1.5; margin-bottom: 16px; }
-.onboard-opt { border: 1px solid #2c333d; border-radius: 9px; padding: 13px 14px; margin-bottom: 10px;
+
+/* ---------------- week 18: projects, runs, the start screen ---------------- */
+/* one rhythm for the two side panels: 16px between blocks, 8px inside them */
+#sidebar section { padding: 16px 0; }
+#sidebar section:first-of-type { border-top: none; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding-bottom: 14px; border-bottom: 1px solid #262b34; }
+.topbar h1 { line-height: 1; }
+.topbar .home { color: inherit; text-decoration: none; }
+.whoami { font-size: 12px; color: #8b919c; text-align: right; white-space: nowrap; }
+.whoami a { color: #6b9bff; margin-left: 8px; }
+
+.proj-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.proj-name { font-size: 16px; font-weight: 700; color: #e6e8ec; word-break: break-word; line-height: 1.3; }
+.proj-meta { font-size: 12px; color: #8b919c; margin-top: 3px; }
+button.mini { width: auto; margin: 0; padding: 5px 10px; font-size: 12px; flex-shrink: 0;
+  background: none; border: 1px solid #2c333d; color: #9aa3af; }
+button.mini:hover { background: #1d232c; color: #cfd4db; }
+.proj-ctl { margin-top: 4px; }
+select:disabled { opacity: .6; }
+.readonly { margin-top: 12px; font-size: 12px; color: #e0b341; background: #2a2412;
+  border-radius: 6px; padding: 10px 12px; }
+.readonly button { margin-top: 8px; }
+
+/* the banner an edit raises, and a nudge on Run, instead of re-running by itself (point 7) */
+.stale { font-size: 12px; line-height: 1.45; color: #f1d487; background: #2a2412;
+  border-left: 3px solid #e0b341; border-radius: 4px; padding: 8px 10px; margin-bottom: 2px; }
+#run.pulse { box-shadow: 0 0 0 2px #e0b341 inset; }
+.run-row button { margin-top: 10px; }
+.status:empty { display: none; }
+.runs-head { margin-top: 16px; }
+.runs-list { max-height: 150px; overflow-y: auto; }
+.runs-list .hint { margin: 0; }
+.run-item { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px;
+  padding: 7px 9px; border-radius: 5px; cursor: pointer; color: #cfd4db; }
+.run-item:hover { background: #1d232c; }
+.run-item.sel { background: #2b3340; box-shadow: inset 2px 0 0 #4ea1ff; }
+.run-item .rmeta { color: #7e8794; white-space: nowrap; }
+/* three downloads, equal width, one row; a hidden one gives its room to the others */
+.dl-row { display: flex; gap: 6px; margin-top: 10px; }
+.dl-row button { flex: 1; margin: 0; padding: 8px 4px; font-size: 12px; }
+button.ghost { margin-top: 10px; }
+button:disabled { opacity: .45; cursor: default; }
+button:disabled:hover { background: inherit; }
+
+/* the context panel: blocks separated evenly, controls spaced the same everywhere */
+#context > h2 { margin-bottom: 2px; }
+#context .ctx-block { padding: 16px 0; }
+#context .ctx-block > h3 { margin-bottom: 8px; }
+#context .hint { line-height: 1.45; }
+#context code { font-size: 11px; }
+
+/* the split block: two paths, the zoo first */
+.path { border: 1px solid #262b34; border-radius: 8px; padding: 12px; margin-top: 10px; background: #161b22; }
+.path-h { font-size: 13px; font-weight: 600; color: #e6e8ec; display: flex; align-items: center; gap: 8px; }
+.path-h .n { width: 20px; height: 20px; border-radius: 50%; background: #2f6df6; color: #fff;
+  font-size: 11px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.path .hint { margin: 6px 0 0; }
+.path .hint a, #context .hint a { color: #6b9bff; }
+.or { font-size: 11px; color: #7e8794; margin: 14px 0 0; text-align: center; display: flex;
+  align-items: center; gap: 8px; }
+.or::before, .or::after { content: ""; flex: 1; border-top: 1px solid #262b34; }
+.fmt { font-size: 11px; line-height: 1.55; color: #aeb4be; background: #1a1f27; border-radius: 6px;
+  padding: 8px 10px; margin-top: 8px; }
+code { font-family: ui-monospace, monospace; color: #9ecbff; font-size: 11px; }
+details.opts { margin-top: 12px; }
+details.opts > summary { cursor: pointer; font-size: 12px; color: #9aa3af; padding: 2px 0; }
+details.opts[open] > summary { margin-bottom: 4px; }
+#ctxRuleSplit { padding: 14px 0; }
+#ctxRuleSplit > summary { font-size: 13px; }
+
+/* file pickers look like our buttons, not the browser's white "Choose File" */
+.filebtn { display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 10px;
+  padding: 9px; border-radius: 6px; border: 1px dashed #3a4350; color: #cfd4db; background: #1a1f27;
+  font-size: 13px; cursor: pointer; text-align: center; }
+.filebtn:hover { border-color: #4ea1ff; background: #1d2530; color: #fff; }
+.filebtn input { display: none; }
+.btn-pair { display: flex; gap: 8px; margin-top: 10px; }
+.btn-pair > * { flex: 1; margin: 0 !important; }
+.mergecolor { margin-top: 10px; }
+
+/* start: its own page, centred, nothing of the app showing through */
+#start { position: fixed; inset: 0; z-index: 2500; background: #0f1217; overflow-y: auto; }
+.start-bar { display: flex; align-items: center; justify-content: space-between; height: 60px;
+  padding: 0 28px; border-bottom: 1px solid #262b34; background: #14181f; position: sticky; top: 0; z-index: 1; }
+.start-bar .brand { font-size: 18px; font-weight: 700; color: #e6e8ec; text-decoration: none; }
+.start-bar .brand span { color: #4ea1ff; }
+.start-wrap { width: 960px; max-width: 100%; margin: 0 auto; padding: 40px 20px 60px; }
+.start-top { text-align: center; margin-bottom: 26px; }
+.start-top h2 { font-size: 26px; color: #e6e8ec; }
+.start-top p { font-size: 14px; color: #8b919c; margin-top: 6px; }
+.start-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: stretch; }
+@media (max-width: 800px) { .start-cols { grid-template-columns: 1fr; } }
+.start-card { background: #161b22; border: 1px solid #262b34; border-radius: 12px; padding: 22px;
+  color: #e6e8ec; display: flex; flex-direction: column; }
+.start-card h3 { font-size: 15px; margin-bottom: 4px; }
+.start-card > .hint:first-of-type { margin-top: 4px; }
+.start-card #npCreate { margin-top: auto; }
+.start-card .row + .hint { margin-bottom: 14px; }
+.plist { max-height: 320px; overflow-y: auto; margin-top: 10px; }
+.plist > .hint { margin: 4px 0; }
+.prow { border: 1px solid #262b34; border-radius: 8px; padding: 11px 13px; margin-bottom: 8px;
   cursor: pointer; transition: border-color .15s, background .15s; }
-.onboard-opt:hover { border-color: #4ea1ff; background: #1a2230; }
-.onboard-opt.active { border-color: #3ddc84; }
-.onboard-opt .oo-title { font-size: 14px; font-weight: 600; }
-.onboard-opt .oo-title .tag { font-size: 10px; color: #3ddc84; margin-left: 6px; }
-.onboard-opt .oo-cls { font-size: 12px; color: #9aa3af; margin-top: 4px; }
-.onboard-card .ghost { background: none; color: #8b919c; margin-top: 4px; }
-.onboard-card .ghost:hover { color: #cfd4db; }
+.prow:hover { border-color: #4ea1ff; background: #1a2230; }
+.prow-name { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.prow-meta { font-size: 12px; color: #8b919c; margin-top: 3px; }
+.import-row { margin-top: auto; padding-top: 14px; border-top: 1px solid #262b34; }
+.import-row .hint { margin: 6px 0 0; text-align: center; }
+.pub-card { margin-top: 18px; }
+.pgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px;
+  max-height: none; }
+.pgrid .prow { margin: 0; }
+.pgrid > .hint { grid-column: 1 / -1; }
+/* preset / coordinates / draw: one choice at a time */
+.seg { display: flex; gap: 0; border: 1px solid #2c333d; border-radius: 7px; overflow: hidden; margin-bottom: 8px; }
+.seg button { flex: 1; margin: 0; border-radius: 0; background: #1a1f27; color: #9aa3af; padding: 7px 4px;
+  font-size: 12px; border-right: 1px solid #2c333d; }
+.seg button:last-child { border-right: none; }
+.seg button.sel { background: #2f6df6; color: #fff; font-weight: 600; }
+.aoi-size { margin: 8px 0 0; }
+.drawbar { position: fixed; top: 14px; left: 50%; transform: translateX(-50%); z-index: 2400;
+  background: #1b212b; color: #e6e8ec; border: 1px solid #e0b341; border-radius: 8px; padding: 10px 14px;
+  font-size: 13px; display: flex; gap: 12px; align-items: center; box-shadow: 0 6px 20px rgba(0,0,0,.4); }
+.drawbar button { width: auto; margin: 0; padding: 5px 10px; }
+
+/* the class mapping, in place on the zoo card: model class -> your name, pre-filled */
+.use-box { background: #161b22; border: 1px solid #2c3a4d; border-radius: 8px; padding: 12px 14px; margin: 6px 0 4px; }
+.use-row { display: grid; grid-template-columns: minmax(0, 1fr) 18px minmax(0, 1.3fr); align-items: center; gap: 8px; margin-top: 8px; }
+.use-row .chip { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.use-row .arrow { color: #7e8794; text-align: center; }
+.use-row input { width: 100%; padding: 6px 8px; background: #1d232c; border: 1px solid #2c333d; color: #e6e8ec;
+  border-radius: 6px; font-size: 13px; }
+.use-row input:disabled { opacity: .6; }
+.use-box .hint { margin: 8px 0 0; }
+.use-box button { margin-top: 10px !important; }
+/* counter-example tick: small, under the add buttons, off by default */
+.check.counter { margin-top: 10px; font-size: 12px; color: #9aa3af; gap: 7px; cursor: pointer; }
+.check.counter input { accent-color: #e0b341; }
+.zoo-pick { background: #1b2c3a; color: #cfe6ff; font-size: 13px; padding: 10px 22px;
+  border-bottom: 1px solid #23405a; }
+
+/* zoo cards size to their content (the grid used to squeeze every row to the window) */
+.zoo-grid { grid-auto-rows: max-content; }
+.zoo-card .zc-top { flex-wrap: wrap; }
+.zoo-card .zc-top h4 { flex: 1 1 60%; min-width: 0; }
+.zoo-card .zc-top .pill + .pill { margin-left: -4px; }
+
+/* the toast centres over whatever the map has left: the right panel only counts while it's open,
+   and on the start page there's no sidebar at all */
+.toast { left: calc(var(--sidebar) + (100% - var(--sidebar)) / 2); }
+body.ctx-open .toast { left: calc(var(--sidebar) + (100% - var(--sidebar) - var(--context)) / 2); }
+body.on-start .toast { left: 50%; z-index: 2600; }
+
+/* a class inside a split: its examples block moves to the top of the panel */
+#context { display: flex; flex-direction: column; }
+#context > h2, #context > #ctxWhat { order: -2; }
+#context > .ctx-block.lead { order: -1; }
+.pill.made { background: #1b2c3a; color: #6cb6ff; }
+.use-top { padding: 4px 0 12px; } .use-top button { margin-top: 8px; }
+
+/* the panel's way out: Back to the previous class, or close it */
+#context > .ctx-nav { order: -3; display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.ctx-nav .mini { max-width: 75%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

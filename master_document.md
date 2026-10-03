@@ -1,7 +1,7 @@
 # Core Stack LULC — Master Document
 
 The single source of truth for this project: what it is, what's been built (week by
-week), how the live system fits together, and the week-6 work ahead. Keep this current
+week), and how the live system fits together. Keep this current
 as we go — it's the tracking doc.
 
 Project home: https://core-stack.org/
@@ -69,6 +69,16 @@ GEE assets ─► polygons ─► diverse subset ─► Tessera tiles ─► dua
 | `merges.py` | **(wk6)** Cross-model merge rules → `data/merge_rules.json`: relabel chosen leaves into one new class (a post-inference correction layer, no retraining). |
 | `sampling.py` | Shared embedding sampling: interior pixels in polygons → AE (server-side) / Tessera vectors. |
 | `train_base.py`, `eval_base.py` | Train/eval the base (Realistic) model — drop junk `other`, pool extra water, balance, sweep `wc_weight`, threshold-tune as intercept shifts. Evaluated on random-India + balanced holdout. |
+| `rules.py` | **(wk9)** Rule splits: a node's children resolved by an expression over indices (e.g. `ndvi_annual > 0.3`), no training. |
+| `sentinel.py` | **(wk9)** Raw Sentinel-1/2 features for the per-fortnight water classifier (the annual embedding can't say which fortnight was wet). |
+| `temporal_eval.py` | **(wk7)** Train on some years, test on others. |
+| `validate_ops.py` | **(wk7)** Pre-flight check of an uploaded scheme before anything is applied. |
+| `aoi.py` | **(wk9)** Box size caps per render path (tiles, GeoTIFF, Tessera) and degenerate-box checks. |
+| `ee_rf.py` | **(wk10)** IndiaSAT's EE-native random forests (tree/crop, farm/plantation/scrub), trained and run inside Earth Engine. |
+| `stacd.py` | **(wk9)** STAC Item + DAG provenance for a classified output. |
+| `airflow_client.py`, `jobs.py` | **(wk12)** Trigger and poll the Airflow DAG; a file-backed job store keyed by run id. |
+| `logging_setup.py` | One logging config; logs to a mounted folder, `LOG_LEVEL` picks the detail. |
+| `auth.py`, `db.py`, `projects.py` | **(wk18)** Google sign-in verified on the server + session cookie; users and projects tables; a project's folder and its runs. |
 | `contributions.py` | Stubs only — interfaces for an evolving user-contribution store, not yet active. |
 | `static/{index.html,app.js,style.css}` | Leaflet frontend: map, base-class picker, hierarchy editor, example drawing, operations panel, year picker, merge panel, save/load, full-screen Model Zoo browser. |
 
@@ -125,9 +135,21 @@ root (All land)
 | **5** | **Implement** the zoo backend + wire the frontend. | `catalogue.py` (the card DB), `zoo_git.py` (git-backed publish), backend endpoints, full-screen Zoo UI (browse, "for this area", card detail, publish). Realistic served as EE **map tiles** (crisp at any zoom, no download). Annotate editor + standard mapping. Class-balance feedback + under/oversample. "Use a model from the zoo" (`/api/apply`). Tea/non-tea proven as a test-only split (AE held-out acc **0.934**). GitHub zoo live. |
 | **6** | Make it **own-and-shareable**: user control over data + scheme. | Op-log (`oplog.py`); adjustable diversity grid (#1); inference-data picker — AE 2017–2024 + Tessera-2024 (#7); contributor on publish (#6); auto recommendations (#2); save/reload hierarchy JSON (#4); **merge** / cross-model relabel (`merges.py`, #9); UI sweep (#3); effective **WorldCover base** + base-class picker (#5). All verified, incl. live GEE. See `week6/plan.md`. |
 | **7** | **Apply + harden** on named stress-test sites. | Temporal robustness (`temporal_eval.py`, `year` threaded through `refine`, #3); **coverage** adequacy metric vs the AOI (`catalogue._coverage`, #4); **pre-execution** JSON validator (`validate_ops.py`, `POST /api/hierarchy/validate`, #5); stress-test sites as presets + acacia ingestion (#7/#9/#11); WorldCover-direct analysis (#2); Tessera-as-choice note (#6). See `week7/plan.md`. |
+| **8** | UI restructure + zoo/inference fixes. | Features #2–#27 in three blocks: zoo filtering and placement, entropy/water fixes, the review presentation. See §7. |
+| **9** | Rules, provenance, raw-Sentinel water, guardrails. | Rule splits (index + threshold), op provenance, a raw Sentinel water path, AOI guardrails. See §8. |
+| **10** | Non-linear models, biomass, mining segments, STACD audit. | RF/auto model choice, biomass work, mining segmentation, robustness pass, STACD audit. See §9. |
+| **11** | Review fixes. | Sampling parity, models at any node, biomass split out, pan-India eval, the spurious-water filter, STACD cross-check. See §10. |
+| **12** | Deploy + answer sir's questions + break the framework. | Docker image + STACD/Airflow DAG, answers to 8 questions, a robustness pass with 4 real fixes. See §11. |
+| **13** | Honest validation: acacia, mining, water. | k-fold everywhere; acacia F1 ~0.72; mining pixel F1 0.60 but object F1 0.17; water fraction mapping +0.20 recall on sub-pixel water. See §12. |
+| **14** | Water: the small-water frontier. | Two-stage, fraction, sir's two-model design, OBIA. All four hit the 10 m wall; reproduced on 2023. See §13. |
+| **15** | Water on Sparsh & Keshav's week-labelled data. | Size-band scores, SAR fallback, week→month→season relaxation, gap-filling. Headline 0.95 later found not to reproduce per pixel (0.87, wk16). See §14. |
+| **16** | Water per pixel: radar model, hard negatives, district raster. | S1 model + cloud gate, 30% hard-negative false alarms, IndiaSAT comparison, 26-band district raster + notebook, acacia on the desk column. See §15. |
+| **17** | Sep 2026 review talk. | 8 minute deck, framework first, every number traced. See §16. |
+| **18** | The app as a product + the water notebook. | Users, projects, runs, Google SSO, front page; water notebook with a neighbourhood model, sample images, deck for sir. See §17. |
+| **19** | Manual + walkthrough video. | Flow for review, rough edges from a live walk, GeoTIFF cap lowered, zoo-applied split panel fixed. See §18. |
 
-Per-week detail lives in each `weekN/plan.md` (weeks 5–6 have the fullest changelogs) and the
-`docs/` folder (`pipeline.md`, `model.md`).
+Per-week detail lives in each `weekN/` folder (plan or task file, `notes/`) and the `docs/` folder
+(`pipeline.md`, `model.md`). The week folders are not in git; this document is the record.
 
 ### Key facts carried in memory (verify before relying on)
 - **Tessera** is only usable for **2024 over India**; tile downloads are costly. Don't lean
@@ -538,3 +560,228 @@ coarse grid vs crisp tile, and the existing tile path — plus Q&A) · `week11/m
 `week11/notes/{eerf_sampling,mining_eval,water_eval,water_gt_eval,mining_pan_india,acacia_eval,stacd_crosscheck,deployment_test_plan,plan_11_12_13}.md`.
 **EE GT access:** all three assets sir named are readable from our project — `GTSeasonal` (16),
 `GTPerennial` (13), `GT_BINARY_LATEST` (288); used live in `water_gt_eval.py`.
+
+---
+
+## 11. Week 12 — deploy, integrate with STACD, answer the questions, break the framework
+
+Source: `week12_instructions.txt`. Task breakdown in `week12/task.md`.
+
+- **Deploy.** Every runtime path made relative to one project root (`config.project_path`), a
+  `Dockerfile` with only the serving deps, image on Docker Hub as `salil2003/corestack-lulc:latest`
+  (built in WSL, no Docker Desktop). Walkthrough in `week12/deployment_stacd_walkthrough.md`.
+- **STACD / Airflow.** A DAG that calls our classify/export endpoints for a region so the pipeline can
+  record a LULC map next to the other algorithms (`airflow/dags/corestack_lulc_dag.py`).
+- **Answers** to sir's 8 questions in `week12/notes/answers.md`: slide renders, water per fortnight,
+  Google Earth KML route, how the tuned threshold is picked, the spurious water filter (>=N fortnight
+  persistence + 3x3 focal mode), crown sizes (median 27 m², sub-pixel), self-training as a proposal.
+- **Robustness (point 9).** Probed with temp-dir data paths and TestClient
+  (`week12/notes/robustness.md`). Fixed: degenerate/inverted boxes now 400 before EE
+  (`aoi.valid_bbox`), 0/1-child splits and re-splitting a non-leaf guarded, non-boolean rule
+  expressions rejected, leading `!` negation parsed. Real data files byte-identical after the pass.
+- **Acacia deck** (`week12/acacia_qa/`): 4 experiments; intra-annual phenology was the win (0.712 → 0.740).
+
+## 12. Week 13 — honest validation: acacia, mining, water
+
+Source: `week13_instructions.txt` (sir's review of the week-12 acacia deck). Every number below is
+live EE, GroupKFold k=5, whole-object holdout, pixel-level P/R/F1.
+
+| topic | result | where |
+|---|---|---|
+| Acacia, k-fold base (336 / 576 confident crowns) | linear multi-year **F1 0.721 ± 0.041**; RF 0.670. Clustering-expanded labels score lower (0.634). Self-training flat at every gate (0.9 is the stable one, +0.005) | `notes/acacia_week13_results.md` |
+| Acacia, phenology composite (7 features: dry NDVI/NDRE, S1 annual + monsoon VV/VH) | AE+PHENO linear **0.720** (+0.010 over AE); AE→PCA16 0.712 | same |
+| Mining, pan-India pixel classifier (100 of 1761 polygons, 100 m ring negatives) | linear **F1 0.599 ± 0.037** (P 0.48, R 0.81); RF 0.458. Ring width barely matters (0.60 / 0.61 / 0.62 at 100/200/500 m) | `notes/mining_results_consolidated.md` |
+| Mining, object level (pixel → vectorise vs GT polygons) | precision **0.119**, recall 0.327, F1 0.174; over-fragments. A pixel screen, not an object delineator | same |
+| Mining, hard negatives / indices / denser sampling | batch of three experiments on reclaimed sites (Asola, KGF, Gurgaon Aravalli), S2 indices, pixels per polygon | `notes/mining_experiments.md` |
+| Water, two-stage (rich annual stage 1 + MNDWI rule) | did **not** beat the single fortnight model (F1 0.595 vs 0.655); small-water recall near zero either way | `notes/water_two_stage.md` |
+| Water, sub-pixel fraction (Ridge on the same 9 bands) | R² 0.47; overall F1 a tie (0.855 vs 0.849) but **+0.20 recall on sub-pixel water** at the default point; at matched operating points binary is as good | `notes/water_fraction.md` |
+
+## 13. Week 14 — water: the small-water frontier
+
+Source: `week14_instructions.txt`. Four attacks on small and seasonal water, all on sir's GT
+(`GTSeasonal`, `GTPerennial`, `GT_BINARY_LATEST`), 2024, pixel P/R/F1. Full revision notes in
+`week14/slide_explainer.md`.
+
+- **Sir's two-model design** (`water_two_model.py`): a recall-first level 1 (Dynamic World OR MNDWI OR
+  monsoon SAR) lifts small-water recall **0.31 → 0.70** and seasonal 0.68 → 0.84, at a high false-water
+  cost (spurious 0.16 → 0.74). Level 2 persistence only ties a well-thresholded single model.
+- **OBIA, size-adaptive** (`water_obia.py`, 315 objects): body-level decisions give a small lift
+  (small-body recall 0.38 → 0.39); size-adaptive thresholds add nothing. **60% of small water bodies
+  leave zero signal** across all 12 fortnights, 98% of the missed ones.
+- **Temporal check** (`notes/temporal_2023_vs_2024.md`): both findings reproduce on 2023.
+- Verdict: large water is easy at 10 m; sub-pixel water is a resolution limit, not a modelling one.
+
+## 14. Week 15 — water on the week-labelled dataset
+
+Source: `week15_instructions.txt`. Sparsh & Keshav's `full_dataset_v3.csv` (10,372 labelled pixels)
+plus an EE resample of 205 seasonal bodies. Synthesis in `week15/notes/water_summary.md`. Experiments
+only; nothing wired into the app.
+
+- **Size bands, week to week:** reported F1 0.86–0.98 at 500 m² and up. *Correction (week 16): the
+  0.95 ALL headline does not reproduce per pixel; the per-pixel number is 0.87.*
+- **Sensor fallback:** fusion best, optical close, SAR alone weak on small water (<500 m² F1 0.24).
+  Cloud-gated policy built; the clean table can't show optical failing (cloudy scenes pre-dropped).
+- **Week → month → season:** relaxing time recovers small-water recall (<500 m²: 0.31 → 0.62), still
+  short of production quality.
+- **Gap-filling:** sir's single-episode rule hurt the mid band (0.78 → 0.62); pattern-aware fill undid
+  it; the prune earns nothing and denoise is a wash overall. Recommendation: denoise selectively,
+  drop the monotone rule.
+
+---
+
+## 15. Week 16 — water per pixel: a radar model, the hard negatives, and a raster to hand over
+
+Source: `week16_instructions.txt` (sir's review of the week-15 deck; 8 points). Plan and task
+breakdown in `week16/week16_plan.md`, synthesis in `week16/notes/week16_summary.md`. All
+experiments; nothing wired into the app. Every number is **per pixel** under **whole-body holdout**.
+
+| # | Ask | What landed | Where |
+|---|-----|-------------|-------|
+| 5 | Per-pixel metrics only | Object level dropped everywhere. Re-running week 15's own script gives **ALL pixel F1 0.87**; the 0.95 on last week's slide does not reproduce on either feature table. | `notes/per_pixel_only.md` |
+| 2 | An S1-only model + a cloud gate | Radar-only F1 **0.78** vs **0.87** all-bands; the gate routes **18.7%** of pixel-fortnights to radar, and **43% of kharif district-fortnights** (Jalpaiguri 2024) have no clear optical at all. Week 15's version could never fire — its optical composite was never per-pixel cloud-masked. | `water_s1_gate.py`, `build_cloud_frame.py`, `gate_coverage.py` |
+| 3 | Score the hard negatives separately | Negatives split geometrically into *seen wet* / *dry bed* / *never wet*. False alarms **30%** on seen-wet vs **14%** on never-wet; **48%** on radar alone. This is the subset a silt-treatment study reads. | `notes/s1_gate_hard_negatives.md` |
+| 6 | Temporal correction, per pixel | Denoise **+0.002**, sir's monotone single-episode rule **−0.036** (worst on the mid bands and the hard negatives). Second confirmation, after week 15's per-body run. | `water_temporal.py` |
+| 4 | Why seasonal is worse + IndiaSAT comparison | Chahat's rule ported from the repo-root IndiaSAT script and run on our pixels: **ours 0.84 F1 on kharif vs IndiaSAT 0.48** (their precision 0.91, recall 0.33). Three causes for the seasonal shortfall, one of them the fortnight grid itself (500–1000 m²: 0.51 exact-date vs 0.37 through the fortnight). | `notes/temporal_and_seasonal.md` |
+| 6 | The other seasonal GT | `GTSeasonal`/`GTPerennial`, two years tested: ours **0.38** three-way accuracy, IndiaSAT **0.19**. Weakest result of the week; our error is seasonal bodies called perennial, because gap-fill holds the last state. | `notes/gt_seasonal.md` |
+| 7 | District + year → water raster | **26 calendar-fortnight bands**, 1 water / 0 non-water / 255 no data, classified server-side as EE band math with the gate baked in. Notebook + module; smoke-tested live. | `district_raster.py`, `district_water_raster.ipynb`, `fortnights.py` |
+| 8 | Acacia on `label_acacia_desk` | Re-reported on sir's column (203/197, balanced): best **F1 0.700 / accuracy 0.684** against a 0.673 / 0.507 always-acacia baseline. Week 13's column reproduces (0.702 vs 0.720). AE→PCA16 is now the best feature block. | `acacia_desk.py`, `notes/acacia_desk.md` |
+| 1 | Bigger fonts | Deck rebuilt at titles 30 / bullets 20 / figure text 15–17, fewer lines per slide. | `generate_deck.py`, `make_figs.py` |
+
+### New files (week 16)
+`week16/{water16_data,build_cloud_frame,water_s1_gate,water_year_sweep,water_temporal,water_gt_seasonal,train_water_models,district_raster,gate_coverage,fortnights,acacia_desk,make_figs,make_notebook,generate_deck}.py`,
+`week16/district_water_raster.ipynb`, `week16/models/water_{fusion,s1}.joblib` + `water_linear.json`
+(the flattened band-math weights), cached frames under `week16/data/`, notes + CSVs under
+`week16/notes/`, figures under `week16/figs/`.
+
+### Open / next (week 16)
+- The **hard negatives** (30% false alarms) are the real remaining work — better use of time than
+  sub-500 m² ponds, which are a 10 m resolution limit, not a modelling one.
+- Temporal correction needs to be an **object-level prior pushed back to pixels**, and tuning it
+  needs a **densely labelled** series (a few bodies labelled every fortnight for a year).
+- Open questions for sir: the raster grid (calendar fortnight vs pass-aligned) and which districts
+  first; whether `label_acacia_desk` is the documentation's `label_acacia_visual`.
+
+---
+
+## 16. Week 17 — the Sep 2026 review talk
+
+Source: the review brief (8 minutes: problem, related work, methodology, where we are, what's next).
+Everything in `week17/`: `presentation_plan.md`, `slides_content.md` (text + speaker notes),
+`slide_audit.md` (every number traced to a log), `figs/` (rebuilt by `make_figs.py`), the final pptx.
+
+- The framework is the talk; acacia, mining and water are one "models we built" slide.
+- Related work is comparable tools (Microsoft land cover tool, Earth Index, AlphaEarth/TESSERA,
+  Dynamic World/WorldCover, Collect Earth, Model Cards/STAC MLM).
+- One sample output (Jharia, base map vs the mining split) and one framework chart.
+- Numbers held out and never stretched: water reported by body size, not the 0.87 headline (bodies
+  over 2000 m² are 92% of test pixels); base map 0.83 on unseen regions.
+
+---
+
+## 17. Week 18 — the app as a product: users, projects, runs, a front page
+
+Source: `week18_instructions.txt`, points 7–11 only (water and acacia, points 1–6, parked this week at
+the user's call; they carry into week 19). Design and reasoning in `week18/app_design.md`, task
+breakdown in `week18/week18_plan.md`. Modelled on Susmit's drone_docker (read from the repo,
+commit `aa43b65`): projects owned by a user, runs versioned into their own folders, a past-runs list,
+a public share. One deliberate difference: his backend trusts an `X-User-Email` header; ours verifies
+Google's token, because checklist #4 asks for exactly that.
+
+| # | Ask | What landed | Where |
+|---|-----|-------------|-------|
+| 7 | Intentional Run, no mining/water buttons | Already done (ca393e5, ee7f6ad). Now every edit raises a "scheme changed since the run" banner; nothing runs by itself. | `app.js` `markStale` |
+| 8 | A front page with the video | `/` is a front page: what the tool is, a video slot (`INTRO_VIDEO_URL`, YouTube or mp4; placeholder until recorded), how it works, public projects, sign in. The tool moved to `/app`. | `static/landing.html` |
+| 9 | Login, own projects only | Google ID token verified server side → signed HttpOnly cookie; a laptop without a client id gets a type-your-name login that disables itself once one is set. `users` + `projects` tables via SQLAlchemy (`DATABASE_URL`, Postgres on the cluster). | `auth.py`, `db.py` |
+| 9 | New or load a project | Start screen with two cards. A project = area + year + base + classes + examples + weights + runs, in `data/projects/<id>/`. Area locks once it has a run (Susmit's dataset lock). | `projects.py`, `app.js` |
+| 9 | Load shows the old output, no re-run | Each run freezes a copy of the scheme + weights into `runs/run_<n>/`; reopening redraws the latest run from that snapshot and says whether the scheme moved on since. | `POST/GET /api/projects/{id}/runs` |
+| 9 | Panel only after picking a class; split first | Right panel hidden until a class is picked. A leaf offers **A** use a zoo model, **B** build your own (upload first, draw second); a split node offers train / add data / replace; a class inside a split takes examples for its parent. Root is off limits (the base map is shared). | `index.html`, `renderContext` |
+| 9 | Class mapping made obvious | On the zoo model's card: each model class → a name under your class, pre-filled with the model's own, so using it as-is is one click; rename in place, the same name twice merges; a mapping that leaves one class is refused. Weights are copied into the project, renamed. | `/api/apply` `mapping`, `infer.relabel_bundle` |
+| 9 | A standard upload format + example | One GeoJSON FeatureCollection, polygons, a required `class`, optional `role`/`note`. One upload creates the split and fills every class; bad files are rejected with every reason at once. | `/api/examples/labelled`, `/api/upload-format/example.geojson` |
+| 9 | Download GeoTIFF + project | GeoTIFF saved into the run folder on first download, served from disk after; the project downloads as a zip. | `/runs/{n}/geotiff`, `/download` |
+| 10 | Only valid options; storage on `/data` | Options follow the class picked; base schemes are chosen at project start, not mid-project; everything a user makes lives under the data mount. | — |
+| 11 | Make outputs public | Per-project switch: visitors can view the project and its runs (with the classes of the run they're looking at), signed-in users can copy it; nobody else can write. | `PATCH /api/projects/{id}` |
+
+**Isolation.** Scheme state used to be one global set of files in `data/`, so two users (or two
+projects both splitting greenery) would have overwritten each other. Now a per-request workspace
+(`config.use_workspace`, a ContextVar set by one ASGI middleware, `Gate`) points every module at the
+open project's folder; with no project it's `data/` as before, so scripts and the DAG are unchanged.
+Inside a project nothing auto-mints zoo cards (their ids are per class and would clash); sharing a
+project's model to the zoo is an explicit step, still to build.
+
+**Tests.** `week18/test_journey.py`: 37 checks against a live server + Earth Engine as two users and a
+visitor (upload → train, held-out acc 0.76 on the acacia crowns → run → reopen → zoo model with
+renamed classes → isolation → ownership → public → downloads). All pass. `week18/ui_walkthrough.py`
+clicks the same journey in headless Edge; 14 screenshots in `week18/screens/`, no console errors.
+Google mode checked with a fake client id: forged token 401, dev login 403, cookie-less compute 401.
+
+### New files (week 18)
+`src/{db,auth,projects}.py`, `src/static/landing.html`; `week18/{app_design.md,week18_plan.md,
+test_journey.py,ui_walkthrough.py,screens/}`. Env: `GOOGLE_CLIENT_ID`, `SESSION_SECRET`,
+`SERVICE_TOKEN`, `DATABASE_URL`, `INTRO_VIDEO_URL` (all in `deploy/.env.example`). New deps:
+`sqlalchemy`, `psycopg[binary]` (v3), `google-auth`, `itsdangerous`, and `scikit-learn` pinned to
+1.8.0 (the version every saved model was pickled with), so the image needs a rebuild.
+
+### Round 2 (same week, after a review in the browser)
+- Every old control accounted for (`week18/old_ui_map.md`); three were restored: resume a saved
+  project (now imports the new zip or an old `project.json`), the one-class GeoJSON/KML upload, typed
+  coordinates for a new project's area.
+- Layout: the start screen is its own centred page; downloads in one row; styled file pickers; zoo
+  cards no longer overflow (the grid squeezed every row to the window height); the toast centres on
+  the map that's actually showing; examples lead inside a split; zoo pick mode shows only models
+  that can split and puts "Use for X" at the top.
+- Bug: opening a project left the previous project's map on screen. Fixed.
+- The image was rebuilt and run against a throwaway Postgres in Google mode. Two breaks only that
+  could find: SQLAlchemy 2.1 made `postgresql://` mean psycopg 3 (fixed: psycopg 3 + an explicit
+  driver in `db.py`), and an unpinned scikit-learn pulled 1.9.1 against 1.8 pickles (pinned).
+  With both fixed: tables in Postgres, dev login 403, cookie-less writes and compute 401.
+- `deploy/DEPLOY_GUIDE.md` §12: rebuild, Google client id, database, Airflow token.
+- Simpler after review: the mapping moved from a pop-up onto the model's card (one click as-is);
+  the example role dropdown became a counter-example tick, off by default.
+
+### Open / next (week 18)
+- A Google OAuth client id for the tower's origin; until then SSO has only run through the local login.
+- `SERVICE_TOKEN` on the backend and `CORESTACK_SERVICE_TOKEN` on the Airflow side; Saharsh's STACD
+  pipeline must forward the header and `project_id` for a DAG run to classify a project's scheme.
+- Share a project's model to the zoo (a project-scoped card id); consent + retention like Susmit's.
+- Record the walkthrough video and set `INTRO_VIDEO_URL`.
+- Water (points 1–5) and acacia (point 6) from the same instructions.
+
+### Water, same week (rounds 3 to 6 of `week18/week18_plan.md`)
+- **Sample images for sir** (at a conference): one waterbody per fortnight over a June–May year, and
+  the same body coloured by weeks of water (`week18/water_samples/`, copies in `week18/for_sir/`).
+  Weeks of water are lower bounds (up to 10 unobserved weeks).
+- **Configurable water year**: June–May or July–June (`fortnights.py`, `district_raster.py
+  --start-month`, notebook input).
+- **Deck "Satellite Water Model"** (10 slides, Canva + `week18/for_sir/`): methodology, S1+S2 when
+  clear and S1 under cloud, no smoothing applied, the 30% sometimes-wet false-alarm rate, every number
+  traced; the neighbourhood result as the one "what worked" slide.
+- **Neighbourhood model into the notebook** (`week18/nbhd_models.py`): 3x3 + 5x5 means per sensor
+  case. Ponds under 1000 m², unseen region + year: fusion 0.38 → 0.56, S2 0.45 → 0.57. A live check
+  found towns gaining water and braided rivers losing it, so the shipped rule is: WorldCover built-up
+  is never water, and a pixel is water if either the pixel or the neighbourhood model says so (river
+  recall back to 0.72, small-pond gain kept).
+- **Notebook hardening** (`week18/test_notebook_inputs.py`): Jalpaiguri, Pune Jul–Jun 2023,
+  Aurangabad Bihar and a 3-D no-CRS boundary file all run; duplicate and misspelt names stop cleanly.
+- Open: towns still gain some water (built-up and farm negatives in the labels are the real fix);
+  flooded paddy reads as water in monsoon.
+
+---
+
+## 18. Week 19 — a manual and a walkthrough video
+
+Source: sir's ask after Susmit's deck (`front page ppt folder/`): each service gets a short manual
+deck plus a video tutorial that sits on its front page, with the flow reviewed by sir before
+recording. Plan and rough edges in `week19/walkthrough_plan.md`; the flow for review in
+`week19/walkthrough_flow.md` (14 chapters, about 6–7 minutes, walked live on a Jharia project).
+
+- The front page from week 18 already has the video slot (`introVideo` in config, YouTube or mp4).
+- **GeoTIFF cap lowered.** `getDownloadURL` builds the whole label image at once and hit EE's user
+  memory limit on the 368 km² Jharia preset, far under the old 600 km² cap. Measured on Jharia with the mining split:
+  64, 100, 144, 196 and 256 km² all export; 368 does not. Cap now **250 km²** (`config.py` and the
+  constant in `app.js`). The Jharia (366 km²) and Assam tea (452 km²) presets are over it, so their
+  projects show the map and the zip but not a GeoTIFF.
+- **Zoo-applied split panel.** Applying a zoo model now records `from_model` on the node, so the
+  panel says the model is in use and ready to run, instead of asking for examples with a dead Train
+  button. Training on your own examples or a rule split clears it.
+- Left for later by choice: the zoo picker still lists every model (intentional), map legend and
+  mining/water colours, run progress, and the base map's built-up/water excess on the demo areas.

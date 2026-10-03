@@ -20,6 +20,10 @@ from airflow.operators.python import PythonOperator
 
 # fallback backend URL if a run conf doesn't carry api_base (it normally does)
 API_BASE = os.getenv("CORESTACK_API_BASE", "http://lulc:8000").rstrip("/")
+# the backend refuses cookie-less compute once Google sign-in is on; this token vouches for the DAG.
+# Same value as SERVICE_TOKEN in the backend's .env. A conf may name a project via project_id.
+SERVICE_HEADERS = ({"X-Service-Token": os.environ["CORESTACK_SERVICE_TOKEN"]}
+                   if os.getenv("CORESTACK_SERVICE_TOKEN") else {})
 
 
 def run_job(**context):
@@ -32,9 +36,9 @@ def run_job(**context):
 
     try:
         if op == "classify":
-            r = requests.get(f"{api_base}/api/classify", params=params, timeout=1200)
+            r = requests.get(f"{api_base}/api/classify", params=params, headers=SERVICE_HEADERS, timeout=1200)
         elif op == "export":
-            r = requests.post(f"{api_base}/api/export-asset", json=params, timeout=3600)
+            r = requests.post(f"{api_base}/api/export-asset", json=params, headers=SERVICE_HEADERS, timeout=3600)
         else:
             raise ValueError(f"unknown op {op!r}")
         r.raise_for_status()
@@ -42,12 +46,12 @@ def run_job(**context):
     except Exception as e:
         # tell the backend it failed so the frontend stops polling, then fail the task
         requests.post(f"{api_base}/api/jobs/{run_id}/result",
-                      json={"ok": False, "error": str(e)}, timeout=60)
+                      json={"ok": False, "error": str(e)}, headers=SERVICE_HEADERS, timeout=60)
         raise
 
     # success: hand the result back to the backend, which flips the job to done
     resp = requests.post(f"{api_base}/api/jobs/{run_id}/result",
-                         json={"ok": True, "result": result}, timeout=60)
+                         json={"ok": True, "result": result}, headers=SERVICE_HEADERS, timeout=60)
     resp.raise_for_status()
     return run_id
 

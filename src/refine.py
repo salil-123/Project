@@ -107,7 +107,11 @@ log = logging_setup.get(__name__)
 # belong on the models/ mount (checklist #1), while the sampled training tables are regenerable data
 # and stay under data/. model_path() keeps reading the old location until migrate_models.py runs.
 REFINE_DIR = config.model_path("refine")                  # weights: models/refine/<node>.joblib
-TRAIN_CACHE_DIR = config.project_path("data/refine")      # sampled training tables (*_train.csv)
+# sampled training tables (*_train.csv) belong to whoever drew the examples, so per workspace
+def _train_cache_dir():
+    return config.ws_path("refine")
+
+
 WC_CSV = config.project_path("data/worldcover_train.csv")
 FULL_CSV = config.project_path("data/master_alpha_full.csv")
 BASE_MODEL_PATH = config.model_path("model_pooled.joblib")
@@ -248,7 +252,7 @@ def build_split_dataset(parent="greenery", n_pix=50, resample=False, years=None,
     stem = parent if years == [sampling.YEAR] else f"{parent}_" + "_".join(str(y) for y in years)
     if embedding == "tessera":                       # keep te caches separate from the ae ones (#16)
         stem += "_te"
-    cache = os.path.join(TRAIN_CACHE_DIR, f"{stem}_train.csv")
+    cache = os.path.join(_train_cache_dir(), f"{stem}_train.csv")
     if os.path.exists(cache) and not resample:
         log.debug(f"using cached training data {cache}")
         return pd.read_csv(cache)
@@ -263,7 +267,7 @@ def build_split_dataset(parent="greenery", n_pix=50, resample=False, years=None,
         frames += [_child_frame(tree, child, n_pix, year=y, embedding=embedding)
                    for child in tree[parent]["children"]]
     data = pd.concat(frames, ignore_index=True)
-    os.makedirs(TRAIN_CACHE_DIR, exist_ok=True)
+    os.makedirs(_train_cache_dir(), exist_ok=True)
     data.to_csv(cache, index=False)
     log.info(f"assembled {len(data)} rows ({len(years)} year(s)) -> {cache}")
     return data
@@ -347,12 +351,13 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
     bundle = {"model": model, "classes": labels, "features": embedding, "parent": parent,
               "report": report, "n_test": int(len(te)), "balance": balance, "years": years,
               "algo": best_algo}
-    os.makedirs(REFINE_DIR, exist_ok=True)
-    out = os.path.join(REFINE_DIR, f"{parent}.joblib")
+    out = config.weights_write_path(parent)          # the project's own weights/, or models/refine/
+    os.makedirs(os.path.dirname(out), exist_ok=True)
     joblib.dump(bundle, out)
 
     tree = hierarchy.load()
     tree[parent]["classifier"] = parent  # so inference knows to apply it
+    tree[parent].pop("from_model", None)  # trained on the user's own examples now, not the zoo's
     hierarchy.save(tree)
     log.info(f"\nsaved {out}; registered classifier on node {parent!r}")
     return bundle
@@ -460,6 +465,7 @@ def rule_split_op(parent, rule, colors=None):
     hierarchy.split_class(tree, parent, children)
     tree[parent]["rule"] = rule                  # the resolver for this node is a rule, not a joblib
     tree[parent]["classifier"] = None
+    tree[parent].pop("from_model", None)
     hierarchy.save(tree)
     log.info(f"rule-split {parent!r} -> {classes} via {len(rule['clauses'])} clause(s)")
     return classes
@@ -608,7 +614,7 @@ def bakeoff(parent="greenery", test_size=0.25):
 
     # hierarchical: deployed base model, then the parent's split where base says parent
     base_model = infer.load_model()["model"]
-    split_model = joblib.load(os.path.join(REFINE_DIR, f"{parent}.joblib"))["model"]
+    split_model = joblib.load(config.weights_path(parent))["model"]
     hier = base_model.predict(X[te]).astype(object)
     sel = hier == parent
     if sel.any():

@@ -30,7 +30,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root holds config.py
 import config
 
-HIERARCHY_PATH = config.project_path("data/hierarchy.json")  # anchored to root, CWD-independent
+# a fixed path only when a self-test pins one; otherwise it lives in the current workspace
+# (the open project's folder, or data/), see config.ws_path
+HIERARCHY_PATH = None
+
+
+def _file():
+    return HIERARCHY_PATH or config.ws_path("hierarchy.json")
 
 ROOT = "root"
 
@@ -96,17 +102,17 @@ def _pick_color(tree: dict) -> str:
 # ----------------------------- persistence -----------------------------
 def load() -> dict:
     """Read the tree from disk; fall back to a fresh seed if there's no file yet."""
-    if not os.path.exists(HIERARCHY_PATH):
+    if not os.path.exists(_file()):
         return _seed()
-    with open(HIERARCHY_PATH) as fh:
+    with open(_file()) as fh:
         return json.load(fh)
 
 
 def save(tree: dict) -> None:
     """Validate then write. Refuses to persist a broken tree."""
     validate(tree)
-    os.makedirs(os.path.dirname(HIERARCHY_PATH), exist_ok=True)
-    with open(HIERARCHY_PATH, "w") as fh:
+    os.makedirs(os.path.dirname(_file()), exist_ok=True)
+    with open(_file(), "w") as fh:
         json.dump(tree, fh, indent=2)
 
 

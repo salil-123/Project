@@ -7,6 +7,7 @@ __pycache__/
 
 # secrets / machine-local config (EE project + zoo remote live here)
 .env
+.env.bak
 
 # Large training / eval tables. Regenerable from Earth Engine, and master_tessera.csv (138 MB)
 # blows past GitHub's 100 MB hard limit, so none of the data tables are tracked. The trained
@@ -48,17 +49,7 @@ models/refine/biomass_*.joblib
 # Weekly working folders (notes, slides, plans, one-off experiments). Kept LOCAL — they're the
 # build diary, not the deliverable, and clutter the repo for anyone reading the code. The narrative
 # lives in master_document.md; the code is under src/. Un-ignore a week folder if you ever need it tracked.
-week2/
-week3/
-week4/
-week5/
-week6/
-week7/
-week8/
-week9/
-week10/
-week11/
-week12/
+week*/
 week*_instructions.txt
 
 # embedded reference repo (flood pipeline) + competitive-programming cache + one-off root scripts/assets
@@ -68,9 +59,35 @@ entire_test.txt
 chahat_paper_flowchart.png
 tessera_fast.py
 *.ipynb
-"3_store_embeddings_run_lulcv4 (temporal multi year sampling).py"
+3_store_embeddings_run_lulcv4*
 
 # service-account / key files — never commit
 deploy/ee-key.json
 *ee-key.json
 *-sa.json
+
+# week 18: per-user state. Projects, the laptop DB and the generated session secret are host data,
+# never source (the cluster keeps them on the data/ mount and in the central Postgres)
+data/projects/
+data/corestack.db*
+data/.session_secret
+data/jobs/
+
+# reference decks from other students, big and not ours to publish
+front page ppt folder/
+
+# not needed by the running service: training inputs for the offline scripts, a stray root
+# script + sample save, and plans that are done. Kept on disk, just out of the deploy checkout
+3_store_embeddings_run_lulcv4*
+/project.json
+data/inputs/
+data/raw_polygons/
+data/seasonal_water_ground_truth_polygons/
+data/selected_polygons.geojson
+data/selected_tiles.json
+data/hierarchy.demo_backup.json
+deploy/path_relativization_plan.md
+deploy/stacd/build_plan.md
+deploy/zoo_seed_plan.md
+docs/deployment_guide.md
+docs/revision_question_bank.md

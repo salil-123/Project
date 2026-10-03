@@ -19,6 +19,15 @@ outputs:
       the thing meant to be shared — it's a git-backed repo of its own and gets pushed to ZOO_REMOTE
       on publish.
 
+  - path: data/projects/
+    mode: private_persistent
+    ttl_days: null
+    description: >
+      One folder per user project (week 18): its class scheme, examples, the weights trained for it,
+      and every run (a frozen copy of the scheme + run.json + the GeoTIFF once fetched). The user's
+      own work: keep it, don't publish it. A project its owner marks public is served read-only by
+      the app itself, not by the host data service. The rows that index these live in Postgres.
+
   - path: data/examples/
     mode: private_persistent
     ttl_days: null

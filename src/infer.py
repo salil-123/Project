@@ -31,15 +31,17 @@ CLASS_COLORS = {
 MODEL_PATH = config.model_path("model_pooled.joblib")            # realistic mode: AE + WorldCover
 SOFTVOTE_PATH = config.model_path("model_softvote_reconciled.joblib")  # detailed: AE + Tessera
 REFINE_DIR = config.model_path("refine")
-ACTIVE_BASE_PATH = config.project_path("data/active_base.json")         # which base scheme is live (#5)
+# which base scheme is live (#5), kept per workspace so each project remembers its own
+def _active_base_file():
+    return config.ws_path("active_base.json")
 
 
 def active_base():
     """The live base scheme + its model path (#5). Defaults to the IndiaSAT pooled model."""
     import json
-    if os.path.exists(ACTIVE_BASE_PATH):
+    if os.path.exists(_active_base_file()):
         try:
-            return json.load(open(ACTIVE_BASE_PATH))
+            return json.load(open(_active_base_file()))
         except Exception:
             pass
     return {"scheme": "indiasat", "model_path": MODEL_PATH}
@@ -47,7 +49,8 @@ def active_base():
 
 def set_active_base(scheme, model_path):
     import json
-    json.dump({"scheme": scheme, "model_path": model_path}, open(ACTIVE_BASE_PATH, "w"), indent=2)
+    os.makedirs(os.path.dirname(_active_base_file()), exist_ok=True)
+    json.dump({"scheme": scheme, "model_path": model_path}, open(_active_base_file(), "w"), indent=2)
 
 
 def load_model(path: str = None):
@@ -93,12 +96,27 @@ def load_refinements():
         return out
     for cls, node in tree.items():
         if node.get("classifier"):
-            path = config.model_path(f"refine/{node['classifier']}.joblib")
+            path = config.weights_path(node['classifier'])
             if os.path.exists(path):
                 out[cls] = joblib.load(path)
         elif node.get("rule"):                          # a rule split (#12): no joblib, evaluated in EE
             out[cls] = {"features": "rule", "rule": node["rule"],
                         "classes": rules.rule_classes(node["rule"])}
+    return out
+
+
+def relabel_bundle(bundle, mapping):
+    """A copy of a split bundle whose classes read as the user's names: {model_class: user_class}.
+    Positions don't move, so the EE band math (which indexes into `classes`) needs nothing else; the
+    point-grid path reads `relabel` after predict. Unmapped classes keep their own name."""
+    mapping = {k: v for k, v in (mapping or {}).items() if v}
+    current = _bundle_classes(bundle)
+    raw = bundle.get("model_classes") or current          # what the estimator itself predicts
+    out = dict(bundle)
+    out["model_classes"] = list(raw)
+    out["classes"] = [mapping.get(c, c) for c in current]
+    # keyed on the raw labels, so relabelling an already relabelled model composes instead of losing a step
+    out["relabel"] = {r: mapping.get(c, c) for r, c in zip(raw, current)}
     return out
 
 
@@ -146,7 +164,10 @@ def _apply_refinements(preds, Xae, valid, refinements, Xte=None, te_valid=None, 
         ok = te_valid if is_te else valid
         sel = (preds == parent) if ok is None else (ok & (preds == parent))
         if sel.any():
-            preds[sel] = bundle["model"].predict((Xte if is_te else Xae)[sel])
+            out = bundle["model"].predict((Xte if is_te else Xae)[sel])
+            if bundle.get("relabel"):                  # zoo model mapped onto the user's classes
+                out = np.array([bundle["relabel"].get(c, c) for c in out], dtype=object)
+            preds[sel] = out
     return preds
 
 
@@ -288,7 +309,9 @@ def _leaf_classes(model_bundle, refinements):
     out = []
     for c in _svc_steps(model_bundle)[1].classes_:
         out.extend(leaves_of(c))
-    return out
+    # a zoo model applied with a many-to-one class mapping repeats a name (two model classes that
+    # both mean "acacia"); one code per name keeps the legend and the counts honest
+    return list(dict.fromkeys(out))
 
 
 def _refine_idx(ee, bands_img, region, year, bundle):

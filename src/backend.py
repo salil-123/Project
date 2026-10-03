@@ -44,6 +44,9 @@ import config
 import jobs
 import airflow_client
 import logging_setup
+import db
+import auth
+import projects
 
 _STATIC = Path(__file__).resolve().parent / "static"
 
@@ -79,10 +82,13 @@ async def log_requests(request: Request, call_next):
                       response.status_code, ms)
     return response
 
-# loaded once at startup and refreshed after any mutating op (see _reload)
-_model = infer.load_model()
+# the detailed-mode soft-vote is one shared model; the base model + splits depend on the workspace
 _softvote = infer.load_softvote()
-_refinements = infer.load_refinements()
+
+db.init()          # users + projects tables (Postgres via DATABASE_URL, SQLite on a laptop)
+if config.GOOGLE_CLIENT_ID and not config.SERVICE_TOKEN:
+    log.warning("Google sign-in is on but SERVICE_TOKEN is unset: the Airflow DAG's callbacks will be "
+                "refused. Set SERVICE_TOKEN here and CORESTACK_SERVICE_TOKEN on the DAG side.")
 
 # the zoo is a git-backed card DB; make sure it's a repo and seeded from what's on disk
 zoo_git.init_local()
@@ -114,37 +120,46 @@ PRESETS = {
 }
 
 
+# The base model + splits are loaded per workspace (a project, or data/ for scripts and the DAG) and
+# cached on the scheme files' mtimes. So one project's split never leaks into another's map, and a
+# change made on disk by a script still gets picked up, which is what _maybe_reload used to do.
+_cache = {}
+
+
+def _stamp():
+    ws = config.workspace_dir()
+    out = []
+    for f in ("hierarchy.json", "active_base.json"):
+        try:
+            out.append((ws / f).stat().st_mtime)
+        except OSError:
+            out.append(0.0)
+    return tuple(out)
+
+
+def _loaded():
+    key, stamp = str(config.workspace_dir()), _stamp()
+    hit = _cache.get(key)
+    if not hit or hit[0] != stamp:
+        hit = (stamp, infer.load_model(), infer.load_refinements())
+        _cache[key] = hit
+    return hit
+
+
+def _base_model():
+    return _loaded()[1]
+
+
+def _refs():
+    return _loaded()[2]
+
+
 def _reload():
-    """Re-read the base model + splits so the next classify reflects a just-made change."""
-    global _model, _refinements, _tree_mtime
-    _model = infer.load_model()
-    _refinements = infer.load_refinements()
-    _tree_mtime = _hierarchy_mtime()
-
-
-def _hierarchy_mtime():
-    try:
-        return (_ROOT / "data" / "hierarchy.json").stat().st_mtime
-    except OSError:
-        return 0.0
-
-
-_tree_mtime = _hierarchy_mtime()
-
-
-def _maybe_reload():
-    """Pick up hierarchy/split changes made on disk while the server is running — e.g. a script like
-    week3/scripts/add_mining.py that adds the mining split. Without this the in-memory refinements
-    stay stale until a UI op triggers a reload, so a script-made split silently doesn't show. Cheap:
-    one mtime stat; reload only when hierarchy.json is newer than our last load."""
-    global _tree_mtime
-    m = _hierarchy_mtime()
-    if m and m > _tree_mtime:
-        _reload()   # _reload() also refreshes _tree_mtime
+    """Drop this workspace's cached models so the next classify reads the fresh ones."""
+    _cache.pop(str(config.workspace_dir()), None)
 
 
 def _tree_payload():
-    _maybe_reload()
     tree = hierarchy.load()
     # op_seq = the current head of the op-log, so the client can anchor a "session" to it and
     # export only the ops that happened since (#4).
@@ -154,8 +169,8 @@ def _tree_payload():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "classes": _model.get("classes"),
-            "wc_weight": _model.get("wc_weight")}
+    return {"status": "ok", "classes": _base_model().get("classes"),
+            "wc_weight": _base_model().get("wc_weight")}
 
 
 @app.get("/api/presets")
@@ -307,15 +322,14 @@ def classify(west: float, south: float, east: float, north: float,
     `year` picks the inference data's temporal slice (#7): Alpha Earth 2017-2024 for Realistic;
     Detailed is pinned to 2024 (Tessera's only India coverage). Same model either way.
     """
-    _maybe_reload()                                  # pick up a script-made split (e.g. add_mining.py)
     bbox = (west, south, east, north)
     # some live splits can't render as AE band-math tiles, so the whole area falls back to the
     # point-grid render: a Tessera split (#16, features in downloaded tiles) or a non-linear AE
     # split (Random Forest, #7 wk10, not band math). Either forces the grid.
-    tessera_live = any((b or {}).get("features") == "tessera" for b in _refinements.values())
+    tessera_live = any((b or {}).get("features") == "tessera" for b in _refs().values())
     nonlinear_ae_live = any((b or {}).get("features") == "ae"
                             and (b or {}).get("algo") in infer.NONLINEAR_ALGOS
-                            for b in _refinements.values())
+                            for b in _refs().values())
     grid_live = tessera_live or nonlinear_ae_live
     needs_tessera = mode == "detailed" or tessera_live
     # #3: refuse an area that would blow up compute/download before we hand it to EE/Tessera.
@@ -327,12 +341,12 @@ def classify(west: float, south: float, east: float, north: float,
         if mode == "detailed":
             year = 2024                              # Tessera coverage; ignore any other ask
             df, cw, ch = infer.classify_bbox_softvote(bbox, n=n, year=year, model_bundle=_softvote,
-                                                      refinements=_refinements)
+                                                      refinements=_refs())
         else:
             # a Tessera split is 2024-only; a non-linear AE split can use any Alpha Earth year
             year = 2024 if tessera_live else min(max(year, AE_YEARS[0]), AE_YEARS[-1])
-            df, cw, ch = infer.classify_bbox(bbox, n=n, year=year, model_bundle=_model,
-                                             refinements=_refinements)
+            df, cw, ch = infer.classify_bbox(bbox, n=n, year=year, model_bundle=_base_model(),
+                                             refinements=_refs())
         cells = [{"lat": float(r.lat), "lon": float(r.lon), "pred": r.pred}
                  for r in df.itertuples()]
         note = ("Tessera split shown on the point grid (it can't ride the crisp tile map)."
@@ -344,8 +358,8 @@ def classify(west: float, south: float, east: float, north: float,
                 "note": note, "colors": infer.load_colors()}
 
     year = min(max(year, AE_YEARS[0]), AE_YEARS[-1])  # clamp to Alpha Earth's coverage
-    tile_url, counts = infer.classify_bbox_tiles(bbox, year=year, model_bundle=_model,
-                                                 refinements=_refinements)
+    tile_url, counts = infer.classify_bbox_tiles(bbox, year=year, model_bundle=_base_model(),
+                                                 refinements=_refs())
     return {"render": "tiles", "tile_url": tile_url, "bounds": [west, south, east, north],
             "mode": mode, "year": year, "counts": counts, "colors": infer.load_colors()}
 
@@ -361,7 +375,7 @@ def classify_geotiff(west: float, south: float, east: float, north: float, year:
         raise HTTPException(400, guard["reason"])
     try:
         url, classes = infer.classify_bbox_geotiff((west, south, east, north), year=year,
-                                                   model_bundle=_model, refinements=_refinements)
+                                                   model_bundle=_base_model(), refinements=_refs())
     except Exception as e:
         # getDownloadURL builds the whole label image at once and is memory-capped by Earth Engine;
         # a composited IndiaSAT SAR model (tree/crop) or a large box blows that limit. Say so plainly.
@@ -383,7 +397,23 @@ def _truthy(v) -> bool:
     return bool(v)
 
 
-def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, region=None,
+def _run_export(project_id=None, **kw):
+    """The DAG's export, run against a project's scheme when its conf names one (week 18), else the
+    shared data/ workspace exactly as before. The DAG calls back without a browser cookie, so the
+    workspace is set here rather than by the request middleware."""
+    if not project_id:
+        return _run_export_ws(**kw)
+    pid = str(project_id).strip().strip('"')
+    if not projects.folder(pid).is_dir():
+        raise HTTPException(404, f"no project {pid!r}")
+    tok = config.use_workspace(projects.folder(pid))
+    try:
+        return _run_export_ws(**kw)
+    finally:
+        config.reset_workspace(tok)
+
+
+def _run_export_ws(west=None, south=None, east=None, north=None, roi_asset=None, region=None,
                 year=2024, start_year=None, end_year=None, asset_id=None, name=None,
                 base_scheme=None, asset_base=None, wait=True, overwrite=True, include_stac=True,
                 retrain=None, export=True, **_ignored):
@@ -397,7 +427,6 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
     /api/retrain params as a dict and the node is retrained first, so the export classifies with the
     fresh model. `export=False` makes it a retrain-only job — still the same op, the same DAG, one
     less thing to register with STACD."""
-    _maybe_reload()
 
     # train first when asked, so whatever we export below uses the model the user just built. The
     # DAG only drives us over HTTP, so the training happens in this process and the model, hierarchy
@@ -472,7 +501,7 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
 
     try:
         out = infer.classify_to_asset(bbox, asset_id, year=yr, region_geom=region_geom,
-                                      model_bundle=_model, refinements=_refinements,
+                                      model_bundle=_base_model(), refinements=_refs(),
                                       wait=wait, overwrite=overwrite)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
@@ -510,7 +539,7 @@ def _run_export(west=None, south=None, east=None, north=None, roi_asset=None, re
 _EXPORT_KEYS = {"west", "south", "east", "north", "roi_asset", "region", "year", "start_year",
                 "end_year", "asset_id", "name", "base_scheme", "asset_base", "wait", "overwrite",
                 "include_stac", "state", "district", "block", "gee_account_id", "hierarchy",
-                "retrain", "export"}
+                "retrain", "export", "project_id"}
 
 
 @app.get("/api/export-asset")
@@ -803,7 +832,6 @@ def segment(west: float, south: float, east: float, north: float,
     mining pixels into discrete objects (speckle dropped, small blobs filtered). Returns GeoJSON +
     a summary (segment count, total area). The class must be live on the map."""
     import config
-    _maybe_reload()                                  # pick up a script-made split (e.g. add_mining.py)
     bbox = (west, south, east, north)
     guard = aoi.check(bbox, "tiles")
     if not guard["ok"]:
@@ -812,7 +840,7 @@ def segment(west: float, south: float, east: float, north: float,
     min_area = config.SEGMENT_MIN_AREA_HA if min_area_ha is None else max(0.0, min_area_ha)
     try:
         fc, summary = infer.segment_class(bbox, year=year, cls=cls, min_area_ha=min_area,
-                                          model_bundle=_model, refinements=_refinements)
+                                          model_bundle=_base_model(), refinements=_refs())
     except ValueError as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -897,7 +925,7 @@ class ExampleIn(BaseModel):
 def _mint_dataset(node, role):
     """A positive add defines/updates that class's training Dataset Card right away, so the data
     shows up in the zoo the moment you add it (not only after a retrain). Returns the card id."""
-    if role != "positive":
+    if role != "positive" or config.in_project():
         return None
     try:
         return catalogue.mint_training_dataset_card(node)
@@ -1005,18 +1033,28 @@ def split_by_rule(op: RuleSplitIn):
         raise HTTPException(400, str(e))
     _reload()
     card = None
-    try:
-        card = catalogue.mint_rule_card(op.parent, op.rule)     # never fail the split over its card
-    except Exception:
-        pass
+    if not config.in_project():     # zoo cards are keyed by class; a project shares to the zoo explicitly
+        try:
+            card = catalogue.mint_rule_card(op.parent, op.rule)     # never fail the split over its card
+        except Exception:
+            pass
     oplog.append("rule_split", {"parent": op.parent, "rule": op.rule, "classes": classes},
                  result={"model": card})
     return {"parent": op.parent, "classes": classes, "card": card, **_tree_payload()}
 
 
+def _shared_base_guard(node):
+    """The base map (root) is one model everybody shares; retraining it from inside a project would
+    change every other project's map. So inside a project the root is off limits."""
+    if config.in_project() and node == hierarchy.ROOT:
+        raise HTTPException(400, "the base map is shared by every project; add or split under one of "
+                                 "the base classes instead")
+
+
 @app.post("/api/add")
 def add(op: AddIn):
     """Add a class under a node (no training yet — add examples, then retrain)."""
+    _shared_base_guard(op.parent)
     try:
         refine.add_class_op(op.parent, op.name, new_color=op.color, do_train=False)
     except (KeyError, ValueError) as e:
@@ -1034,6 +1072,19 @@ def _do_retrain(node: str, balance: str = "balanced", years=None,
     embeddings + fits. `**_ignored` lets a forwarded DAG conf carry extra keys harmlessly."""
     log.info("retrain node=%s algo=%s embedding=%s balance=%s years=%s",
              node, algo, embedding, balance, years)
+    _shared_base_guard(node)
+    if config.in_project():
+        # a project owns its models: they land in its weights/ and stay out of the shared zoo until
+        # the user shares one on purpose (card ids are per class, so auto-minting would clash)
+        try:
+            bundle = refine.retrain(node, balance=balance, years=years, algo=algo, embedding=embedding)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        _reload()
+        oplog.append("retrain", {"node": node, "balance": balance, "years": years,
+                                 "algo": bundle.get("algo"), "embedding": embedding})
+        return {"node": node, "classes": bundle.get("classes"), "report": bundle.get("report"),
+                "n_test": bundle.get("n_test"), "cards": None, **_tree_payload()}
     # snapshot the node's current model before we overwrite it, so re-splitting a node into a
     # different set of children keeps the old model in the zoo instead of making it vanish
     prev_card = catalogue.get_card(f"mc_{node}_v1")
@@ -1094,8 +1145,8 @@ def _switch_base(scheme):
     Raises ValueError on an unknown scheme. The WorldCover model is trained (and carded) on first use."""
     try:
         import shutil
-        if Path(hierarchy.HIERARCHY_PATH).exists():
-            shutil.copy(hierarchy.HIERARCHY_PATH, str(_ROOT / "data" / "hierarchy.prev.json"))
+        if Path(hierarchy._file()).exists():
+            shutil.copy(hierarchy._file(), config.ws_path("hierarchy.prev.json"))
     except Exception:
         pass
 
@@ -1154,10 +1205,11 @@ def add_merge(op: MergeIn):
     except ValueError as e:
         raise HTTPException(400, str(e))
     card = None
-    try:
-        card = catalogue.mint_merge_card(rule)     # never fail the merge over its card
-    except Exception:
-        pass
+    if not config.in_project():
+        try:
+            card = catalogue.mint_merge_card(rule)     # never fail the merge over its card
+        except Exception:
+            pass
     oplog.append("merge", {"target": rule["target"], "name": rule["name"],
                            "sources": rule["sources"]}, result={"model": card})
     return {"rule": rule, "card": card, **_tree_payload()}
@@ -1166,10 +1218,11 @@ def add_merge(op: MergeIn):
 @app.delete("/api/merge/{target}")
 def del_merge(target: str):
     rules = merges.remove(target)
-    try:
-        catalogue.delete_card(f"mc_merge_{target}_v1")     # drop the merge's local card too
-    except Exception:
-        pass
+    if not config.in_project():
+        try:
+            catalogue.delete_card(f"mc_merge_{target}_v1")     # drop the merge's local card too
+        except Exception:
+            pass
     oplog.append("merge_remove", {"target": target})
     return {"rules": rules, **_tree_payload()}
 
@@ -1186,6 +1239,9 @@ class ApplyIn(BaseModel):
     card_id: str
     target_node: str | None = None     # apply under a different node than the card's own (#11)
     force: bool = False                # override the compatibility guard after the user confirms
+    # week 18: what each model class means in the user's scheme, {model_class: your_class}. Two
+    # model classes may share one name ("x and y are both acacia"). Missing -> the model's names.
+    mapping: dict | None = None
 
 
 @app.post("/api/apply")
@@ -1219,23 +1275,57 @@ def apply_model(op: ApplyIn):
             raise HTTPException(409, {"message": chk["reason"], "needs_confirm": True})
 
     artifact = (card.get("artifact") or {}).get("path")
-    if not artifact or not (_ROOT / artifact).exists():
+    art_path = Path(config.model_path(artifact)) if artifact else None
+    if not art_path or not art_path.exists():
         raise HTTPException(400, "this model's trained artifact isn't available locally")
 
-    # rebuild the node's children to exactly the model's classes, then register its classifier
+    import joblib
+    model_classes = [p["class"] for p in card.get("produces", [])]
+    mapping = {k: hierarchy.canonicalize(v) for k, v in (op.mapping or {}).items()
+               if k in model_classes and str(v).strip()}
+    yours = list(dict.fromkeys(mapping.get(c, c) for c in model_classes))   # unique, in model order
+    if len(yours) < 2:
+        raise HTTPException(400, "after your mapping there's only one class left; a split needs two")
+    clash = [c for c in yours if c in tree and not _under(tree, c, node)]
+    if clash:
+        raise HTTPException(400, f"{clash} already name a class elsewhere in your scheme; map them "
+                                 "to a different name.")
+
+    # rebuild the node's children as the user's classes, then register the classifier
     for ch in list(tree[node].get("children", [])):
         _drop_subtree(tree, ch)
     tree[node]["children"] = []
-    for cls in (p["class"] for p in card.get("produces", [])):
+    tree[node].pop("rule", None)
+    tree[node].pop("ee_rf", None)
+    for cls in yours:
         hierarchy.add_class(tree, cls.replace("_", " ").title(), node, canonical=cls)
-    # point at the artifact's own stem (data/refine/<card.node>.joblib), so applying a model under
-    # a *different* node still loads the right joblib (its stem, not the target node's name).
-    tree[node]["classifier"] = card["node"]
+    if config.in_project():
+        # the project keeps its own copy, renamed to the user's classes, so the zoo can move on
+        # without changing this project's map
+        bundle = infer.relabel_bundle(joblib.load(art_path), mapping)
+        joblib.dump(bundle, config.weights_write_path(node))
+        tree[node]["classifier"] = node
+    else:
+        # point at the artifact's own stem (data/refine/<card.node>.joblib), so applying a model under
+        # a *different* node still loads the right joblib (its stem, not the target node's name).
+        tree[node]["classifier"] = card["node"]
+    # remember where the split came from, so the panel says "ready, run it" instead of asking for examples
+    tree[node]["from_model"] = {"card_id": op.card_id, "name": card.get("name") or op.card_id}
     hierarchy.save(tree)
     _reload()
-    oplog.append("apply", {"card_id": op.card_id, "node": node})
-    return {"applied": op.card_id, "node": node,
-            "classes": [p["class"] for p in card.get("produces", [])], **_tree_payload()}
+    oplog.append("apply", {"card_id": op.card_id, "node": node, "mapping": mapping or None})
+    return {"applied": op.card_id, "node": node, "classes": yours, "mapping": mapping,
+            **_tree_payload()}
+
+
+def _under(tree, cls, node):
+    """Is `cls` somewhere below `node`? (a class being replaced by the apply, so its name is free)"""
+    cur = tree.get(cls, {}).get("parent")
+    while cur:
+        if cur == node:
+            return True
+        cur = tree.get(cur, {}).get("parent")
+    return False
 
 
 # ----------------------------- apply an IndiaSAT ee_rf model as a hierarchy refinement (#13) -----------------------------
@@ -1278,6 +1368,7 @@ def apply_eerf(op: ApplyEeRfIn):
     tree[op.parent]["ee_rf"] = which
     tree[op.parent]["classifier"] = None          # not a joblib classifier; composited in EE
     tree[op.parent].pop("rule", None)             # a node can't carry both a rule split and an ee_rf model
+    tree[op.parent].pop("from_model", None)       # the panel already names the IndiaSAT model
     hierarchy.save(tree)
     _reload()
     oplog.append("apply_eerf", {"card_id": op.card_id, "node": op.parent, "model": which,
@@ -1409,9 +1500,617 @@ def zoo_status():
     return zoo_git.status()
 
 
+# ============================== week 18: users, projects, runs ==============================
+# Design + reasoning: week18/app_design.md. Pattern follows Susmit's drone_docker (projects owned by
+# a user, runs versioned into their own folders); sign-in is verified here rather than trusted.
+
+def _state(request: Request) -> dict:
+    return request.scope.setdefault("state", {})
+
+
+def _need_user(request: Request) -> str:
+    user = _state(request).get("user")
+    if not user:
+        raise HTTPException(401, "sign in first")
+    return user
+
+
+# ----------------------------- sign-in -----------------------------
+class GoogleIn(BaseModel):
+    credential: str             # the ID token Google's button hands the page
+
+
+class DevIn(BaseModel):
+    name: str
+
+
+def _sign_in(ident: dict, request: Request, response: Response) -> dict:
+    with db.Session() as s:
+        u = s.get(db.User, ident["email"]) or db.User(email=ident["email"])
+        u.name, u.picture, u.last_login = ident["name"], ident.get("picture"), db._now()
+        s.add(u)
+        s.commit()
+    response.set_cookie(auth.COOKIE, auth.make_cookie(ident["email"]),
+                        max_age=config.SESSION_DAYS * 86400, httponly=True, samesite="lax",
+                        # behind the tower's TLS proxy the app itself sees http; trust the proxy's word
+                        secure=request.headers.get("x-forwarded-proto", request.url.scheme) == "https",
+                        path="/")
+    log.info("sign-in %s", ident["email"])
+    return {"email": ident["email"], "name": ident["name"], "picture": ident.get("picture")}
+
+
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    """Who's signed in (null if nobody) + which sign-in the page should offer."""
+    email = auth.read_cookie(request.cookies.get(auth.COOKIE))
+    user = None
+    if email:
+        with db.Session() as s:
+            u = s.get(db.User, email)
+            if u:
+                user = {"email": u.email, "name": u.name, "picture": u.picture}
+    return {"user": user, "google_client_id": config.GOOGLE_CLIENT_ID or None,
+            "dev_login": auth.dev_login_allowed()}
+
+
+@app.post("/api/auth/google")
+def auth_google(body: GoogleIn, request: Request, response: Response):
+    try:
+        ident = auth.verify_google(body.credential)
+    except ValueError as e:
+        raise HTTPException(401, f"Google sign-in failed: {e}")
+    return _sign_in(ident, request, response)
+
+
+@app.post("/api/auth/dev")
+def auth_dev(body: DevIn, request: Request, response: Response):
+    """Laptop-only login. Refused once GOOGLE_CLIENT_ID is set (see auth.dev_login_allowed)."""
+    try:
+        ident = auth.dev_identity(body.name)
+    except ValueError as e:
+        raise HTTPException(403, str(e))
+    return _sign_in(ident, request, response)
+
+
+@app.post("/api/auth/logout")
+def auth_logout(response: Response):
+    response.delete_cookie(auth.COOKIE, path="/")
+    return {"signed_out": True}
+
+
+# ----------------------------- projects -----------------------------
+class ProjectIn(BaseModel):
+    name: str
+    bbox: list[float]
+    year: int = 2024
+    base_scheme: str = "indiasat"
+
+
+class ProjectPatch(BaseModel):
+    name: str | None = None
+    is_public: bool | None = None
+    year: int | None = None
+    bbox: list[float] | None = None
+
+
+def _check_bbox(bbox):
+    if len(bbox) != 4:
+        raise HTTPException(400, "the area must be [west, south, east, north]")
+    guard = aoi.check(tuple(bbox), "tiles")
+    if not guard["ok"]:
+        raise HTTPException(400, guard["reason"])
+
+
+def _project_out(p: db.Project, user: str | None) -> dict:
+    out = db.project_dict(p)
+    out["mine"] = user == p.owner
+    return out
+
+
+@app.get("/api/projects")
+def my_projects(request: Request):
+    """The signed-in user's projects, newest first. Only theirs, never anyone else's (point 9)."""
+    user = _need_user(request)
+    with db.Session() as s:
+        rows = (s.query(db.Project).filter_by(owner=user)
+                .order_by(db.Project.updated_at.desc()).all())
+        return {"projects": [_project_out(p, user) for p in rows]}
+
+
+@app.get("/api/projects/public")
+def public_projects(request: Request):
+    """Projects their owners made public (point 11): view-only for everyone, copyable when signed in."""
+    user = _state(request).get("user")
+    with db.Session() as s:
+        rows = (s.query(db.Project, db.User.name).join(db.User, db.User.email == db.Project.owner)
+                .filter(db.Project.is_public.is_(True))
+                .order_by(db.Project.updated_at.desc()).limit(100).all())
+        return {"projects": [{**_project_out(p, user), "owner_name": name} for p, name in rows]}
+
+
+@app.post("/api/projects")
+def create_project(body: ProjectIn, request: Request):
+    """New project: a row, a folder, and a fresh scheme seeded from the chosen base classes."""
+    user = _need_user(request)
+    _check_bbox(body.bbox)
+    if body.base_scheme not in ("indiasat", "worldcover"):
+        raise HTTPException(400, "base must be indiasat or worldcover")
+    year = min(max(int(body.year), AE_YEARS[0]), AE_YEARS[-1])
+    name = body.name.strip() or "Untitled project"
+    with db.Session() as s:
+        p = db.Project(owner=user, name=name, bbox=list(body.bbox), year=year,
+                       base_scheme=body.base_scheme)
+        s.add(p)
+        s.commit()
+    projects.create_folder(p.id)
+    tok = config.use_workspace(projects.folder(p.id))
+    try:
+        _switch_base(body.base_scheme)             # seeds hierarchy + active base in the new folder
+        oplog.append("create", {"name": name, "bbox": list(body.bbox), "year": year,
+                                "base_scheme": body.base_scheme})
+    except Exception as e:
+        with db.Session() as s:
+            s.delete(s.get(db.Project, p.id))
+            s.commit()
+        projects.delete_folder(p.id)
+        raise HTTPException(500, f"couldn't set up the project: {e}")
+    finally:
+        config.reset_workspace(tok)
+    log.info("project %s created by %s", p.id, user)
+    return _project_out(p, user)
+
+
+@app.get("/api/projects/{pid}")
+def get_project(pid: str, request: Request):
+    """One project (the middleware already checked it's yours or public, and opened its workspace)."""
+    st = _state(request)
+    return {**st["project"], "mine": st.get("owner", False), **_tree_payload()}
+
+
+@app.patch("/api/projects/{pid}")
+def patch_project(pid: str, body: ProjectPatch, request: Request):
+    user = _need_user(request)
+    with db.Session() as s:
+        p = s.get(db.Project, pid)
+        if body.name is not None and body.name.strip():
+            p.name = body.name.strip()
+        if body.is_public is not None:
+            p.is_public = body.is_public
+        if body.year is not None:
+            p.year = min(max(int(body.year), AE_YEARS[0]), AE_YEARS[-1])
+        if body.bbox is not None:
+            # Susmit's dataset lock: once a project has run, its area is part of what the runs mean;
+            # a different area is a different project
+            if p.current_run:
+                raise HTTPException(409, "the area is fixed once a project has a run; start a new "
+                                         "project for a different area")
+            _check_bbox(body.bbox)
+            p.bbox = list(body.bbox)
+        s.commit()
+        return _project_out(p, user)
+
+
+@app.delete("/api/projects/{pid}")
+def delete_project(pid: str, request: Request):
+    _need_user(request)
+    with db.Session() as s:
+        s.delete(s.get(db.Project, pid))
+        s.commit()
+    projects.delete_folder(pid)
+    _cache.pop(str(projects.folder(pid)), None)
+    return {"deleted": pid}
+
+
+@app.post("/api/projects/{pid}/copy")
+def copy_project(pid: str, request: Request):
+    """Copy a public project (or one of your own) into a new project of yours: scheme, examples and
+    weights come along, runs don't."""
+    user = _need_user(request)
+    src = _state(request)["project"]
+    with db.Session() as s:
+        p = db.Project(owner=user, name=f"Copy of {src['name']}", bbox=src["bbox"], year=src["year"],
+                       base_scheme=src["base_scheme"])
+        s.add(p)
+        s.commit()
+    projects.copy_project(pid, p.id)
+    return _project_out(p, user)
+
+
+def _new_project_row(user, name, bbox, year, base):
+    _check_bbox(bbox)
+    if base not in ("indiasat", "worldcover"):
+        raise HTTPException(400, f"unknown base scheme {base!r}")
+    with db.Session() as s:
+        p = db.Project(owner=user, name=(name or "Imported project")[:120], bbox=list(bbox),
+                       year=min(max(int(year or 2024), AE_YEARS[0]), AE_YEARS[-1]), base_scheme=base)
+        s.add(p)
+        s.commit()
+    projects.create_folder(p.id)
+    return p
+
+
+def _drop_project(pid):
+    with db.Session() as s:
+        row = s.get(db.Project, pid)
+        if row:
+            s.delete(row)
+            s.commit()
+    projects.delete_folder(pid)
+
+
+@app.post("/api/projects/import")
+def import_project(request: Request, file: UploadFile = File(...)):
+    """Resume a saved project as a new one of yours. Takes the zip "Download project" makes (scheme,
+    examples, weights and runs all come back), or the project.json the pre-week-18 UI saved (scheme
+    and steps; its splits reuse the shared models only where their classes still match, else they're
+    listed for retraining). Replaces the old "Resume a saved project" file picker."""
+    import io
+    import zipfile
+    user = _need_user(request)
+    raw = file.file.read()
+    stem = Path(file.filename or "project").stem
+    if zipfile.is_zipfile(io.BytesIO(raw)):
+        p, missing = _import_zip(user, raw, stem)
+    else:
+        p, missing = _import_json(user, raw, stem)
+    return {**_project_out(p, user), "missing_classifiers": missing}
+
+
+def _import_zip(user, raw, stem):
+    import io
+    import zipfile
+    z = zipfile.ZipFile(io.BytesIO(raw))
+    try:
+        meta = json.loads(z.read("project.json"))
+    except KeyError:
+        raise HTTPException(400, "this zip has no project.json; it isn't a Core Stack project download")
+    p = _new_project_row(user, meta.get("name") or stem, meta.get("bbox") or [], meta.get("year"),
+                         meta.get("base_scheme", "indiasat"))
+    dest = projects.folder(p.id)
+    ok_top = set(projects.SCHEME_FILES) | {"examples", "weights", "runs"}
+    try:
+        for name in z.namelist():
+            parts = Path(name).parts
+            # only the layout we write ourselves; nothing absolute, nothing climbing out
+            if (not parts or parts[0] not in ok_top or ".." in parts or Path(name).is_absolute()
+                    or name.endswith("/")):
+                continue
+            out = dest.joinpath(*parts)
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_bytes(z.read(name))
+        tok = config.use_workspace(dest)
+        try:
+            report = validate_ops.validate_envelope({"hierarchy": hierarchy.load(), "op_log": oplog.load()})
+            if not report["ok"]:
+                raise HTTPException(400, {"message": "the saved scheme doesn't validate", **report})
+            missing = validate_ops.missing_classifiers(hierarchy.load())
+        finally:
+            config.reset_workspace(tok)
+    except Exception:
+        _drop_project(p.id)
+        raise
+    runs = [r for r in (meta.get("runs") or []) if projects.read_run(p.id, r.get("run", 0))]
+    with db.Session() as s:
+        row = s.get(db.Project, p.id)
+        row.runs, row.current_run = runs, max((r["run"] for r in runs), default=0)
+        s.commit()
+        return row, missing
+
+
+def _import_json(user, raw, stem):
+    try:
+        f = json.loads(raw.decode("utf-8-sig"))
+    except Exception:
+        raise HTTPException(400, "that isn't a project zip or a project .json")
+    if not isinstance(f, dict):
+        raise HTTPException(400, "that isn't a project zip or a project .json")
+    tree = f.get("hierarchy") if "hierarchy" in f else f
+    ops = f.get("sequence") or f.get("op_log") or []
+    bbox = f.get("aoi")
+    if not bbox:
+        raise HTTPException(400, "this file has no area (aoi), so there's nothing to fix the project "
+                                 "to; start a new project and import the classes into it instead")
+    report = validate_ops.validate_envelope({"hierarchy": tree, "op_log": ops})
+    if not report["ok"]:
+        raise HTTPException(400, {"message": "the saved scheme doesn't validate", **report})
+    p = _new_project_row(user, stem, bbox, f.get("year"), f.get("base_scheme", "indiasat"))
+    tok = config.use_workspace(projects.folder(p.id))
+    try:
+        _switch_base(p.base_scheme)
+        import joblib
+        for cls, node in tree.items():
+            clf = node.get("classifier")
+            shared = Path(config.model_path(f"refine/{clf}.joblib")) if clf else None
+            # an old save points at the shared weights of the day; reuse them only if they still
+            # split into the same classes, otherwise that split waits for a retrain
+            if shared and shared.exists():
+                bundle = joblib.load(shared)
+                if sorted(bundle.get("classes") or []) == sorted(node.get("children") or []):
+                    joblib.dump(bundle, config.weights_write_path(clf))
+        hierarchy.save(tree)
+        oplog.replace(ops)
+        oplog.append("import_hierarchy", {"file": stem})
+        missing = validate_ops.missing_classifiers(tree)
+    except Exception:
+        config.reset_workspace(tok)
+        tok = None
+        _drop_project(p.id)
+        raise
+    finally:
+        if tok:
+            config.reset_workspace(tok)
+    return p, missing
+
+
+# ----------------------------- runs -----------------------------
+class RunIn(BaseModel):
+    name: str | None = None
+    dag_run_id: str | None = None      # set when the run went through Airflow first
+
+
+def _render_bbox(bbox, year):
+    w, s_, e, n = bbox
+    return classify(west=w, south=s_, east=e, north=n, mode="realistic", year=year)
+
+
+@app.post("/api/projects/{pid}/runs")
+def create_run(pid: str, body: RunIn, request: Request):
+    """Run classification for the project and keep it as run_<n>: the map it drew, plus a frozen copy
+    of the scheme that drew it. This is the only thing that computes a map (point 7)."""
+    _need_user(request)
+    proj = _state(request)["project"]
+    out = _render_bbox(proj["bbox"], proj["year"])
+    n = (proj["current_run"] or 0) + 1
+    meta = projects.snapshot_run(pid, n, {
+        "name": (body.name or "").strip() or f"Run {n}", "year": out.get("year", proj["year"]),
+        "bbox": proj["bbox"], "base_scheme": proj["base_scheme"], "counts": out.get("counts"),
+        "colors": out.get("colors"), "render": out.get("render"), "dag_run_id": body.dag_run_id,
+        "op_seq": len(oplog.load())})
+    with db.Session() as s:
+        p = s.get(db.Project, pid)
+        p.current_run = n
+        p.runs = [*(p.runs or []), {k: meta[k] for k in ("run", "name", "created_at", "year")}]
+        s.commit()
+    return {"run": meta, **out}
+
+
+@app.get("/api/projects/{pid}/runs/{n}")
+def get_run(pid: str, n: int, request: Request):
+    """Redraw a saved run from its own frozen scheme, so opening a project needs no re-run (point 9)."""
+    meta = projects.read_run(pid, n)
+    if not meta:
+        raise HTTPException(404, f"no run {n} in this project")
+    tok = config.use_workspace(projects.run_dir(pid, n))
+    try:
+        out = _render_bbox(meta["bbox"], meta["year"])
+        run_tree = hierarchy.load()          # the classes as they were for this run, for visitors
+    finally:
+        config.reset_workspace(tok)
+    return {"run": meta, "run_tree": run_tree, **out}
+
+
+@app.get("/api/projects/{pid}/runs/{n}/geotiff")
+def run_geotiff(pid: str, n: int, request: Request):
+    """The run's GeoTIFF, saved into the run folder the first time it's asked for, then served from
+    disk. One band of integer class codes; the code -> class legend goes into run.json."""
+    meta = projects.read_run(pid, n)
+    if not meta:
+        raise HTTPException(404, f"no run {n} in this project")
+    tif = projects.tif_path(pid, n)
+    if not tif.exists():
+        w, s_, e, nth = meta["bbox"]
+        tok = config.use_workspace(projects.run_dir(pid, n))
+        try:
+            d = classify_geotiff(west=w, south=s_, east=e, north=nth, year=meta["year"])
+        finally:
+            config.reset_workspace(tok)
+        import requests
+        r = requests.get(d["url"], timeout=600)
+        if r.status_code != 200:
+            raise HTTPException(502, f"Earth Engine didn't hand the GeoTIFF over (HTTP {r.status_code})")
+        tif.write_bytes(r.content)
+        projects.update_run(pid, n, legend={str(i): c for i, c in enumerate(d["classes"])})
+    safe = "".join(ch if ch.isalnum() else "_" for ch in _state(request)["project"]["name"])[:40]
+    return FileResponse(tif, media_type="image/tiff", filename=f"{safe}_run{n}.tif")
+
+
+@app.get("/api/projects/{pid}/download")
+def download_project(pid: str, request: Request):
+    """The whole project as a zip: scheme, op log, examples, weights, every run's record and GeoTIFF."""
+    proj = _state(request)["project"]
+    z = projects.zip_project(pid, proj)
+    safe = "".join(ch if ch.isalnum() else "_" for ch in proj["name"])[:40]
+    return FileResponse(z, media_type="application/zip", filename=f"{safe}.zip")
+
+
+# ----------------------------- the standard upload format (point 9) -----------------------------
+# One FeatureCollection, EPSG:4326, polygons, and exactly one required property: `class`. Optional
+# `role` (positive / negative) and `note`. The classes are read off the file, so one upload can
+# create a whole split and fill every child in one go. Full spec: week18/app_design.md section 3.4.
+EXAMPLE_FORMAT = {
+    "type": "FeatureCollection",
+    "features": [
+        {"type": "Feature", "properties": {"class": "acacia", "note": "desk-labelled crown"},
+         "geometry": {"type": "Polygon", "coordinates": [[[77.1795, 28.5402], [77.1799, 28.5402],
+                      [77.1799, 28.5406], [77.1795, 28.5406], [77.1795, 28.5402]]]}},
+        {"type": "Feature", "properties": {"class": "non_acacia", "note": "neem"},
+         "geometry": {"type": "Polygon", "coordinates": [[[77.1861, 28.5448], [77.1865, 28.5448],
+                      [77.1865, 28.5452], [77.1861, 28.5452], [77.1861, 28.5448]]]}},
+        {"type": "Feature", "properties": {"class": "acacia", "role": "negative",
+                                           "note": "looks like acacia, isn't"},
+         "geometry": {"type": "Polygon", "coordinates": [[[77.1830, 28.5420], [77.1834, 28.5420],
+                      [77.1834, 28.5424], [77.1830, 28.5424], [77.1830, 28.5420]]]}},
+    ],
+}
+
+
+@app.get("/api/upload-format/example.geojson")
+def upload_example():
+    return Response(json.dumps(EXAMPLE_FORMAT, indent=2), media_type="application/geo+json",
+                    headers={"Content-Disposition": 'attachment; filename="example_labels.geojson"'})
+
+
+def _parse_labelled(raw: bytes, bbox=None) -> dict:
+    """Check an upload against the standard format and group it by class: {class: {role: [features]}}.
+    Every problem found is reported together, so a user fixes the file once, not once per error."""
+    from shapely.geometry import box, shape
+    try:
+        fc = json.loads(raw.decode("utf-8-sig"))
+    except Exception:
+        raise HTTPException(400, "that file isn't valid JSON; the format is a GeoJSON FeatureCollection")
+    if not isinstance(fc, dict) or fc.get("type") != "FeatureCollection" or not fc.get("features"):
+        raise HTTPException(400, "expected a GeoJSON FeatureCollection with at least one feature")
+    errs, groups, inside = [], {}, 0
+    area = box(*bbox) if bbox else None
+    for i, f in enumerate(fc["features"], start=1):
+        props, geom = (f.get("properties") or {}), f.get("geometry") or {}
+        cls = str(props.get("class") or "").strip()
+        role = str(props.get("role") or "positive").strip().lower()
+        if not cls:
+            errs.append(f"feature {i}: no 'class' property")
+        if role not in examples.ROLES:
+            errs.append(f"feature {i}: role must be positive or negative, not {role!r}")
+        if geom.get("type") not in ("Polygon", "MultiPolygon"):
+            errs.append(f"feature {i}: geometry must be a Polygon or MultiPolygon, not {geom.get('type')}")
+            continue
+        try:
+            g = shape(geom)
+        except Exception:
+            errs.append(f"feature {i}: the polygon can't be read")
+            continue
+        x0, y0, x1, y1 = g.bounds
+        if not (-180 <= x0 <= x1 <= 180 and -90 <= y0 <= y1 <= 90):
+            errs.append(f"feature {i}: coordinates aren't lon/lat in EPSG:4326")
+            continue
+        if area is not None and g.intersects(area):
+            inside += 1
+        if cls and role in examples.ROLES:
+            groups.setdefault(hierarchy.canonicalize(cls), {}).setdefault(role, []).append(
+                {"type": "Feature", "geometry": geom, "properties": {}})
+    if errs:
+        more = f" (+{len(errs) - 8} more)" if len(errs) > 8 else ""
+        raise HTTPException(400, "fix these and upload again: " + "; ".join(errs[:8]) + more)
+    if area is not None and inside == 0:
+        raise HTTPException(400, "none of these polygons fall inside the project's area")
+    return groups
+
+
+@app.post("/api/examples/labelled")
+def upload_labelled(request: Request, node: str = Form(...), file: UploadFile = File(...)):
+    """Build-your-own in one step: the file's classes become `node`'s children (a leaf gets split,
+    a split node gains any class it's missing), and each polygon lands on its class."""
+    _shared_base_guard(node)
+    proj = _state(request).get("project")
+    groups = _parse_labelled(file.file.read(), bbox=proj["bbox"] if proj else None)
+    tree = hierarchy.load()
+    if node not in tree:
+        raise HTTPException(400, f"{node!r} isn't in your scheme")
+    clash = [c for c in groups if c in tree and tree[c].get("parent") != node]
+    if clash:
+        raise HTTPException(400, f"{clash} already name a class elsewhere in your scheme; rename them "
+                                 "in the file")
+    children = tree[node].get("children") or []
+    created = [c for c in groups if c not in children]
+    if not children:
+        if len(groups) < 2:
+            raise HTTPException(400, "a split needs at least two classes in the file")
+        refine.split_op(node, [{"name": c} for c in groups], do_train=False)
+        oplog.append("split", {"parent": node, "children": list(groups), "from": "upload"})
+    else:
+        for c in created:
+            refine.add_class_op(node, c, do_train=False)
+            oplog.append("add", {"parent": node, "name": c, "from": "upload"})
+    counts = {}
+    for cls, by_role in groups.items():
+        for role, feats in by_role.items():
+            counts[cls] = examples.add_examples(cls, {"type": "FeatureCollection", "features": feats},
+                                                role=role)
+    oplog.append("upload", {"node": node, "file": file.filename, "classes": counts})
+    return {"node": node, "classes": counts, "created": created, **_tree_payload()}
+
+
+# ----------------------------- the gate: who you are, which project, what you may do -----------------------------
+# One pure ASGI middleware (not @app.middleware: a ContextVar set there wouldn't reach the thread
+# the handler runs on). Per request it reads the session cookie, finds the project the request is
+# about (a /api/projects/<id>/ path, an X-Project-Id header, or ?project= on plain links), checks
+# the caller may touch it, and opens that project's folder as the workspace. The rules are the
+# cluster checklist's #4: no session, no compute and no writes.
+import re
+from starlette.responses import JSONResponse
+
+_PROJECT_ROUTE = re.compile(r"^/api/projects/([0-9a-f]{12})(?:/|$)")
+_PUBLIC_COPY = re.compile(r"^/api/projects/[0-9a-f]{12}/copy$")
+_OPEN = ("/api/auth/", "/api/health", "/api/upload-format/")
+# the DAG calls these back without a browser; SERVICE_TOKEN (like Susmit's X-Service-Token) vouches
+_SERVICE = ("/api/export-asset", "/api/jobs", "/api/classify")
+# reads that make Earth Engine work
+_COMPUTE_READS = ("/api/classify", "/api/water", "/api/treecrop", "/api/farmshrub", "/api/segment",
+                  "/api/water-frequency", "/api/export-asset", "/api/export-status", "/api/stacd")
+# writes that change a scheme belong in a project, never in the shared data/ workspace
+_SCHEME_WRITES = ("/api/split", "/api/add", "/api/retrain", "/api/examples", "/api/merge",
+                  "/api/apply", "/api/base/select", "/api/session/reset", "/api/hierarchy/import")
+
+
+class Gate:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        path = scope.get("path", "")
+        if scope["type"] != "http" or not path.startswith("/api/") or path.startswith(_OPEN):
+            return await self.app(scope, receive, send)
+        req = Request(scope)
+        user = auth.read_cookie(req.cookies.get(auth.COOKIE))
+        token = req.headers.get("x-service-token")
+        # no SERVICE_TOKEN: the callbacks stay open on a laptop (dev login on) so a local DAG still works,
+        # but never once Google sign-in is configured, where an open compute path would fail checklist #4
+        service = (token == config.SERVICE_TOKEN if config.SERVICE_TOKEN
+                   else auth.dev_login_allowed() and path.startswith(_SERVICE) and not user)
+        write = scope["method"] not in ("GET", "HEAD", "OPTIONS")
+        state = scope.setdefault("state", {})
+        state["user"] = user
+
+        async def deny(code, msg):
+            await JSONResponse({"detail": msg}, status_code=code)(scope, receive, send)
+
+        m = _PROJECT_ROUTE.match(path)
+        pid = (m.group(1) if m else None) or req.headers.get("x-project-id") or req.query_params.get("project")
+        if pid:
+            with db.Session() as s:
+                p = s.get(db.Project, pid)
+            if not p:
+                return await deny(404, "no such project")
+            owner = user is not None and user == p.owner
+            if not (owner or service or (p.is_public and (not write or _PUBLIC_COPY.match(path)))):
+                return await deny(401 if not user else 403,
+                                  "sign in first" if not user else "that project isn't yours")
+            state["project"], state["owner"] = db.project_dict(p), owner
+            tok = config.use_workspace(projects.folder(pid))
+            try:
+                return await self.app(scope, receive, send)
+            finally:
+                config.reset_workspace(tok)
+
+        if (write or path.startswith(_COMPUTE_READS)) and not (user or service):
+            return await deny(401, "sign in first")
+        if write and path.startswith(_SCHEME_WRITES) and not service:
+            return await deny(400, "open a project first; scheme changes happen inside a project")
+        return await self.app(scope, receive, send)
+
+
+app.add_middleware(Gate)
+
+
 # serve the frontend (mount last so /api/* wins)
 @app.get("/")
-def index():
+def front_page():
+    """The front page (point 8): what this is, the video, public outputs, sign in."""
+    return FileResponse(_STATIC / "landing.html")
+
+
+@app.get("/app")
+def app_page():
+    """The tool itself. Signed-out visitors get bounced to the front page by the page's own script."""
     return FileResponse(_STATIC / "index.html")
 
 
@@ -1421,7 +2120,9 @@ def frontend_config():
     (empty = relative, what the single-container deploy wants) and whether Airflow is wired, which
     decides if the long ops go through the DAG or run inline. Declared before the static mount so
     this route wins over any file of the same name."""
-    cfg = json.dumps({"apiBase": config.API_BASE_URL, "airflow": airflow_client.configured()})
+    cfg = json.dumps({"apiBase": config.API_BASE_URL, "airflow": airflow_client.configured(),
+                      "googleClientId": config.GOOGLE_CLIENT_ID or None,
+                      "devLogin": auth.dev_login_allowed(), "introVideo": config.INTRO_VIDEO_URL or None})
     return Response(f"window.CORESTACK_CFG = {cfg};\n", media_type="application/javascript",
                     headers={"Cache-Control": "no-store"})   # no-store: it changes with the .env
 
