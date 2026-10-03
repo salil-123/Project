@@ -324,11 +324,18 @@ Bump `VERSION` first so the tag says which build has sign-in.
 
 ### 12.2 Google sign-in
 
+Register **our own** OAuth client in our own Google Cloud project; every service on the tower uses its
+own client id (Susmit's advice, 3 Oct 2026), so don't borrow the drone app's.
+
 1. Google Cloud Console → *APIs & Services* → *Credentials* → **Create credentials → OAuth client ID**,
    type **Web application**. (First time: fill the OAuth consent screen, *Internal* if it's an IIT
-   Workspace project, which also limits sign-in to institute accounts.)
+   Workspace project, which also limits sign-in to institute accounts; otherwise *External*, which
+   stays in Testing, open only to listed test users, until it's published. Scopes: just `openid`,
+   `email`, `profile`.)
 2. **Authorized JavaScript origins**: the exact origin users open, e.g. `https://core-stack.org` or
-   `http://<tower-host>:8000`. No path, no trailing slash. Add `http://localhost:8000` for testing.
+   `http://<tower-host>:8000`. No path, no trailing slash: an app under
+   `https://www.cse.iitd.ernet.in/<path>/` (where Susmit's drone app lives) has the origin
+   `https://www.cse.iitd.ernet.in`. Add `http://localhost:8000` for testing.
    No redirect URI is needed: the button hands the page a token directly.
 3. Put the id in `.env`: `GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com`. There's no client secret
    in this flow, so nothing secret goes in git.

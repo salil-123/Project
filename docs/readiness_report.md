@@ -1,40 +1,56 @@
 # Core Stack LULC: service readiness report
 
 Service: **corestack-lulc**
-Repo: `salil-123/Project` @ `ee7f6ad` · Zoo: `salil-123/zoo_database` @ `8916fb6`
-Image: `salil2003/corestack-lulc` · Date: 24 September 2026
+Repo: `salil-123/Project` @ `eec34e1` + week 18 work (staged, not yet pushed) · Zoo: `salil-123/zoo_database` @ `8916fb6`
+Image: `salil2003/corestack-lulc` · First written 24 September 2026 · **Updated 3 October 2026** (after week 18)
 
 Two things this report covers: where the five assigned tasks stand, and a full pass over the
 [CoRE Stack Cluster Service Checklist](https://docs.core-stack.org/server/cluster-service-checklist/),
 which has grown to **eleven** items since our first audit.
 
-| | Count |
-|---|---|
-| Complete | 7 |
-| Partial | 1 (§3) |
-| Parked on instruction | 1 (§4) |
-| Not started | 1 (§11, new) |
-| Not applicable | 1 (§9) |
+| | Count (24 Sep) | Count (3 Oct) |
+|---|---|---|
+| Complete | 7 | 8 (§9 now done) |
+| Built, needs a step on the tower | 0 | 2 (§4 needs our OAuth client id; §11 needs the video) |
+| Partial | 1 (§3) | 1 (§3, version tag not pushed) |
+| Parked on instruction | 1 (§4) | 0 |
+| Not started | 1 (§11) | 0 |
+| Not applicable | 1 (§9) | 0 |
+
+**What changed since 24 Sep, in one paragraph.** Week 18 built the two parked items and the new one:
+Google sign-in verified on the server (§4), users and projects in a database via `DATABASE_URL` (§9),
+and a front page at `/` with a slot for the video (§11). scikit-learn is pinned to 1.8.0. The Airflow
+callbacks carry a service token so sign-in doesn't lock the DAG out. None of it is on the tower yet:
+the code is staged, the image needs one rebuild, and the tower needs our own Google OAuth client id.
+The current to-do list is §4 below.
 
 ---
 
 ## 1. The five assigned tasks
 
-### 1.1 Google SSO, with a database behind it (PARKED)
+### 1.1 Google SSO, with a database behind it (BUILT in week 18; needs our client id on the tower)
 
-Deferred on instruction, pending further advice. Not abandoned, and not started.
+*24 Sep: parked on instruction.* Built in week 18:
 
-Postgres (§9) parks with it. The checklist marks the database item *"N/A if the service has no
-database"*, and the only tables SSO would introduce are a `users` table and an auth audit trail.
-Creating them before the auth decision is speculative work.
+* **Sign-in.** The browser uses Google Identity Services (the same library as Susmit's drone app) and
+  hands the server a signed ID token. `POST /api/auth/google` checks signature, audience (our client
+  id), expiry and verified email with `google-auth`, then sets a signed, HttpOnly session cookie
+  (`src/auth.py`). Unlike drone_docker, which trusts an `X-User-Email` header, nothing here takes the
+  browser's word for who the user is; the checklist asks for SSO *validated on the backend*.
+* **Gate.** One ASGI middleware (`Gate` in `src/backend.py`): every write or compute call without a
+  session gets 401, someone else's project 403, a public project is read only.
+* **Database.** `users` and `projects` tables via SQLAlchemy (`src/db.py`); `DATABASE_URL` picks
+  Postgres on the tower, SQLite only when it's unset, on a laptop. Each project's files live under
+  `data/projects/<id>/`.
+* **The Airflow constraint, handled.** The DAG calls back into `/api/export-asset` and
+  `/api/jobs/{id}/result` with no browser session. Those calls carry `X-Service-Token`, checked
+  against `SERVICE_TOKEN`; the backend warns at startup if sign-in is on and the token isn't set.
+* **Local login** for laptops: when no client id is set, the front page offers a type-your-name
+  login. It switches itself off the moment `GOOGLE_CLIENT_ID` is set.
 
-What is already in place so it drops in later without rework:
-
-* Env var names reserved in `deploy/.env.example`.
-* One design constraint is already identified and documented: the Airflow worker calls back into
-  `POST /api/export-asset` and `POST /api/jobs/{id}/result` with **no browser session**. Any auth
-  layer must therefore carry a service-token bypass for machine-to-machine calls, or the DAG path
-  breaks the moment SSO is switched on. This is the single non-obvious thing about adding SSO here.
+**Still to do: our own OAuth client.** Susmit's advice (3 Oct): each service registers **its own**
+Google OAuth client and uses its own client id; we don't borrow his. Steps in §4 below and in
+`deploy/DEPLOY_GUIDE.md` §12.2.
 
 ### 1.2 Audit against the tower-services guidelines (DONE)
 
@@ -129,22 +145,17 @@ browser and sidesteps CORS. No `COMPUTE_MODE` flag anywhere. Nothing needed doin
 The image is deps-only, lives on Docker Hub, and the README carries the exact `docker pull` line.
 
 What is missing is one line of the requirement: *"Image tagged with version (optionally `latest`)"*.
-We publish only `:latest`. A `VERSION` file (0.9.0) is committed, but no matching tag has been
-pushed, so a clean host cannot pin what it pulls.
+We publish only `:latest`; `VERSION` says 0.9.0 but no matching tag has been pushed.
 
-Two commands, no code change:
+**Update 3 Oct.** Week 18 added dependencies (sqlalchemy, psycopg 3, google-auth, itsdangerous) and
+pinned scikit-learn, so the image has to be rebuilt anyway. Do it with a version tag and §3 closes in
+the same step: bump `VERSION` (to 1.0.0, the first build with sign-in), then
+`deploy/DEPLOY_GUIDE.md` §12.1 builds and pushes both `:latest` and `:$(cat VERSION)`.
 
-```bash
-docker tag salil2003/corestack-lulc:latest salil2003/corestack-lulc:0.9.0
-docker push salil2003/corestack-lulc:0.9.0
-```
+### §4 Google SSO (BUILT, needs our client id)
 
-Then add the pinned tag to the README next to the `latest` line.
-
-### §4 Google SSO (PARKED)
-
-See §1.1. Note that it now blocks **two** items, because §11's landing page is specified as
-"project story, then sign-in".
+See §1.1. What stands between this and done is registering our own OAuth client and putting its id
+on the tower (§4 below).
 
 ### §5 `LOG_LEVEL`; logs under `data/logs/<app>/` (DONE)
 
@@ -202,10 +213,12 @@ output to `data/`; FileBrowser over `data/`; the three mounts; `data/logs/corest
 It also documents how a retrain rides the export conf, since that is the part a new operator would
 otherwise get wrong.
 
-### §9 Postgres on the central server (N/A)
+### §9 Postgres on the central server (DONE in week 18)
 
-No database is used. The checklist explicitly allows this: *"N/A if service has no database."*
-It becomes live work the moment §4 does.
+*24 Sep: N/A, no database.* Week 18 added `users` and `projects`, so it applies now and is built:
+`DATABASE_URL=postgresql://...` on the tower (`src/db.py` maps it to the psycopg 3 driver explicitly,
+since SQLAlchemy 2.1 changed the default). Checked against a throwaway Postgres with the rebuilt image:
+tables created, sign-in rules enforced. On the tower it needs the central server's connection string.
 
 ### §10 `outputs.yaml` (DONE)
 
@@ -227,8 +240,19 @@ that produced it:
 | `data/logs/` | `private_persistent` | rotating, so self-capping |
 | `data/jobs/` | `delete`, 7 days | job bookkeeping, worthless once read |
 | `data/inputs/` | `private_persistent` | ground-truth inputs for offline scripts |
+| `data/projects/` | `private_persistent` | **added week 18**: each user's projects, runs and GeoTIFFs; a public one is served read only |
 
-### §11 Front page and demo video (NOT STARTED)
+### §11 Front page and demo video (FRONT PAGE BUILT; video pending sir's review)
+
+**Update 3 Oct.** The front page exists: `/` is `src/static/landing.html` (the project story, how it
+works in three steps, sign-in, public projects) and the tool moved to `/app`. The video slot reads
+`INTRO_VIDEO_URL` (a YouTube link or an mp4) and shows a placeholder until it's set. The walkthrough
+flow for the video is written (`week19/walkthrough_flow.md`, 14 chapters, about 6 to 7 minutes) and
+goes to sir for review before recording, as he asked; the manual deck that pairs with it is in Canva.
+What's left: sir's review, the recording, `INTRO_VIDEO_URL` on the tower, and the review date and notes
+in the README, which the checklist asks for.
+
+*The 24 Sep text, kept for the record:*
 
 **This item is new.** It did not exist when we audited the checklist, and it is the only thing here
 that nobody has begun. It asks for two things:
@@ -400,30 +424,47 @@ also **one** DAG run now instead of two, since it no longer chains into a classi
 
 ## 4. Outstanding
 
-### Needs a decision
+*Rewritten 3 Oct. The 24 Sep decisions on SSO and the front page were settled by building them.*
 
-| Item | Question |
-|---|---|
-| §4 Google SSO | Still waiting on advice. Now blocks §11 as well. |
-| §11 front page | Build after the SSO shape is known, or build a story page now and retrofit sign-in? |
-| §11 demo video | Independent of SSO. Who records and who approves? |
-| Weights in git (§1) | Keep the convenience, or move to `fetch_models.sh` and make deployment two steps? |
+### To get week 18 onto the tower, in order
 
-### Ready to do, not yet done
+| # | Step | Who | Notes |
+|---|---|---|---|
+| 1 | Push the staged week 18 code | us | committed locally, not on GitHub yet |
+| 2 | Register **our own** Google OAuth client | us | **done 3 Oct**: web client in `modern-mystery-398416`, origins `https://www.cse.iitd.ernet.in` + `http://localhost:8000`; id in the laptop `.env`, Google mode checked locally |
+| 3 | Bump `VERSION`, rebuild the image, push `:latest` and the version tag | us | closes §3 too; `DEPLOY_GUIDE.md` §12.1 |
+| 4 | Tower `.env`: `GOOGLE_CLIENT_ID`, `SESSION_SECRET`, `DATABASE_URL`, `SERVICE_TOKEN` | us + tower admin | the Postgres connection string comes from the central server |
+| 5 | Airflow side: `CORESTACK_SERVICE_TOKEN` (same value), and the STACD pipeline forwards `X-Service-Token` and `project_id` | Saharsh | without `project_id` a DAG run classifies the global scheme, not the project's |
+| 6 | `git pull`, `docker compose -f docker-compose.hub.yml pull && up -d`, then the two `curl` checks in DEPLOY_GUIDE §12.2 | us | `/api/auth/me` shows the client id; a write without a cookie gets 401 |
+| 7 | Video: sir reviews the flow, we record, set `INTRO_VIDEO_URL`, note the review in the README | us + sir | §11 |
+
+### Registering our own OAuth client (step 2)
+
+1. In **our** Google Cloud project (not Susmit's): *APIs & Services → OAuth consent screen*. User type
+   **Internal** if the project sits in the IIT Delhi Workspace (sign-in is then limited to institute
+   accounts); otherwise **External**. App name "Core Stack LULC", support email, scopes: only the basic
+   `openid`, `email`, `profile`. An External app stays in "Testing" (only listed test users can sign
+   in) until it's published; basic scopes don't need Google's sensitive-scope review.
+2. *Credentials → Create credentials → OAuth client ID → Web application*.
+3. **Authorized JavaScript origins**: the exact origin users open, scheme + host (+ port), no path.
+   If the app sits under `https://www.cse.iitd.ernet.in/<path>/` like Susmit's drone app, the origin is
+   `https://www.cse.iitd.ernet.in`. Add `http://localhost:8000` for testing. No redirect URI is needed.
+4. Copy the client id into the tower's `.env` as `GOOGLE_CLIENT_ID`. It is public by design (it ships to
+   the browser); there is no client secret in this flow, so nothing secret goes in git.
+
+### Smaller items, still open
 
 | Item | Effort |
 |---|---|
-| Push a versioned image tag to close §3 | two commands |
-| Pin scikit-learn (see below) | one line, plus an image rebuild |
-| Size guard on zoo publish | small |
+| Size guard on zoo publish (the 553 MB lesson, §3.1) | small |
 | Delete one stray GEE asset from a test run | one command |
+| Sweep the last raw paths: `backend._ROOT`, `validate_ops._REFINE` | small |
+| Weights in git (§1): keep the convenience, or move to `fetch_models.sh`? | needs a decision |
+| `docs/architecture.md` still says SSO and Postgres are "not used yet"; `docs/cluster_checklist.md` has no row for §11 | doc touch-up |
 
-**The scikit-learn pin.** The container logs `InconsistentVersionWarning` on every startup: the
-models were pickled with **scikit-learn 1.8.0**, the image ships **1.9.0**.
-`deploy/requirements-docker.txt` does not pin it, so the next rebuild could drift further.
-Unpickling an estimator across versions is explicitly unsupported and can skew predictions
-silently. Pinning `scikit-learn==1.8.*` (or retraining against 1.9) is **the one change that would
-justify a new image**; everything else in this report ships by `git pull`.
+**Done since 24 Sep:** scikit-learn pinned to 1.8.0 in both requirements files (no more unpickling 1.8
+models with 1.9); GeoTIFF size cap lowered to 250 km² after a measured Earth Engine memory failure at
+368 km² (week 19).
 
 ---
 
@@ -460,7 +501,8 @@ the host-run results. Starting Docker Desktop fixes it.
 
 ## 6. Commits
 
-Six on `main`, all pushed.
+*As of 24 Sep.* Since then: five docs commits up to `eec34e1` (pushed), and the week 18 + 19 work, staged
+for one commit that still has to be pushed (§4, step 1). The six on `main` at the time, all pushed:
 
 ```
 ee7f6ad  UI: the DAG only fires on Run; drop the marker tool and the map attribution
@@ -477,7 +519,9 @@ Zoo repo: history rewritten to remove the 553 MB blob, force-pushed, now at `891
 
 ## 7. Updating the deployment
 
-No image rebuild, because no dependency changed:
+**3 Oct: this time an image rebuild is needed**, because week 18 added dependencies. Follow
+`deploy/DEPLOY_GUIDE.md` §12 (rebuild, sign-in, database, Airflow token). The `git pull` routine below
+holds again for every later code-only update. *The 24 Sep routine:*
 
 ```bash
 cd /path/to/corestack-lulc
