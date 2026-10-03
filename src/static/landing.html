@@ -20,23 +20,30 @@
     .brand span { color: var(--accent); }
     header nav a { color: var(--mute); text-decoration: none; font-size: 14px; margin-left: 18px; }
     header nav a:hover { color: var(--ink); }
+    header nav { display: flex; align-items: center; }
+    /* sign-in lives in the bar now: one slot that is either the Google button, the local login or "you" */
+    .auth { display: flex; align-items: center; gap: 10px; margin-left: 26px; padding-left: 22px;
+            border-left: 1px solid var(--line); min-height: 36px; }
+    .auth .who { font-size: 13px; color: var(--mute); }
+    .auth .who b { color: var(--ink); font-weight: 600; }
+    .auth input { width: 170px; padding: 7px 10px; background: #1d232c; border: 1px solid #2c333d;
+                  color: var(--ink); border-radius: 6px; font-size: 13px; }
+    .auth .btn { padding: 7px 13px; font-size: 13px; }
+    /* on a phone the page links give way, sign-in stays */
+    @media (max-width: 760px) { header nav > a { display: none; } .auth { margin-left: 0; padding-left: 0; border-left: 0; } }
 
-    .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; padding: 56px 0 40px; align-items: start; }
+    .hero { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; padding: 56px 0 40px; align-items: center; }
     @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }
     .kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
     h1 { font-size: 38px; line-height: 1.15; margin: 10px 0 16px; }
     .lede { color: #c3c8d0; font-size: 16px; }
-    .signin { margin-top: 26px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
-    .signin h3 { font-size: 14px; margin-bottom: 10px; }
-    .signin .row { display: flex; gap: 8px; }
-    .signin input { flex: 1; padding: 9px 11px; background: #1d232c; border: 1px solid #2c333d; color: var(--ink);
-                    border-radius: 6px; font-size: 14px; }
     .btn { display: inline-block; padding: 10px 16px; background: var(--btn); color: #fff; border: none;
            border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; }
     .btn:hover { background: #4079ff; }
     .btn.ghost { background: none; border: 1px solid #2c333d; color: var(--mute); font-weight: 500; }
     .note { font-size: 12px; color: var(--mute); margin-top: 10px; }
-    .err { color: #ff8a80; font-size: 13px; margin-top: 8px; min-height: 18px; }
+    .err { color: #ff8a80; font-size: 13px; margin-top: 14px; }
+    .err:empty { display: none; }
 
     .video { background: #000; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; aspect-ratio: 16 / 9; }
     .video iframe, .video video { width: 100%; height: 100%; border: 0; display: block; }
@@ -73,6 +80,18 @@
         <a href="#how">How it works</a>
         <a href="#public">Public projects</a>
         <a href="https://core-stack.org/" target="_blank" rel="noopener">core-stack.org</a>
+        <div class="auth" id="signin">
+          <div id="gsi"></div>
+          <div id="devBox" style="display:none; gap:8px" title="Local sign-in: no Google client id on this server, so any name works">
+            <input id="devName" type="text" placeholder="Your name (local)">
+            <button class="btn" id="devGo">Sign in</button>
+          </div>
+          <div id="signedIn" style="display:none; align-items:center; gap:10px">
+            <span class="who" id="who"></span>
+            <a class="btn" href="app">Your projects</a>
+            <button class="btn ghost" id="signOut">Sign out</button>
+          </div>
+        </div>
       </nav>
     </div>
   </header>
@@ -85,21 +104,7 @@
         <p class="lede">Start from a base map of greenery, water, built-up and barren land. Split any class
           into finer ones, using a model someone already trained or a few polygons of your own,
           and the map follows. Every model is shared in a model zoo so the next person starts further ahead.</p>
-
-        <div class="signin" id="signin">
-          <h3 id="signinHead">Sign in to start a project</h3>
-          <div id="gsi"></div>
-          <div id="devBox" class="row" style="display:none">
-            <input id="devName" type="text" placeholder="Your name (local sign-in)">
-            <button class="btn" id="devGo">Continue</button>
-          </div>
-          <div id="signedIn" style="display:none">
-            <a class="btn" href="app">Open your projects</a>
-            <button class="btn ghost" id="signOut">Sign out</button>
-          </div>
-          <p class="note" id="signinNote"></p>
-          <div class="err" id="err"></div>
-        </div>
+        <p class="err" id="err"></p>
       </div>
 
       <div>
@@ -139,7 +144,7 @@
   <script>
     // the front page: say what this is, play the video, sign in, list what others made public
     const CFG = window.CORESTACK_CFG || {};
-    const API = (CFG.apiBase || "").replace(/\/$/, "");
+    const API = (CFG.apiBase || ".").replace(/\/$/, "");   // relative, so a sub-path deploy works
     const $ = (id) => document.getElementById(id);
     const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
       ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -160,11 +165,10 @@
     }
 
     async function signedInAs(user) {
-      $("signinHead").textContent = `Signed in as ${user.name}`;
+      $("who").innerHTML = `<b>${esc(user.name)}</b>`;
       $("gsi").style.display = "none";
       $("devBox").style.display = "none";
-      $("signedIn").style.display = "block";
-      $("signinNote").textContent = "";
+      $("signedIn").style.display = "flex";
     }
 
     async function post(path, body) {
@@ -187,11 +191,10 @@
             catch (e) { $("err").textContent = e.message; }
           },
         });
-        google.accounts.id.renderButton($("gsi"), { theme: "filled_blue", size: "large", text: "signin_with" });
+        google.accounts.id.renderButton($("gsi"), { theme: "filled_blue", size: "medium", text: "signin_with" });
       };
       s.onerror = () => { $("err").textContent = "Couldn't load Google sign-in (is accounts.google.com reachable?)."; };
       document.head.appendChild(s);
-      $("signinNote").textContent = "Institutional access through Google sign-in.";
     }
 
     async function init() {
@@ -201,7 +204,6 @@
       else if (me.google_client_id) setupGoogle(me.google_client_id);
       else if (me.dev_login) {
         $("devBox").style.display = "flex";
-        $("signinNote").textContent = "Local sign-in: this server has no Google client id set, so any name works. It switches off once Google sign-in is configured.";
       }
       const pub = (await (await fetch(API + "/api/projects/public")).json().catch(() => ({}))).projects || [];
       $("pubList").innerHTML = pub.length ? pub.map((p) =>

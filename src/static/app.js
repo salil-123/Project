@@ -172,7 +172,8 @@ function bboxValid(bb) {
 // Every call below writes a plain "/api/…" path; api() is the single place that turns one into a
 // real URL. Default is RELATIVE to the page, so the app works unchanged at the domain root or under
 // a reverse-proxy subpath (/corestack-lulc/). config.js can override it from the server's .env.
-const API_BASE = (window.CORESTACK_CFG?.apiBase || "").replace(/\/$/, "");
+// "." not "": "/api/..." would point at the host root and miss a sub-path like /act4dws5/diy-lulc/
+const API_BASE = (window.CORESTACK_CFG?.apiBase || ".").replace(/\/$/, "");
 const api = (path) => API_BASE + path;
 
 // Every API call carries the open project, so the server knows whose scheme to read or change. One

@@ -739,7 +739,8 @@ test_journey.py,ui_walkthrough.py,screens/}`. Env: `GOOGLE_CLIENT_ID`, `SESSION_
   the example role dropdown became a counter-example tick, off by default.
 
 ### Open / next (week 18)
-- A Google OAuth client id for the tower's origin; until then SSO has only run through the local login.
+- Our own Google OAuth client (Susmit's advice: each service registers its own) and its client id on the
+  tower; until then SSO has only run through the local login. Steps: `docs/readiness_report.md` §4.
 - `SERVICE_TOKEN` on the backend and `CORESTACK_SERVICE_TOKEN` on the Airflow side; Saharsh's STACD
   pipeline must forward the header and `project_id` for a DAG run to classify a project's scheme.
 - Share a project's model to the zoo (a project-scoped card id); consent + retention like Susmit's.
