@@ -35,7 +35,7 @@ Consequences:
 
 - **Code:** a git clone of `https://github.com/salil-123/Project.git`, **or** the `corestack-lulc-deploy.zip`
   package (no GitHub needed).
-- **Image:** `salil2003/corestack-lulc:latest` (public on Docker Hub, dependencies-only, ~1.5 GB).
+- **Image:** `salil2003/corestack-lulc:1.0.0`, also tagged `:latest` (public on Docker Hub, dependencies-only, ~1.5 GB). 1.0.0 is the first build with sign-in and the database drivers.
 - **Port:** `8000`
 
 ---

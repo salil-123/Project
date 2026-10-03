@@ -7,19 +7,19 @@ Service: **corestack-lulc** · against
 |---|------|--------|-------|
 | 1 | Mount `code/`, `models/`, `data/`; output in `data/` | **done** | `docker-compose*.yml`, `models/README.md`, `config.MODELS_DIR` |
 | 2 | `AIRFLOW_API_BASE` set → Airflow, empty → local | **done** (was already) | `config.py`, `src/airflow_client.py`, `/api/dag/*` |
-| 3 | Image pushed to GHCR or Docker Hub | **done** | `salil2003/corestack-lulc` on Docker Hub, `VERSION` |
-| 4 | Google SSO | **built** (week 18), awaiting a client id | `src/auth.py`, the `Gate` middleware in `src/backend.py`, `GOOGLE_CLIENT_ID` |
+| 3 | Image pushed to GHCR or Docker Hub, version-tagged | **done** | `salil2003/corestack-lulc:1.0.0` (+ `:latest`) on Docker Hub, `VERSION` |
+| 4 | Google SSO | **built** (week 18); our own OAuth client made 3 Oct, needs its id on the tower | `src/auth.py`, the `Gate` middleware in `src/backend.py`, `GOOGLE_CLIENT_ID` |
 | 5 | Logs under `data/logs/<app>/`; `LOG_LEVEL` | **done** | `src/logging_setup.py` |
 | 6 | Frontend + backend in one Docker | **done** (was already) | one compose service, backend serves `src/static/` |
 | 7 | Frontend API base from `.env` | **done** | `/config.js` + `api()` in `app.js`, `API_BASE_URL` |
 | 8 | Architecture diagram | **done** | [`docs/architecture.md`](architecture.md) |
 | 9 | Postgres via `DATABASE_URL` | **done** (week 18) | `src/db.py` (users, projects); SQLite only when unset, on a laptop |
 | 10 | `outputs.yaml` retention policy | **done** | [`../outputs.yaml`](../outputs.yaml) |
+| 11 | Front page + reviewed demo video | front page **done**; video drafted, awaiting sir's review | `src/static/landing.html` at `/`, `INTRO_VIDEO_URL`, `week19/walkthrough_flow.md` |
 
-**9 done, #4 built.** #4 and #9 landed together in week 18: the only tables are the ones sign-in
-brings (users) plus the projects they own. #4 still needs an OAuth client id for the tower's origin;
-until then it has only been exercised through the local login, which shares everything after the
-token check (cookie, gate, ownership).
+**9 done, #4 and #11 nearly there** (updated 3 Oct). #4 and #9 landed together in week 18: the only tables are the ones sign-in
+brings (users) plus the projects they own. #4 has our own OAuth client now (Susmit's advice: every service registers its own); its id goes into the tower's `.env`.
+A real Google sign-in has run end to end on a laptop (3 Oct); on the tower, not yet.
 
 ## Item-by-item notes
 

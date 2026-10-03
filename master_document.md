@@ -786,3 +786,23 @@ recording. Plan and rough edges in `week19/walkthrough_plan.md`; the flow for re
   button. Training on your own examples or a rule split clears it.
 - Left for later by choice: the zoo picker still lists every model (intentional), map legend and
   mining/water colours, run progress, and the base map's built-up/water excess on the demo areas.
+
+### Later the same day (3 Oct): sign-in for real, the image, small fixes, the video
+- **Our own Google OAuth client** (Susmit's advice: each service registers its own), in
+  `modern-mystery-398416`, origins `https://www.cse.iitd.ernet.in` + `http://localhost:8000`. A real
+  Google sign-in works locally; user isolation re-checked as that user (own list only, other private 403,
+  public read-only, cookie-less 401). Sign-in moved into the front page's top bar.
+- **Sub-path fix**: the API base defaulted to `/api/...`, which points at the host root and would have
+  missed `/act4dws5/diy-lulc/`; it's `./api/...` now. Session cookie renamed `corestack_lulc_session`,
+  since every app on the shared host sees cookies with `path=/`.
+- **Image `salil2003/corestack-lulc:1.0.0`** (= `:latest`) built in WSL and pushed; the build scripts now
+  push the `VERSION` tag too (checklist #3 closed). Boot-tested with the code mounted.
+- **Small items**: zoo publish refuses binaries over 50 MB; zoo cards flag a "thin test" when the rarest
+  class had under 100 held-out pixels (the barren card's 1.00 rests on 50 mining pixels); new classes get
+  the colour furthest from every colour already on the map, siblings weighted double (mining is lime
+  now, not a teal next to water); a legend for the run on the map; a ticking clock while a run works.
+  Stray EE assets: 11 found, listed in the readiness report, none deleted (the owner's call).
+- **The walkthrough video**, recorded like Susmit's: `week19/record_video.py` drives the whole flow in
+  headless Edge with captions, chapter cards and a drawn cursor; `week19/make_video.py` speeds up the
+  Earth Engine waits and writes `week19/video/corestack_lulc_walkthrough.mp4` + `chapters.txt`. A draft
+  for sir's review.

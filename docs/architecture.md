@@ -6,12 +6,12 @@ single environment variable decides whether the long jobs run inside it or go ou
 ```mermaid
 flowchart TB
     subgraph browser["Browser"]
-        UI["Leaflet UI<br/>src/static/ — served by the backend itself<br/>API base from /config.js (relative by default)"]
+        UI["Front page / + Leaflet tool /app<br/>src/static/, served by the backend itself<br/>API base from /config.js (relative by default)"]
     end
 
     subgraph host["Tower host"]
         subgraph svc["Frontend Docker — the single app container"]
-            API["FastAPI backend (src/backend.py)<br/>classify · retrain · export-asset · zoo"]
+            API["FastAPI backend (src/backend.py)<br/>sign-in gate · projects + runs<br/>classify · retrain · export-asset · zoo"]
         end
         FB["FileBrowser<br/>(browses data/)"]
         subgraph mounts["Three bind-mounts"]
@@ -19,16 +19,19 @@ flowchart TB
             MODELS["models/ → /app/models<br/>trained weights"]
             DATA["data/ → /app/data<br/>inputs · caches · outputs<br/>data/logs/corestack-lulc/"]
         end
-        PG[("Central Postgres<br/>DATABASE_URL — not used yet,<br/>arrives with Google SSO")]
+        PG[("Central Postgres<br/>DATABASE_URL: users + projects")]
     end
 
     AF["Airflow–STACD Docker<br/>shared orchestrator"]
     GEE["Google Earth Engine<br/>Alpha Earth embeddings +<br/>exported LULC assets"]
+    GOOG["Google sign-in<br/>(our own OAuth client)"]
 
-    UI -->|"same-origin /api/*"| API
+    UI -->|"same-origin /api/*<br/>session cookie"| API
+    UI -->|"Sign in with Google:<br/>ID token"| GOOG
+    API -->|"verifies the token<br/>(google-auth)"| GOOG
 
     API -->|"AIRFLOW_API_BASE set:<br/>POST /api/dag/run → trigger + poll"| AF
-    AF -->|"calls back over HTTP<br/>POST /api/export-asset<br/>(conf carries region, year,<br/>and optionally retrain)"| API
+    AF -->|"calls back over HTTP<br/>POST /api/export-asset<br/>X-Service-Token, conf carries<br/>region, year, project_id,<br/>optionally retrain"| API
     API -->|"AIRFLOW_API_BASE empty:<br/>run inline, same code path"| API
 
     API <--> MODELS
@@ -36,7 +39,7 @@ flowchart TB
     API -->|"classify + export raster"| GEE
     GEE -->|"asset id + STAC Item"| API
     DATA --> FB
-    API -.->|"planned"| PG
+    API <-->|"users, projects"| PG
 
     classDef off stroke-dasharray: 4 3
     class PG off
@@ -80,8 +83,13 @@ weights, the hierarchy and the zoo cards can't drift apart.
 - **Logs** go to `data/logs/corestack-lulc/app.log` (rotating, 10 MB x 5) and stdout, at whatever
   `LOG_LEVEL` says.
 
-## Not yet wired
+## Sign-in and the database (week 18)
 
-**Google SSO (#4) and central Postgres (#9)** are parked pending further advice. Nothing in the app
-authenticates today, and no database is used — checklist #9 is explicitly N/A for a service with no
-database, so the two land together. The env var names are already reserved in `deploy/.env.example`.
+**Google SSO (#4) and central Postgres (#9)** landed together. The browser gets an ID token from
+Google (our own OAuth client, `GOOGLE_CLIENT_ID`) and posts it to `/api/auth/google`; the backend
+verifies it and sets a signed, HttpOnly session cookie. One middleware gates every write and compute
+call on that cookie and on project ownership. `users` and `projects` live in the central Postgres
+(`DATABASE_URL`); each project's files sit under `data/projects/<id>/`. Airflow's callbacks have no
+browser session, so they carry `X-Service-Token` (`SERVICE_TOKEN` here, `CORESTACK_SERVICE_TOKEN` on
+the DAG side). Without a client id (a laptop) the app falls back to a name-only local login and a
+SQLite file.

@@ -183,12 +183,20 @@ def rebuild_index():
             "extent_bbox": _extent_bbox(card),
             "year": ((card.get("extent") or {}).get("temporal") or {}).get("year"),
             "accuracy": (card.get("metrics") or {}).get("accuracy") if is_model else None,
+            # test pixels of the rarest class: a 1.00 on 50 pixels reads very differently from one on 5000
+            "min_test_px": _min_support(card) if is_model else None,
             "published": (card.get("zoo") or {}).get("published") if is_model else None,
             "created": card.get("created"),
         })
     CATALOGUE_DIR.mkdir(parents=True, exist_ok=True)
     json.dump({"cards": rows, "generated": _now()}, open(INDEX_PATH, "w"), indent=2)
     return rows
+
+
+def _min_support(card):
+    per = ((card.get("metrics") or {}).get("per_class") or {}).values()
+    sup = [c.get("support") for c in per if isinstance(c, dict) and c.get("support") is not None]
+    return int(min(sup)) if sup else None
 
 
 def load_index():
@@ -223,8 +231,9 @@ def seed_from_bundled():
             if f.is_file() and not dst.exists():      # missing here -> bring it in from the seed
                 shutil.copy2(f, dst)
                 copied += 1
-    if copied:
-        rebuild_index()                               # index now reflects the seeded cards
+    # always rebuild: it's a quick read of the card files, and it lets a new index field (min_test_px)
+    # reach a deployment whose cards haven't changed
+    rebuild_index()
     return copied
 
 
