@@ -754,19 +754,26 @@ function renderRuns() {
 async function runClassify() {
   if (!PROJECT) return;
   $("run").disabled = true;
-  setStatus("Running…", "work");
+  // a run is 30-60 s of Earth Engine work with nothing to show; a ticking clock says it hasn't hung
+  const t0 = Date.now();
+  let phase = "Classifying in Earth Engine";
+  const tick = () => setStatus(`${phase}… ${Math.round((Date.now() - t0) / 1000)} s (usually under a minute)`, "work");
+  tick();
+  const ticker = setInterval(tick, 1000);
   try {
     let dagRunId = null;
     if (window.CORESTACK_CFG?.airflow) {
       const conf = { region: PROJECT.bbox, year: String(PROJECT.year), base_scheme: PROJECT.base_scheme,
                      project_id: PROJECT.id, execution_type: "fullexec" };
       const run = await triggerDagAndPoll(conf, {
-        onState: (state, runId) => setStatus(`DAG ${runId}: ${state}…`, "work"),
+        onState: (state, runId) => { phase = `DAG ${runId}: ${state}`; tick(); },
       });
+      phase = "Saving the run";
       dagRunId = run.dag_run_id;
     }
     const r = await postJSON(api(`/api/projects/${PROJECT.id}/runs`), { dag_run_id: dagRunId });
     const d = await readJson(r);
+    clearInterval(ticker);
     if (!r.ok) { setStatus("Run failed: " + errText(d, r), "err"); return; }
     PROJECT.current_run = d.run.run;
     PROJECT.runs = [...(PROJECT.runs || []), { run: d.run.run, name: d.run.name, created_at: d.run.created_at, year: d.run.year }];
@@ -776,8 +783,8 @@ async function runClassify() {
     updateStale();
     renderRuns();
     setStatus(`${d.run.name} saved.${countsLine(d.counts)}`, "ok");
-  } catch (err) { setStatus("Error: " + err, "err"); }
-  finally { $("run").disabled = false; }
+  } catch (err) { clearInterval(ticker); setStatus("Error: " + err, "err"); }
+  finally { clearInterval(ticker); $("run").disabled = false; }
 }
 $("run").onclick = runClassify;
 
@@ -809,6 +816,23 @@ function countsLine(counts) {
 function clearOverlay() {
   predLayer.clearLayers();
   if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
+  showLegend(null);
+}
+
+// the legend for whatever run is on the map: its own classes, colours and shares, biggest first
+const legendCtl = L.control({ position: "bottomright" });
+legendCtl.onAdd = () => { const d = L.DomUtil.create("div", "map-legend"); L.DomEvent.disableClickPropagation(d); return d; };
+function showLegend(data) {
+  const counts = data && data.counts;
+  if (!counts || !Object.keys(counts).length) { legendCtl.remove(); return; }
+  const colors = data.colors || COLORS;
+  const tot = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
+  const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
+    `<div class="lg-row"><span class="sw" style="background:${colors[k] || "#999"}"></span>
+       <span class="lg-name">${esc((TREE[k] || {}).name || k.replace(/_/g, " "))}</span>
+       <span class="lg-pct">${(100 * v / tot).toFixed(v / tot < 0.01 ? 1 : 0)}%</span></div>`).join("");
+  legendCtl.addTo(map);
+  legendCtl.getContainer().innerHTML = `<div class="lg-title">${esc((data.run && data.run.name) || "This run")}</div>${rows}`;
 }
 
 function drawResult(data) {
@@ -826,6 +850,7 @@ function drawResult(data) {
   }
   overlayVisible = true;
   $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off");
+  showLegend(data);
 }
 
 // ---------------- IndiaSAT EE-native RF models (#13 wk10) ----------------
@@ -1237,11 +1262,22 @@ function tileClassChips(m) {
 
 const isArchived = (id) => /_prev\d+_/.test(id || "");   // superseded snapshot cards (#9)
 
+const THIN_TEST_PX = 100;   // below this, the rarest class's held-out score is a rough guide only
+
+function thinNote(m) {
+  const sup = Object.values(m.per_class || {}).map((c) => c && c.support).filter((v) => v != null);
+  const low = sup.length ? Math.min(...sup) : null;
+  return low != null && low < THIN_TEST_PX
+    ? `<p class="hint thin">The rarest class had only ${low} held-out pixels, so read these scores as a rough guide.</p>` : "";
+}
+
 function modelTile(m) {
   const arch = isArchived(m.id) ? `<span class="pill arch">archived</span>` : "";
   const made = zooPickFor && m.node === zooPickFor ? `<span class="pill made">made for ${esc(TREE[zooPickFor].name)}</span>` : "";
   const pub = m.published ? `<span class="pill pub">published</span>` : `<span class="pill loc">local</span>`;
-  const acc = m.accuracy != null ? `accuracy ${m.accuracy.toFixed(2)}` : "—";
+  // a perfect score on a few dozen test pixels isn't a perfect model; say how thin the test was
+  const thin = m.min_test_px != null && m.min_test_px < THIN_TEST_PX ? ` <span class="thin" title="the rarest class had only ${m.min_test_px} held-out pixels">· thin test (${m.min_test_px} px)</span>` : "";
+  const acc = m.accuracy != null ? `accuracy ${m.accuracy.toFixed(2)}${thin}` : "—";
   // cheap apply-after hint from the index row (full WorldCover hint shows in the detail pane)
   const after = (m.topology && m.topology !== "base_pooled" && m.node) ? ` · after ${m.node}` : "";
   const div = document.createElement("div");
@@ -1305,7 +1341,7 @@ function modelDetail(c) {
     ${zooPickFor ? `<div class="use-top">${useButtonHTML(c)}</div>` : ""}
     ${placementHTML(c)}
     <div class="blk"><span class="k">Produces</span><div class="chips-row">${produceChips(c.produces)}</div></div>
-    ${m.accuracy != null ? `<div class="blk"><span class="k">Metrics — acc ${m.accuracy} (${m.eval || ""})</span>
+    ${m.accuracy != null ? `<div class="blk"><span class="k">Metrics — acc ${m.accuracy} (${m.eval || ""})</span>${thinNote(m)}
       <table>${perRows}</table></div>` : ""}
     ${balanceFeedback(c)}
     <div class="blk"><span class="k">Training data</span>${dsChips(c.training && c.training.datasets)}</div>

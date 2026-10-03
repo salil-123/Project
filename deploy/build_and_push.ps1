@@ -12,15 +12,18 @@ $user = $envMap["docker_username"]; $pat = $envMap["docker_pat"]
 if (-not $user -or -not $pat) { throw "set docker_username and docker_pat in .env" }
 
 $image = "$user/corestack-lulc:latest"
+# checklist #3 wants a version tag too, so a host can pin what it pulls
+$versioned = "$user/corestack-lulc:" + (Get-Content VERSION -Raw).Trim()
 
 Write-Output "==> docker login as $user"
 $pat | docker login -u $user --password-stdin
 
 Write-Output "==> building $image"
-docker build -t $image .
+docker build -t $image -t $versioned .
 
 Write-Output "==> pushing $image"
 docker push $image
+docker push $versioned
 
 docker logout | Out-Null
-Write-Output "==> done: $image"
+Write-Output "==> done: $image and $versioned"

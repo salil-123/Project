@@ -19,7 +19,7 @@ import config
 
 log = logging.getLogger("corestack.auth")
 
-COOKIE = "cs_session"
+COOKIE = "corestack_lulc_session"   # every app on www.cse.iitd.ernet.in shares one cookie jar (path=/), so the name is ours alone
 DEV_DOMAIN = "local.dev"          # dev accounts look like name@local.dev, never a real address
 
 

@@ -90,13 +90,32 @@ def canonicalize(name: str) -> str:
     return slug
 
 
-def _pick_color(tree: dict) -> str:
-    """First palette color not already used in the tree (cycles if we run out)."""
-    used = {n["color"] for n in tree.values() if n["color"]}
-    for c in _PALETTE:
-        if c not in used:
-            return c
-    return _PALETTE[len(tree) % len(_PALETTE)]
+# candidates for new classes, picked for distance from the base colours (green, blue, red, tan) and from
+# each other; on a satellite backdrop the bright ones read best
+_DISTINCT = ["#e040fb", "#ffd600", "#ff6d00", "#c6ff00", "#8e44ad", "#ff4081", "#b388ff"]
+
+
+def _rgb(hexc: str):
+    h = hexc.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+def _dist(a, b) -> float:
+    # "redmean" distance: cheap, and much closer to what the eye sees than plain RGB distance
+    r = (a[0] + b[0]) / 2
+    dr, dg, db = a[0] - b[0], a[1] - b[1], a[2] - b[2]
+    return ((2 + r / 256) * dr * dr + 4 * dg * dg + (2 + (255 - r) / 256) * db * db) ** 0.5
+
+
+def _pick_color(tree: dict, parent: str = None) -> str:
+    """The candidate furthest from every colour already in the tree, so a new class never lands on a
+    near-copy of one on the map (a teal mining next to blue water, a red next to built-up). Siblings
+    count double: they're the two colours a split puts side by side."""
+    used = [(_rgb(n["color"]), 0.5 if parent and n.get("parent") == parent else 1.0)
+            for n in tree.values() if n.get("color")]
+    if not used:
+        return _DISTINCT[0]
+    return max(_DISTINCT, key=lambda c: min(_dist(_rgb(c), u) * w for u, w in used))
 
 
 # ----------------------------- persistence -----------------------------
@@ -129,7 +148,7 @@ def add_class(tree: dict, name: str, parent: str, canonical: str = None,
     cls = canonical or canonicalize(name)
     if cls in tree:
         raise ValueError(f"class {cls!r} already exists")
-    tree[cls] = _node(cls, name, parent, color or _pick_color(tree))
+    tree[cls] = _node(cls, name, parent, color or _pick_color(tree, parent))
     tree[parent]["children"].append(cls)
     return tree
 

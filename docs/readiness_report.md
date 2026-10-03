@@ -10,9 +10,9 @@ which has grown to **eleven** items since our first audit.
 
 | | Count (24 Sep) | Count (3 Oct) |
 |---|---|---|
-| Complete | 7 | 8 (§9 now done) |
+| Complete | 7 | 9 (§3, §9 now done) |
 | Built, needs a step on the tower | 0 | 2 (§4 needs our OAuth client id; §11 needs the video) |
-| Partial | 1 (§3) | 1 (§3, version tag not pushed) |
+| Partial | 1 (§3) | 0 (§3 closed: `1.0.0` pushed 3 Oct) |
 | Parked on instruction | 1 (§4) | 0 |
 | Not started | 1 (§11) | 0 |
 | Not applicable | 1 (§9) | 0 |
@@ -432,7 +432,7 @@ also **one** DAG run now instead of two, since it no longer chains into a classi
 |---|---|---|---|
 | 1 | Push the staged week 18 code | us | committed locally, not on GitHub yet |
 | 2 | Register **our own** Google OAuth client | us | **done 3 Oct**: web client in `modern-mystery-398416`, origins `https://www.cse.iitd.ernet.in` + `http://localhost:8000`; id in the laptop `.env`, Google mode checked locally |
-| 3 | Bump `VERSION`, rebuild the image, push `:latest` and the version tag | us | closes §3 too; `DEPLOY_GUIDE.md` §12.1 |
+| 3 | Bump `VERSION`, rebuild the image, push `:latest` and the version tag | us | **done 3 Oct**: `salil2003/corestack-lulc:1.0.0` (= `:latest`, digest `a05ef7f6…`); boot-tested with the code mounted: health 200, Google mode on, cookie-less write 401, sklearn 1.8.0 |
 | 4 | Tower `.env`: `GOOGLE_CLIENT_ID`, `SESSION_SECRET`, `DATABASE_URL`, `SERVICE_TOKEN` | us + tower admin | the Postgres connection string comes from the central server |
 | 5 | Airflow side: `CORESTACK_SERVICE_TOKEN` (same value), and the STACD pipeline forwards `X-Service-Token` and `project_id` | Saharsh | without `project_id` a DAG run classifies the global scheme, not the project's |
 | 6 | `git pull`, `docker compose -f docker-compose.hub.yml pull && up -d`, then the two `curl` checks in DEPLOY_GUIDE §12.2 | us | `/api/auth/me` shows the client id; a write without a cookie gets 401 |
@@ -456,11 +456,11 @@ also **one** DAG run now instead of two, since it no longer chains into a classi
 
 | Item | Effort |
 |---|---|
-| Size guard on zoo publish (the 553 MB lesson, §3.1) | small |
-| Delete one stray GEE asset from a test run | one command |
+| Size guard on zoo publish (the 553 MB lesson, §3.1) | **done 3 Oct**: `zoo_git.publish` refuses any binary over 50 MB (`ZOO_MAX_ARTIFACT_MB`) before staging; the endpoint answers 400 with the reason |
+| Stray GEE assets under `corestack_lulc/` | **found 11, not one**: 8 named like tests (`test_2024`, `test2_2024`, `bodytest_2024`, `bodytest2_2024`, `confwrap_2024`, `flat_2024`, `dagrun_2024`, `session_test_2024`, all 11 Aug) and 3 real DAG outputs named by bbox (20 Aug, 27 Aug, 18 Sep). None referenced anywhere in the repo. Not deleted: an EE delete can't be undone, so the owner picks |
 | Sweep the last raw paths: `backend._ROOT`, `validate_ops._REFINE` | small |
-| Weights in git (§1): keep the convenience, or move to `fetch_models.sh`? | needs a decision |
-| `docs/architecture.md` still says SSO and Postgres are "not used yet"; `docs/cluster_checklist.md` has no row for §11 | doc touch-up |
+| Weights in git (§1): keep the convenience, or move to `fetch_models.sh`? | needs a decision; recommendation: keep them in git while every deployed model is a few-KB linear joblib, move to `fetch_models.sh` the day one isn't |
+| `docs/architecture.md`, `docs/cluster_checklist.md` out of date | **done 3 Oct** |
 
 **Done since 24 Sep:** scikit-learn pinned to 1.8.0 in both requirements files (no more unpickling 1.8
 models with 1.9); GeoTIFF size cap lowered to 250 km² after a measured Earth Engine memory failure at

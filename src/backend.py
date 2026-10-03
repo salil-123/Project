@@ -1488,6 +1488,8 @@ def publish(op: PublishIn):
     try:
         return zoo_git.publish(op.card_ids, message=op.message, contributor=op.contributor,
                                dataset_links=op.dataset_links)
+    except ValueError as e:                  # the size guard: the user's call to fix, not a crash
+        raise HTTPException(400, str(e))
     except Exception as e:
         # never leak a raw 500 ("Internal Server Error" text the frontend can't parse) — a failed
         # git commit/push comes back as clean JSON so the UI can show the reason.

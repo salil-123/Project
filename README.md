@@ -21,7 +21,7 @@ docker compose -f docker-compose.hub.yml up -d
 curl http://localhost:8000/api/health          # -> {"ok": true}
 # open http://localhost:8000/
 ```
-Image: `docker pull salil2003/corestack-lulc:latest`. Local dev without Docker:
+Image: `docker pull salil2003/corestack-lulc:1.0.0` (pinned; `:latest` points at the same build). Local dev without Docker:
 ```bash
 pip install -r requirements.txt
 uvicorn backend:app --reload --app-dir src      # http://127.0.0.1:8000/

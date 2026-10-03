@@ -77,6 +77,7 @@ def publish(card_ids=None, message=None, contributor=None, dataset_links=None):
     """
     if not is_repo():
         init_local()
+    _refuse_big_artifacts(card_ids)          # before anything is marked or staged
 
     published = _mark_published(card_ids, contributor=contributor)
     linked = _apply_dataset_links(dataset_links)
@@ -105,6 +106,26 @@ def publish(card_ids=None, message=None, contributor=None, dataset_links=None):
     code, out = _git("push", "-u", "origin", "main")
     return {"committed": True, "pushed": code == 0, "published_ids": published,
             "note": out if code else "pushed to origin/main"}
+
+
+# GitHub hard-rejects any file over 100 MB, and one 553 MB biomass joblib once jammed every publish for
+# two months. Same 50 MB cap as scripts/sync_catalogue_seed.py, checked before a single file is staged.
+MAX_ARTIFACT_MB = float(os.getenv("ZOO_MAX_ARTIFACT_MB", "50"))
+
+
+def _refuse_big_artifacts(card_ids=None):
+    """Raise if a binary this publish would stage is over the cap. card_ids=None means `git add -A`,
+    so every artifact in the folder counts; a big one has to go before anything else can publish."""
+    if not ARTIFACTS.exists():
+        return
+    files = ([ARTIFACTS / f"{c}.joblib" for c in card_ids] if card_ids else list(ARTIFACTS.iterdir()))
+    big = [(f.name, f.stat().st_size / 1e6) for f in files
+           if f.is_file() and f.stat().st_size / 1e6 > MAX_ARTIFACT_MB]
+    if big:
+        names = ", ".join(f"{n} ({mb:.0f} MB)" for n, mb in big)
+        raise ValueError(f"not publishing: {names} over the {MAX_ARTIFACT_MB:.0f} MB limit for zoo "
+                         f"binaries (GitHub refuses files over 100 MB). Keep the model's card, host the "
+                         f"binary elsewhere (deploy/fetch_models.sh) and link it.")
 
 
 def _apply_dataset_links(dataset_links):

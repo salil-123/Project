@@ -436,3 +436,16 @@ body.on-start .toast { left: 50%; z-index: 2600; }
 /* the panel's way out: Back to the previous class, or close it */
 #context > .ctx-nav { order: -3; display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .ctx-nav .mini { max-width: 75%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* a held-out score resting on very few pixels */
+.thin { color: #e0b341; }
+
+/* map legend for the run on screen */
+.map-legend { background: rgba(15, 18, 23, .88); color: #e6e8ec; border: 1px solid #262b34; border-radius: 8px;
+              padding: 8px 10px; font-size: 12px; min-width: 150px; box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+.map-legend .lg-title { font-weight: 600; margin-bottom: 4px; color: #9aa3af; font-size: 11px;
+                        text-transform: uppercase; letter-spacing: .05em; }
+.map-legend .lg-row { display: flex; align-items: center; gap: 7px; line-height: 1.7; }
+.map-legend .sw { width: 11px; height: 11px; border-radius: 2px; flex: none; }
+.map-legend .lg-name { flex: 1; }
+.map-legend .lg-pct { color: #9aa3af; font-variant-numeric: tabular-nums; }
