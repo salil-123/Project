@@ -40,20 +40,20 @@ needs. If they have to live elsewhere, copy them over first; an empty folder won
 ## 2. `.env`
 
 Keep the Earth Engine settings you already have (`EE_PROJECT`, `EE_ASSET_ROOT`,
-`EE_SERVICE_ACCOUNT_KEY` pointing at the key) and the Airflow ones. Sign-in is new, so add these:
+`EE_SERVICE_ACCOUNT_KEY` pointing at the key) and the Airflow ones. Sign-in is new, so add these
+(the Google client id is already built in):
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"    # run it twice
 ```
 
 ```bash
-GOOGLE_CLIENT_ID=<the sign-in client id>
 SESSION_SECRET=<first random string>
 SERVICE_TOKEN=<second random string>      # Saharsh sets the same value on the Airflow side
 STAC_ASSET_BASE=<public URL, no trailing slash>
 ```
 
-Leave `DATABASE_URL`, `API_BASE_URL` and `INTRO_VIDEO_URL` empty. For now users and projects sit in
+Leave `GOOGLE_CLIENT_ID`, `DATABASE_URL`, `API_BASE_URL` and `INTRO_VIDEO_URL` out. For now users and projects sit in
 a small SQLite file at `data/corestack.db`; moving to the central Postgres is planned for the next deploy.
 
 Check: `grep -n '<' .env` prints nothing.
