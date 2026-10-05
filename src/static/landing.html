@@ -8,8 +8,8 @@
   <style>
     /* the front page (point 8). Same palette as the app so stepping in doesn't feel like a new site */
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    :root { --bg: #0f1217; --card: #161b22; --line: #262b34; --ink: #e6e8ec; --mute: #9aa3af;
-            --accent: #4ea1ff; --btn: #2f6df6; }
+    :root { --bg: #f6f4ec; --card: #faf8f1; --line: #e4e0d3; --ink: #22281f; --mute: #6f7468;
+            --accent: #2f6b3f; --btn: #2f6b3f; }
     body { background: var(--bg); color: var(--ink); font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
            line-height: 1.55; }
     a { color: var(--accent); }
@@ -26,7 +26,7 @@
             border-left: 1px solid var(--line); min-height: 36px; }
     .auth .who { font-size: 13px; color: var(--mute); }
     .auth .who b { color: var(--ink); font-weight: 600; }
-    .auth input { width: 170px; padding: 7px 10px; background: #1d232c; border: 1px solid #2c333d;
+    .auth input { width: 170px; padding: 7px 10px; background: #fffefb; border: 1px solid #cfcabb;
                   color: var(--ink); border-radius: 6px; font-size: 13px; }
     .auth .btn { padding: 7px 13px; font-size: 13px; }
     /* on a phone the page links give way, sign-in stays */
@@ -36,20 +36,20 @@
     @media (max-width: 860px) { .hero { grid-template-columns: 1fr; } }
     .kicker { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
     h1 { font-size: 38px; line-height: 1.15; margin: 10px 0 16px; }
-    .lede { color: #c3c8d0; font-size: 16px; }
+    .lede { color: #4a5043; font-size: 16px; }
     .btn { display: inline-block; padding: 10px 16px; background: var(--btn); color: #fff; border: none;
            border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; }
-    .btn:hover { background: #4079ff; }
-    .btn.ghost { background: none; border: 1px solid #2c333d; color: var(--mute); font-weight: 500; }
+    .btn:hover { background: #234e2e; }
+    .btn.ghost { background: none; border: 1px solid #cfcabb; color: var(--mute); font-weight: 500; }
     .note { font-size: 12px; color: var(--mute); margin-top: 10px; }
-    .err { color: #ff8a80; font-size: 13px; margin-top: 14px; }
+    .err { color: #a23b2f; font-size: 13px; margin-top: 14px; }
     .err:empty { display: none; }
 
     .video { background: #000; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; aspect-ratio: 16 / 9; }
     .video iframe, .video video { width: 100%; height: 100%; border: 0; display: block; }
     .video .ph { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
                  color: var(--mute); gap: 8px; text-align: center; padding: 20px;
-                 background: repeating-linear-gradient(45deg, #11151b, #11151b 12px, #13181f 12px, #13181f 24px); }
+                 background: repeating-linear-gradient(45deg, #f1eee4, #f1eee4 12px, #ece8dc 12px, #ece8dc 24px); }
     .video .ph b { color: var(--ink); font-size: 15px; }
     .caption { font-size: 12px; color: var(--mute); margin-top: 8px; }
 
@@ -61,7 +61,7 @@
     .step .n { width: 26px; height: 26px; border-radius: 50%; background: var(--btn); color: #fff; font-size: 13px;
                display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
     .step h3 { font-size: 15px; margin: 10px 0 6px; }
-    .step p { font-size: 14px; color: #b7bdc6; }
+    .step p { font-size: 14px; color: #4a5043; }
 
     .pub { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
     .pcard { display: block; background: var(--card); border: 1px solid var(--line); border-radius: 10px;
@@ -172,11 +172,19 @@
       $("signedIn").style.display = "flex";
     }
 
+    // never hang: give up after 25 s, and turn a proxy's HTML error page into words
     async function post(path, body) {
-      const r = await fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" },
-                                          body: JSON.stringify(body || {}) });
+      let r;
+      try {
+        r = await fetch(API + path, { method: "POST", headers: { "Content-Type": "application/json" },
+                                      body: JSON.stringify(body || {}), signal: AbortSignal.timeout(25000) });
+      } catch (e) {
+        throw new Error(e.name === "TimeoutError" ? "The server took too long to answer. Try again in a minute."
+                                                  : "Couldn't reach the server.");
+      }
       const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.detail || `HTTP ${r.status}`);
+      if (!r.ok) throw new Error(d.detail || (r.status === 504 ? "The server took too long to answer. Try again in a minute."
+                                                               : `Something went wrong (HTTP ${r.status}).`));
       return d;
     }
 
@@ -188,11 +196,12 @@
         google.accounts.id.initialize({
           client_id: clientId,
           callback: async (resp) => {
+            $("err").textContent = "Signing in…";
             try { await post("/api/auth/google", { credential: resp.credential }); location.href = "app"; }
-            catch (e) { $("err").textContent = e.message; }
+            catch (e) { $("err").textContent = `Sign-in failed: ${e.message}`; }
           },
         });
-        google.accounts.id.renderButton($("gsi"), { theme: "filled_blue", size: "medium", text: "signin_with" });
+        google.accounts.id.renderButton($("gsi"), { theme: "outline", size: "medium", text: "signin_with" });
       };
       s.onerror = () => { $("err").textContent = "Couldn't load Google sign-in (is accounts.google.com reachable?)."; };
       document.head.appendChild(s);

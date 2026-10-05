@@ -495,14 +495,14 @@ async function updateDataDist() {
       <span class="dd-n">${r.n}${r.neg ? ` <small>−${r.neg}</small>` : ""}</span></div>`).join("");
   let hint, col;
   // a zoo model already works, so missing examples are optional here, not a warning
-  if (missing.length && node.from_model) { hint = "none needed: the zoo model is in use. Add examples to every class to train your own."; col = "#9aa3af"; }
-  else if (missing.length) { hint = `needs examples for ${missing.join(", ")} before it can train.`; col = "#e0b341"; }
+  if (missing.length && node.from_model) { hint = "none needed: the zoo model is in use. Add examples to every class to train your own."; col = "#6f7468"; }
+  else if (missing.length) { hint = `needs examples for ${missing.join(", ")} before it can train.`; col = "#b4791f"; }
   else {
     const counts = rows.map((r) => r.n);
     const ratio = Math.max(...counts) / Math.max(1, Math.min(...counts));
-    if (ratio <= 3) { hint = `ready to train (balanced, ${ratio.toFixed(1)}:1).`; col = "#3ddc84"; }
-    else if (ratio <= 5) { hint = `ready (mild imbalance ${ratio.toFixed(1)}:1, class weighting handles it).`; col = "#e0b341"; }
-    else { hint = `ready, but imbalanced (${ratio.toFixed(1)}:1); oversample under Model options.`; col = "#ff7b72"; }
+    if (ratio <= 3) { hint = `ready to train (balanced, ${ratio.toFixed(1)}:1).`; col = "#2f6b3f"; }
+    else if (ratio <= 5) { hint = `ready (mild imbalance ${ratio.toFixed(1)}:1, class weighting handles it).`; col = "#b4791f"; }
+    else { hint = `ready, but imbalanced (${ratio.toFixed(1)}:1); oversample under Model options.`; col = "#a23b2f"; }
   }
   box.innerHTML = `<div class="dd-title">Examples so far (polygons)</div>${bars}
     <div class="dd-hint" style="color:${col}">${hint}</div>`;
@@ -1421,9 +1421,9 @@ function balanceFeedback(c) {
   const method = bal.method ? `policy: <code>${bal.method}</code>` : "";
   if (sup.length < 2) return method ? `<div class="blk"><span class="k">Balance</span>${method}</div>` : "";
   const ratio = Math.max(...sup) / Math.max(1, Math.min(...sup));
-  const [label, col] = ratio <= 3 ? ["balanced", "#3ddc84"]
-                     : ratio <= 5 ? ["mild imbalance", "#e0b341"]
-                     :              ["imbalanced — consider under/oversampling", "#ff7b72"];
+  const [label, col] = ratio <= 3 ? ["balanced", "#2f6b3f"]
+                     : ratio <= 5 ? ["mild imbalance", "#b4791f"]
+                     :              ["imbalanced — consider under/oversampling", "#a23b2f"];
   return `<div class="blk"><span class="k">Class balance</span>
     <div><b style="color:${col}">${ratio.toFixed(1)}:1</b> — ${label}</div>
     ${method ? `<div class="prose">${method}</div>` : ""}</div>`;
@@ -1492,9 +1492,9 @@ const SPREAD_CELLS = [0.1, 0.25, 0.5, 1.0];
 function spreadValueHTML(d, occ, n, cell, coverage, missing) {
   if (missing) return `<div class="prose">its labelled polygons aren't on disk (archived by a “start fresh”). Reload or re-add them to measure spread.</div>`;
   if (d == null) return `<div class="prose">no spread (need ≥2 polygons)</div>`;
-  const [label, col] = d >= 0.75 ? ["well spread", "#3ddc84"]
-                     : d >= 0.5  ? ["moderately spread", "#e0b341"]
-                     :             ["clustered — risks skewing the model", "#ff7b72"];
+  const [label, col] = d >= 0.75 ? ["well spread", "#2f6b3f"]
+                     : d >= 0.5  ? ["moderately spread", "#b4791f"]
+                     :             ["clustered — risks skewing the model", "#a23b2f"];
   const cells = occ != null ? ` across ${occ} grid cells` : "";
   const tail = n != null ? `${n} polygons${cells} (${cell}° grid)` : "";
   // coverage judges the count against the size of the area you're about to classify (#4):

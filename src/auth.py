@@ -12,6 +12,7 @@ off the moment a client id is configured, so it can't survive onto the tower.
 import logging
 import re
 import secrets
+import time
 
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
@@ -64,14 +65,43 @@ def read_cookie(value: str | None) -> str | None:
         return None
 
 
+# Google's signing keys, fetched once an hour rather than on every sign-in. google-auth's own helper
+# waits up to two minutes when the server can't reach Google, which nginx turns into a frozen page.
+CERTS_URL = "https://www.googleapis.com/oauth2/v1/certs"
+_certs = {"keys": None, "at": 0.0}
+
+
+class GoogleUnreachable(RuntimeError):
+    """The server couldn't fetch Google's keys, so it can't check anyone's sign-in right now."""
+
+
+def _google_certs() -> dict:
+    if _certs["keys"] and time.time() - _certs["at"] < 3600:
+        return _certs["keys"]
+    import requests
+    try:
+        r = requests.get(CERTS_URL, timeout=10)
+        r.raise_for_status()
+    except requests.RequestException as e:
+        log.error("couldn't fetch Google's sign-in keys from %s: %s", CERTS_URL, e)
+        if _certs["keys"]:
+            return _certs["keys"]          # a stale key set beats locking everyone out
+        raise GoogleUnreachable("the server can't reach www.googleapis.com to check the sign-in. "
+                                "If this machine goes out through a proxy, set HTTPS_PROXY in .env") from e
+    _certs.update(keys=r.json(), at=time.time())
+    return _certs["keys"]
+
+
 def verify_google(credential: str) -> dict:
     """Check a Google ID token and return {email, name, picture}. Raises ValueError if it's not one
     Google issued for OUR client id, or the email isn't verified."""
     if not google_enabled():
         raise ValueError("Google sign-in isn't configured on this server")
-    from google.auth.transport import requests as g_requests
-    from google.oauth2 import id_token
-    info = id_token.verify_oauth2_token(credential, g_requests.Request(), config.GOOGLE_CLIENT_ID)
+    from google.auth import jwt
+    info = jwt.decode(credential, certs=_google_certs(), audience=config.GOOGLE_CLIENT_ID,
+                      clock_skew_in_seconds=10)
+    if info.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise ValueError("that token wasn't issued by Google")
     if not info.get("email") or not info.get("email_verified"):
         raise ValueError("this Google account has no verified email")
     return {"email": info["email"].lower(), "name": info.get("name") or info["email"],
