@@ -1,7 +1,7 @@
 # Core Stack LULC: updating the tower deployment
 
 Repo: <https://github.com/salil-123/Project> (this file:
-[`deploy/ADMIN_INSTRUCTIONS.md`](https://github.com/salil-123/Project/blob/main/deploy/ADMIN_INSTRUCTIONS.md))
+[`deploy/Deployment_guide.md`](https://github.com/salil-123/Project/blob/main/deploy/Deployment_guide.md))
 
 For the existing deployment at `https://www.cse.iitd.ernet.in/act4dws5/diy-lulc/`. Your Earth Engine
 key, `.env`, nginx, Airflow and the DAG all stay as they are; this adds one line to `.env` and two to
@@ -76,6 +76,17 @@ Check, on the tower:
 curl -s localhost:8000/api/health        # {"ok": true ...}
 curl -s localhost:8000/api/auth/me       # google_client_id filled in, dev_login false
 docker compose -f docker-compose.hub.yml exec lulc python config.py     # EE init OK
+curl -s 'localhost:8000/api/health?deep=1'   # every host under "reach" says ok
+```
+
+Sign-in and Earth Engine both need the container to reach Google. If any host under `reach` says
+`unreachable`, the box goes out through a proxy and the container doesn't know about it. Add the proxy
+to `.env`, then `up -d` again:
+
+```bash
+HTTPS_PROXY=http://<proxy host>:<port>
+HTTP_PROXY=http://<proxy host>:<port>
+NO_PROXY=localhost,127.0.0.1,<airflow host>    # Airflow and local calls skip the proxy
 ```
 
 ## 5. nginx
@@ -105,6 +116,7 @@ Logs are in `data/logs/corestack-lulc/app.log`.
 |---|---|---|
 | Container keeps restarting, `ModuleNotFoundError` in the logs | still on the old image | step 4: `pull`, then `up -d` |
 | `git pull` refuses: local changes would be overwritten | a file edited on the box | step 1: `git checkout -- <that file>` or `git stash`, then pull |
+| Sign-in says "the server can't reach www.googleapis.com", or the map never paints | the container can't reach Google | step 4: the proxy lines in `.env`, then `up -d` |
 | Run stays `queued` forever | the DAG is paused, or the scheduler is down | `airflow dags unpause corestack_lulc` |
 | Google says the origin isn't allowed | the site moved to another host | send me the URL; I add it on our side |
 | `.env` edits have no effect | the container wasn't recreated | `up -d`, not `restart` |

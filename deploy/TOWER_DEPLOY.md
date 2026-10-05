@@ -4,7 +4,7 @@ The one runbook to follow, top to bottom. Every step ends with a check, so if a 
 there instead of finding out three steps later. The last section lists what went wrong on earlier
 deploys and which step here keeps it from happening again.
 
-The short version for the tower admin is `deploy/ADMIN_INSTRUCTIONS.md`.
+The short version for the tower admin is `deploy/Deployment_guide.md`.
 `deploy/DEPLOY_GUIDE.md` is still the long reference (every endpoint, Earth Engine options, STACD
 YAMLs). This file is the order of operations.
 
