@@ -161,7 +161,8 @@
       box.innerHTML = yt
         ? `<iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}" title="Core Stack LULC walkthrough"
              allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen></iframe>`
-        : `<video src="${esc(url)}" controls preload="metadata"></video>`;
+        : `<video src="${esc(url)}" poster="${esc(url.replace(/\.mp4$/i, ".jpg"))}" controls
+             preload="metadata" playsinline></video>`;   // poster: the same name as a .jpg, if there is one
     }
 
     async function signedInAs(user) {

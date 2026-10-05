@@ -9,7 +9,7 @@
 #   later: git pull && docker compose -f docker-compose.hub.yml restart
 services:
   lulc:
-    image: salil2003/corestack-lulc:latest   # dependencies only; pulled from hub.docker.com
+    image: salil2003/corestack-lulc:1.0.0    # dependencies only; pinned to VERSION so a stray :latest push cant change the tower
     pull_policy: always
     ports:
       - "8000:8000"

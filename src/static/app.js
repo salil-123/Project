@@ -1754,7 +1754,14 @@ document.querySelectorAll(".ztab").forEach((t) => t.onclick = () => {
   document.querySelectorAll(".ztab").forEach((x) => x.classList.remove("sel"));
   t.classList.add("sel"); zooTab = t.dataset.tab; renderGrid();
 });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && isZooOpen()) closeZoo(); });
+// help drawer: a plain symptom -> fix table, slides over the map
+const toggleHelp = (open) => $("help").classList.toggle("hidden", !open);
+$("openHelp").onclick = () => toggleHelp(true);
+$("closeHelp").onclick = () => toggleHelp(false);
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  if (isZooOpen()) closeZoo(); else toggleHelp(false);
+});
 // "Show on map" lives in the injected detail HTML; delegate the click
 $("zoo-detail").addEventListener("click", async (e) => {
   const id = e.target.id;

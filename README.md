@@ -27,6 +27,7 @@ pip install -r requirements.txt
 uvicorn backend:app --reload --app-dir src      # http://127.0.0.1:8000/
 ```
 Earth Engine config goes in `.env` (see `deploy/.env.example`); headless servers use a service-account key.
+Deploying on the tower: follow [`deploy/TOWER_DEPLOY.md`](deploy/TOWER_DEPLOY.md) step by step.
 
 `/` is the front page (what the tool is, the walkthrough video, public projects, sign in); `/app` is
 the tool. On a laptop with no `GOOGLE_CLIENT_ID`, sign in by typing any name.
