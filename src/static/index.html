@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <link rel="stylesheet" href="vendor/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="style.css?v=39" />
+  <link rel="stylesheet" href="style.css?v=40" />
 </head>
 <body>
   <aside id="sidebar">
@@ -77,6 +77,63 @@
       <h3>🗂️ Model Zoo <span id="zooBadge" class="badge"></span></h3>
       <button id="openZoo">Browse the Model Zoo</button>
     </section>
+
+    <section>
+      <h3>❓ Help</h3>
+      <button id="openHelp" class="ghost">If something looks off</button>
+    </section>
+  </aside>
+
+  <!-- the help drawer: symptom first, then the fix. Kept free of numbers that change with the code -->
+  <aside id="help" class="hidden">
+    <header class="help-head">
+      <div class="help-title">If something looks off</div>
+      <button id="closeHelp">✕ Close</button>
+    </header>
+    <div class="help-body">
+      <p class="hint">Find what you're seeing, then try the fix next to it. Every change waits for
+        <b>Run classification</b>, and older runs stay in the list to compare.</p>
+      <table class="help-table">
+        <thead><tr><th>What you see</th><th>Why it happens</th><th>What to try</th></tr></thead>
+        <tbody>
+          <tr data-k="painted"><td>A class painted where it isn't (mines showing as plain barren, say)</td>
+            <td>One class is covering two different things</td>
+            <td>Split that class: a zoo model, or your own polygons</td></tr>
+          <tr data-k="missed"><td>A split class mostly missed (low recall)</td>
+            <td>Too few examples, or all from one corner</td>
+            <td>Add polygons spread across the area, then train again</td></tr>
+          <tr data-k="upload"><td>Your upload is refused</td>
+            <td>A polygon with no class, the wrong projection, or points and lines</td>
+            <td>Read the message; start from the example file</td></tr>
+          <tr data-k="stale"><td>The map didn't change after an edit</td>
+            <td>Nothing reruns by itself</td>
+            <td>Press Run classification</td></tr>
+          <tr data-k="toobig"><td>Download says the area is too big</td>
+            <td>Earth Engine can't export it as one file</td>
+            <td>Make a smaller project over that patch</td></tr>
+          <tr data-k="zoo"><td>A zoo model fits your area badly</td>
+            <td>It was trained somewhere else</td>
+            <td>Check its card (where, which year, scores), or train your own</td></tr>
+          <tr data-k="undo"><td>The new run is worse than the old one</td>
+            <td>The last change didn't help</td>
+            <td>Click the older run to bring it back; undo the change in the class tree</td></tr>
+        </tbody>
+      </table>
+
+      <h4>Inside your project zip</h4>
+      <table class="help-table files">
+        <tbody>
+          <tr><td>project.json</td><td>name, area, year and base map</td></tr>
+          <tr><td>hierarchy.json</td><td>your class tree</td></tr>
+          <tr><td>examples/</td><td>the polygons behind each class you trained</td></tr>
+          <tr><td>weights/</td><td>the models you trained or applied</td></tr>
+          <tr><td>op_log.json</td><td>every change, in order</td></tr>
+          <tr><td>runs/run_N/</td><td>one folder per run: the scheme frozen as it was, and run.json</td></tr>
+        </tbody>
+      </table>
+      <p class="hint">Open the GeoTIFF in QGIS; the class codes are in run.json. Import the zip on the
+        start screen to pick up where you left off.</p>
+    </div>
   </aside>
 
   <main id="map"></main>
@@ -322,6 +379,6 @@
   <!-- runtime config from the server (API base, sign-in, Airflow). Served, not baked, so retargeting
        the UI at another backend is an .env change rather than a code edit. Must load before app.js. -->
   <script src="config.js"></script>
-  <script src="app.js?v=46"></script>
+  <script src="app.js?v=47"></script>
 </body>
 </html>

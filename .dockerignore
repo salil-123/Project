@@ -34,6 +34,8 @@ floodMappingPipelines/
 global_0.1_degree_representation/
 global_0.1_degree_tiff_all/
 *.pdf
+# the walkthrough video: served from the mounted code, never needed in the deps image
+src/static/media/
 *.ipynb
 *.png
 *.aux

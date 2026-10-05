@@ -3,6 +3,8 @@
 A self-contained guide to deploy the **Core Stack LULC** service and (optionally) plug it into the
 **STACD / Airflow** pipeline. No prior familiarity with the codebase is assumed.
 
+> Deploying on the tower? Follow [`TOWER_DEPLOY.md`](TOWER_DEPLOY.md) in order; this file is the long reference.
+
 ---
 
 ## 1. What you are deploying

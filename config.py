@@ -127,8 +127,10 @@ SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 # Lets the Airflow DAG (and scripts) call back without a browser session, like Susmit's
 # X-Service-Token. Unset -> the callback paths stay open as they were; set it on the tower.
 SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "")
-# The explainer video on the front page: a YouTube embed url or an mp4 path. Empty -> a placeholder.
-INTRO_VIDEO_URL = os.getenv("INTRO_VIDEO_URL", "")
+# The explainer video on the front page: a YouTube url or an mp4 path. Empty -> the walkthrough that
+# ships in src/static/media (relative, so a sub-path deploy still finds it), else a placeholder.
+_BUNDLED_VIDEO = Path(__file__).resolve().parent / "src" / "static" / "media" / "walkthrough.mp4"
+INTRO_VIDEO_URL = os.getenv("INTRO_VIDEO_URL") or ("media/walkthrough.mp4" if _BUNDLED_VIDEO.exists() else "")
 
 # ----------------------------- AOI size caps (#3) -----------------------------
 # Guardrails so a user can't draw a huge box and blow up compute/download time. All

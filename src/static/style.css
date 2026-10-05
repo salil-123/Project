@@ -449,3 +449,28 @@ body.on-start .toast { left: 50%; z-index: 2600; }
 .map-legend .sw { width: 11px; height: 11px; border-radius: 2px; flex: none; }
 .map-legend .lg-name { flex: 1; }
 .map-legend .lg-pct { color: #9aa3af; font-variant-numeric: tabular-nums; }
+
+/* help drawer: sits over the right of the map, same dark skin as the zoo */
+#help { position: fixed; top: 0; right: 0; bottom: 0; width: min(640px, 100vw); z-index: 1900;
+  background: #0f1217; color: #e6e8ec; border-left: 1px solid #262b34; display: flex;
+  flex-direction: column; box-shadow: -8px 0 24px rgba(0,0,0,.4); }
+#help.hidden { display: none; }
+.help-head { display: flex; align-items: center; justify-content: space-between; height: 60px;
+  padding: 0 22px; border-bottom: 1px solid #262b34; background: #14181f; flex-shrink: 0; }
+.help-title { font-size: 17px; font-weight: 700; }
+#closeHelp { width: auto; margin: 0; padding: 7px 14px; font-size: 13px; background: #3a2326; }
+#closeHelp:hover { background: #5a1f1f; }
+.help-body { overflow-y: auto; padding: 8px 22px 22px; }
+.help-body h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: #9aa3af;
+  margin: 22px 0 8px; }
+.help-body .hint { font-size: 13px; color: #9aa3af; line-height: 1.5; }
+.help-table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; }
+.help-table th { text-align: left; font-size: 11px; text-transform: uppercase; letter-spacing: .05em;
+  color: #7e8794; padding: 8px 10px; border-bottom: 1px solid #262b34; }
+.help-table td { padding: 9px 10px; border-bottom: 1px solid #1d232c; vertical-align: top; }
+.help-table td:first-child { color: #e6e8ec; font-weight: 600; width: 36%; }
+.help-table td:nth-child(2) { color: #9aa3af; }
+.help-table td:nth-child(3) { color: #8fc1ff; }
+.help-table.files td:first-child { font-family: ui-monospace, Consolas, monospace; font-weight: 500;
+  width: 32%; color: #ffd27a; }
+.help-table tr.hl td { background: rgba(255, 214, 0, .12); }   /* the row the walkthrough points at */
