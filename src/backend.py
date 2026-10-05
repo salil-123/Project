@@ -2064,10 +2064,11 @@ class Gate:
         req = Request(scope)
         user = auth.read_cookie(req.cookies.get(auth.COOKIE))
         token = req.headers.get("x-service-token")
-        # no SERVICE_TOKEN: the callbacks stay open on a laptop (dev login on) so a local DAG still works,
-        # but never once Google sign-in is configured, where an open compute path would fail checklist #4
+        # no SERVICE_TOKEN: the three DAG callback paths stay open without a session, so the tower's
+        # current DAG (which sends no token) keeps working. Everything else still needs sign-in, and
+        # setting SERVICE_TOKEN on both sides closes these too (checklist #4 in full)
         service = (token == config.SERVICE_TOKEN if config.SERVICE_TOKEN
-                   else auth.dev_login_allowed() and path.startswith(_SERVICE) and not user)
+                   else path.startswith(_SERVICE) and not user)
         write = scope["method"] not in ("GET", "HEAD", "OPTIONS")
         state = scope.setdefault("state", {})
         state["user"] = user
