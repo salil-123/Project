@@ -1,122 +1,148 @@
-# Core Stack LULC: setting it up on the tower
+# Core Stack LULC: updating the tower deployment
 
-For the tower admin. About 20 minutes. Each step ends with a quick check, so if something is off it
-shows up right there.
+For the existing deployment at `https://www.cse.iitd.ernet.in/act4dws5/diy-lulc/`. Your Earth Engine
+key, `.env`, nginx and Airflow setup all stay as they are. This update adds a few lines on top.
+About 20 minutes, and every step ends with a check.
 
-**What it is.** A web app for land-use / land-cover maps over India. One Docker container serves both
-the page and the API on port 8000. The heavy compute runs in Google Earth Engine, so it needs no GPU
-and very little CPU or RAM on the tower.
+## What changes
 
-**How it's packaged.** The Docker image `salil2003/corestack-lulc:1.0.0` holds only the
-dependencies. The code comes from a git checkout that is mounted into the container. Updating later
-means `git pull` and a restart, with no rebuild.
+- **Google sign-in.** It's built in and turns on by itself with this update. Visitors land on a
+  front page with the walkthrough video, sign in, and work inside their own projects.
+- **A service token.** With sign-in on, anything without a session gets 401, and that includes
+  Airflow's calls back into the app. A shared token lets those through, so it goes in two places:
+  our `.env` and the Airflow side (step 4). Without it, Run in the app breaks.
+- **New image `1.0.0`.** It carries the sign-in libraries. The old image can't run the new code, so
+  this time you need a pull and a recreate, not a restart.
+- **Model zoo** shows all 11 models now, without any setup.
+- **Data.** Users and projects go in a small SQLite file, `data/corestack.db`. The central Postgres
+  comes in the next round.
 
 ---
 
-## 1. Get the code
-
-Already have a checkout from the earlier deploy:
+## 1. Note where you are, in case you need to go back
 
 ```bash
-cd /srv/corestack-lulc        # wherever it lives
+cd <the corestack-lulc folder>
+git rev-parse --short HEAD          # write this down
+git status --short
+cp .env .env.backup
+```
+
+If `git status` lists files you changed in `src/` or `config.py`, please send me the diff
+(`git diff > tower_changes.diff`) so the fix goes into the repo. Then set them aside:
+
+```bash
+git stash
+```
+
+`data/*.json` showing as modified is just the app's saved state, and stashing it is fine.
+
+## 2. Pull the code
+
+```bash
 git pull
 ```
 
-If `git pull` complains about local changes in `data/*.json`, that's the app's own saved state from
-the old version. Run `git stash`, then `git pull` again.
+Check: `ls src/static/media/walkthrough.mp4 models/model_pooled.joblib` finds both.
 
-Fresh machine:
+## 3. Add to `.env`
 
-```bash
-git clone https://github.com/salil-123/Project.git /srv/corestack-lulc
-cd /srv/corestack-lulc
-```
-
-Check: `ls src/static/media/walkthrough.mp4 data/hierarchy.json models/` shows all three.
-
-Please keep `data/` and `models/` inside this folder. They already hold the starting files the app
-needs. If they have to live elsewhere, copy them over first; an empty folder won't work.
-
-## 2. `.env`
-
-Keep the Earth Engine settings you already have (`EE_PROJECT`, `EE_ASSET_ROOT`,
-`EE_SERVICE_ACCOUNT_KEY` pointing at the key) and the Airflow ones. Sign-in is new, so add these
-(the Google client id is already built in):
+Generate two random strings:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"    # run it twice
 ```
 
+and add:
+
 ```bash
-SESSION_SECRET=<first random string>
-SERVICE_TOKEN=<second random string>      # Saharsh sets the same value on the Airflow side
-STAC_ASSET_BASE=<public URL, no trailing slash>
+SESSION_SECRET=<first string>
+SERVICE_TOKEN=<second string>
 ```
 
-Leave `GOOGLE_CLIENT_ID`, `DATABASE_URL`, `API_BASE_URL` and `INTRO_VIDEO_URL` out. For now users and projects sit in
-a small SQLite file at `data/corestack.db`; moving to the central Postgres is planned for the next deploy.
+Leave everything else as it is. Don't add `GOOGLE_CLIENT_ID` (it's built in, and an empty value
+switches sign-in off) or `DATABASE_URL` (that's for the Postgres round).
 
-Check: `grep -n '<' .env` prints nothing.
+## 4. Airflow: the same token on its side
 
-## 3. Start it
+Whichever DAG calls `/api/export-asset` has to send the header `X-Service-Token: <SERVICE_TOKEN>`.
 
-The new code needs the 1.0.0 image (it carries the sign-in libraries), so pull it. A plain restart
-would keep the old image.
+If it's our `corestack_lulc` DAG, two things:
+
+1. Copy the new `airflow/dags/corestack_lulc_dag.py` from the repo into Airflow's dags folder,
+   replacing the old copy. The old one doesn't send the header.
+2. Set `CORESTACK_SERVICE_TOKEN=<the same second string>` in the environment of the Airflow
+   scheduler and workers, then restart them so they pick it up.
+
+The app now puts `project_id` in the run conf, and the DAG has to pass the conf through as it is
+(ours does). If a DAG drops it, runs fall back to the shared default scheme instead of the user's project.
+
+## 5. Pull the image and recreate
 
 ```bash
 docker compose -f docker-compose.hub.yml pull
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Check:
+(Use `docker-compose` if that's what this box has been using.) `up -d` recreates the container, which
+is how it picks up both the new image and the new `.env` lines. A plain `restart` does neither.
+
+Check, on the tower:
 
 ```bash
 curl -s localhost:8000/api/health        # {"ok": true ...}
-curl -s localhost:8000/api/auth/me       # google_client_id is set, dev_login is false
+curl -s localhost:8000/api/auth/me       # google_client_id filled in, dev_login false
+docker compose -f docker-compose.hub.yml exec lulc python config.py     # EE init OK
 ```
 
-## 4. nginx
+## 6. nginx
+
+The existing block keeps working. Please check it has these two lines and add them if not:
 
 ```nginx
-location /act4dws5/diy-lulc/ {
-    proxy_pass http://127.0.0.1:8000/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_read_timeout 600s;
-    client_max_body_size 50m;
-}
+proxy_set_header X-Forwarded-Proto $scheme;   # marks the sign-in cookie Secure under https
+client_max_body_size 50m;                     # uploaded polygons and project zips; the default is 1 MB
 ```
 
-Both trailing slashes matter: they strip the prefix, and the app uses relative paths for the rest.
-The timeout covers map exports, and the body size covers uploaded polygons and project files.
+Then `nginx -s reload`.
 
-Check: the public URL opens a styled front page, the walkthrough video plays, and
-**Sign in with Google** works. If Google says the origin isn't allowed, send me the URL and I'll
-add it on our side.
+## 7. Check it end to end
 
-## 5. Model zoo (one line)
+1. Open the site and hard refresh once (Ctrl+Shift+R). The front page shows with the video playing.
+2. **Sign in with Google**, create a small project and press **Run classification**. The run
+   goes through Airflow and the map paints.
+3. Open the Model Zoo. It lists 11 models.
 
-Skip this if `data/catalogue` already exists from before.
-
-```bash
-git clone https://github.com/salil-123/zoo_database.git data/catalogue
-docker compose -f docker-compose.hub.yml restart lulc
-```
-
-Check: the Model Zoo in the app lists 11 models.
+Logs are in `data/logs/corestack-lulc/app.log`.
 
 ---
 
-## Day to day
+## If something's off
 
-| Task | Command |
-|---|---|
-| Update to new code | `git pull && docker compose -f docker-compose.hub.yml restart lulc` |
-| Logs | `tail -f data/logs/corestack-lulc/app.log` |
-| More detail in logs | `LOG_LEVEL=debug` in `.env`, then restart |
-| Stop | `docker compose -f docker-compose.hub.yml down` |
-| Back up | `data/corestack.db` together with `data/projects/` (the rows point at those folders) |
+| What you see | What it means | Fix |
+|---|---|---|
+| Container keeps restarting, `ModuleNotFoundError` in the logs | still on the old image | step 5: `pull`, then `up -d` |
+| `git pull` refuses: local changes would be overwritten | files edited on the box | step 1: `git stash`, then pull |
+| Run hangs or the DAG task fails, `401` in our log | Airflow isn't sending the token, or the values differ | step 4: same value on both sides, new DAG file, Airflow restarted |
+| Run stays `queued` forever | the DAG is paused, or the scheduler is down | `airflow dags unpause corestack_lulc` |
+| Google says the origin isn't allowed | the site moved to another host | send me the URL; I add it on our side |
+| `.env` edits have no effect | the container wasn't recreated | `up -d`, not `restart` |
+| Page looks like the old version | browser cache | Ctrl+Shift+R |
 
-If we ever change dependencies, we'll send a new image tag and the one-line compose change that goes with it.
+## Going back
+
+```bash
+git checkout <the commit from step 1>
+cp .env.backup .env
+docker compose -f docker-compose.hub.yml up -d
+```
+
+The `1.0.0` image runs the old code too, so the image doesn't need to change for a rollback.
+Remove `CORESTACK_SERVICE_TOKEN` on the Airflow side only if you also put the old DAG file back.
+
+## Later updates
+
+Code only: `git pull`, then `docker compose -f docker-compose.hub.yml restart lulc`.
+If `.env` or the image tag changed: `pull`, then `up -d`. We'll say which one each time.
 
 Contact: Salil Gujar
