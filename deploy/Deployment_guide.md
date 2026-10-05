@@ -4,21 +4,22 @@ Repo: <https://github.com/salil-123/Project> (this file:
 [`deploy/Deployment_guide.md`](https://github.com/salil-123/Project/blob/main/deploy/Deployment_guide.md))
 
 For the existing deployment at `https://www.cse.iitd.ernet.in/act4dws5/diy-lulc/`. Your Earth Engine
-key, `.env`, nginx, Airflow and the DAG all stay as they are; this adds one line to `.env` and two to
-nginx. About 15 minutes, and every step ends with a check.
+key, `.env`, nginx, Airflow and the DAG all stay as they are. Every step is safe to repeat, so it works
+whether or not the previous update went in. About 15 minutes, and every step ends with a check.
 
-## What changes
+## What this update brings
 
-- **Google sign-in.** It's built in and turns on by itself with this update. Visitors land on a
-  front page with the walkthrough video, sign in, and work inside their own projects.
-- **Airflow and the DAG don't change.** The DAG's calls back into the app keep working without a session.
-- **New image `1.0.0`.** It carries the sign-in libraries. The old image can't run the new code, so
-  this time you need a pull and a recreate, not a restart.
-- **Data.** Users and projects go in a small SQLite file, `data/corestack.db`. Postgres is on hold.
+- **Google sign-in that doesn't freeze.** If the server can't reach Google, sign-in now says so within
+  10 seconds instead of hanging.
+- **A network check**, `/api/health?deep=1`, that says whether the container can reach Google.
+  Sign-in and Earth Engine both need it.
+- **The off-white colours** of the drone app.
+- **A fix** so one person's run no longer freezes the site for everyone else.
+- **Airflow and the DAG don't change.** Users and projects stay in `data/corestack.db`; Postgres is on hold.
 
 ---
 
-## 1. Note where you are, and drop the local frontend edit
+## 1. Note where you are
 
 ```bash
 cd <the corestack-lulc folder>
@@ -27,15 +28,9 @@ cp .env .env.backup
 git status --short
 ```
 
-The frontend paths you made relative on the box are relative in the repo now too, so your edit isn't
-needed. Discard it so the pull goes through cleanly:
-
-```bash
-git checkout -- src/static/
-```
-
-If `git status` still lists modified `data/*.json` files, that's the app's own saved state from the
-old version. Clear it with `git stash`.
+If `git status` lists files under `src/static/`, that's the earlier relative-path edit. The repo does
+the same now, so discard it: `git checkout -- src/static/`. Modified `data/*.json` files are the app's
+own saved state; clear them with `git stash`.
 
 ## 2. Pull the code
 
@@ -43,22 +38,20 @@ old version. Clear it with `git stash`.
 git pull
 ```
 
-Check: `ls src/static/media/walkthrough.mp4 models/model_pooled.joblib` finds both.
+Check: `git log --oneline -1` matches the latest commit on GitHub, and
+`ls src/static/media/walkthrough.mp4` finds the video.
 
-## 3. One line in `.env`
+## 3. `.env`
+
+If `.env` already has a `SESSION_SECRET` line from the last update, skip this step. Otherwise:
 
 ```bash
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Add the output as:
+and add the output as `SESSION_SECRET=<that string>`. It signs the sign-in cookie.
 
-```bash
-SESSION_SECRET=<that string>
-```
-
-It signs the sign-in cookie. Leave everything else as it is, and don't add `GOOGLE_CLIENT_ID`: it's
-built in, and an empty value switches sign-in off.
+Don't add `GOOGLE_CLIENT_ID`: it's built in, and an empty value switches sign-in off.
 
 ## 4. Pull the image and recreate
 
@@ -68,20 +61,20 @@ docker compose -f docker-compose.hub.yml up -d
 ```
 
 (Use `docker-compose` if that's what this box has been using.) `up -d` recreates the container, which
-is how it picks up both the new image and the new `.env` line. A plain `restart` does neither.
+picks up the image and any `.env` change. A plain `restart` picks up neither.
 
 Check, on the tower:
 
 ```bash
-curl -s localhost:8000/api/health        # {"ok": true ...}
-curl -s localhost:8000/api/auth/me       # google_client_id filled in, dev_login false
-docker compose -f docker-compose.hub.yml exec lulc python config.py     # EE init OK
-curl -s 'localhost:8000/api/health?deep=1'   # every host under "reach" says ok
+curl -s localhost:8000/api/health                  # "status": "ok"
+curl -s localhost:8000/api/auth/me                 # google_client_id filled in, dev_login false
+curl -s 'localhost:8000/api/health?deep=1'         # every host under "reach" says ok
+docker compose -f docker-compose.hub.yml exec lulc python config.py    # EE init OK
 ```
 
-Sign-in and Earth Engine both need the container to reach Google. If any host under `reach` says
-`unreachable`, the box goes out through a proxy and the container doesn't know about it. Add the proxy
-to `.env`, then `up -d` again:
+**If any host under `reach` says `unreachable`**, the container can't get out to Google. That's what
+freezes sign-in and stops the maps. The box most likely goes out through the campus proxy, so add it
+to `.env` and recreate:
 
 ```bash
 HTTPS_PROXY=http://<proxy host>:<port>
@@ -89,9 +82,14 @@ HTTP_PROXY=http://<proxy host>:<port>
 NO_PROXY=localhost,127.0.0.1,<airflow host>    # Airflow and local calls skip the proxy
 ```
 
+```bash
+docker compose -f docker-compose.hub.yml up -d
+curl -s 'localhost:8000/api/health?deep=1'         # now all ok
+```
+
 ## 5. nginx
 
-The existing block keeps working. Please check it has these two lines and add them if not:
+The existing block keeps working. Check it has these two lines, and add them if not:
 
 ```nginx
 proxy_set_header X-Forwarded-Proto $scheme;   # marks the sign-in cookie Secure under https
@@ -102,9 +100,10 @@ Then `nginx -s reload`.
 
 ## 6. Check it end to end
 
-1. Open the site and hard refresh once (Ctrl+Shift+R). The front page shows with the video playing.
-2. **Sign in with Google**, create a small project and press **Run classification**. The run
-   goes through Airflow as before and the map paints.
+1. Open the site and hard refresh once (Ctrl+Shift+R). The front page is off-white with the video.
+2. **Sign in with Google.** You land on "What are you working on?" within a couple of seconds.
+3. Create a small project (the IIT Delhi preset is quick) and press **Run classification**. The run
+   goes through Airflow as before and the map paints with a legend.
 
 Logs are in `data/logs/corestack-lulc/app.log`.
 
@@ -114,13 +113,16 @@ Logs are in `data/logs/corestack-lulc/app.log`.
 
 | What you see | What it means | Fix |
 |---|---|---|
-| Container keeps restarting, `ModuleNotFoundError` in the logs | still on the old image | step 4: `pull`, then `up -d` |
-| `git pull` refuses: local changes would be overwritten | a file edited on the box | step 1: `git checkout -- <that file>` or `git stash`, then pull |
 | Sign-in says "the server can't reach www.googleapis.com", or the map never paints | the container can't reach Google | step 4: the proxy lines in `.env`, then `up -d` |
+| Container keeps restarting, `ModuleNotFoundError` in the logs | still on the old image | step 4: `pull`, then `up -d` |
+| Container keeps restarting, `disk I/O error` in the logs | `data/` is on a network share; the database needs a local disk | keep `data/` on the tower's own disk |
+| `git pull` refuses: local changes would be overwritten | a file edited on the box | step 1: `git checkout -- <that file>` or `git stash`, then pull |
 | Run stays `queued` forever | the DAG is paused, or the scheduler is down | `airflow dags unpause corestack_lulc` |
-| Google says the origin isn't allowed | the site moved to another host | send me the URL; I add it on our side |
+| Google says the origin isn't allowed | the site moved to another host | send me the URL and I'll add it on our side |
 | `.env` edits have no effect | the container wasn't recreated | `up -d`, not `restart` |
 | Page looks like the old version | browser cache | Ctrl+Shift+R |
+
+Logs for any of these: `docker compose -f docker-compose.hub.yml logs --tail 50 lulc`
 
 ## Going back
 
@@ -130,4 +132,4 @@ cp .env.backup .env
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-The `1.0.0` image runs the old code too, so the image doesn't need to change for a rollback.
+The `1.0.0` image runs the older code too, so the image doesn't need to change for a rollback.
