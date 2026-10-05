@@ -16,13 +16,13 @@ YAMLs). This file is the order of operations.
 |---|---|---|
 | A shell on the tower with `docker`, `docker compose` and `git` | tower admin | |
 | The sub-path the app will live under (planned: `/act4dws5/diy-lulc/`) | tower admin | nginx, `STAC_ASSET_BASE` |
-| Postgres connection string for our database on the central server | tower admin | `DATABASE_URL` |
+| Postgres connection string (on hold: this deploy runs on SQLite, Postgres comes next time) | tower admin | `DATABASE_URL` |
 | Earth Engine service-account key `ee-key.json` for `modern-mystery-398416` | us | `deploy/ee-key.json` on the tower |
 | Google OAuth client id (made 3 Oct, project `modern-mystery-398416`) | us | `GOOGLE_CLIENT_ID` |
 | The Airflow REST URL and its creds | Saharsh | `AIRFLOW_*` |
 
-Don't start until you have the Postgres string and the key. Without them the app boots, but it
-quietly falls back to SQLite and can't reach Earth Engine, and the setup looks finished when it isn't.
+Don't start without the key: the app boots without it but can't reach Earth Engine, so the setup
+looks finished when it isn't.
 
 ---
 
@@ -75,7 +75,7 @@ STAC_ASSET_BASE=https://<host>/act4dws5/diy-lulc # public URL, no trailing slash
 GOOGLE_CLIENT_ID=<our client id>.apps.googleusercontent.com
 SESSION_SECRET=<first random string>
 SERVICE_TOKEN=<second random string>             # Saharsh gets the same value (step 9)
-DATABASE_URL=postgresql://USER:PASSWORD@POSTGRES_HOST:5432/DBNAME
+# DATABASE_URL=postgresql://USER:PASSWORD@POSTGRES_HOST:5432/DBNAME   # on hold; unset = data/corestack.db
 
 AIRFLOW_API_BASE=http://<airflow-host>:8080/api/v1
 AIRFLOW_USERNAME=<user>
@@ -118,7 +118,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/api/projects \
 curl -s localhost:8000/config.js                     # introVideo: "media/walkthrough.mp4"
 ```
 
-And make sure the app is on Postgres, not the laptop SQLite fallback:
+Once Postgres is switched on (next deploy), make sure the app is actually using it:
 
 ```bash
 docker compose -f docker-compose.hub.yml exec lulc python -c "import config; print(config.DATABASE_URL.split(':')[0])"
