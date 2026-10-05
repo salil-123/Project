@@ -27,6 +27,7 @@ sys.path.insert(0, str(_ROOT))
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Request
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 import hierarchy
@@ -577,7 +578,8 @@ async def export_asset_post(request: Request):
     if isinstance(body.get("conf"), dict):
         body = body["conf"]                       # Airflow DAG-conf envelope
     kwargs = {k: v for k, v in body.items() if k in _EXPORT_KEYS}
-    return _run_export(**kwargs)
+    # off the event loop: an export blocks for minutes, and inline it would freeze the site for everyone
+    return await run_in_threadpool(_run_export, **kwargs)
 
 
 @app.get("/api/export-status")
@@ -728,7 +730,7 @@ async def dag_run(request: Request):
     conf = body.get("conf", body) if isinstance(body, dict) else {}
     log.info("dag_run trigger conf=%s", conf)
     try:
-        resp = airflow_client.trigger_conf(conf)
+        resp = await run_in_threadpool(airflow_client.trigger_conf, conf)   # a blocking HTTP call
     except Exception as e:
         log.exception("dag_run trigger failed")
         raise HTTPException(502, f"couldn't trigger the DAG: {e}")
