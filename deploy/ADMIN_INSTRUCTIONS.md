@@ -14,9 +14,7 @@ nginx. About 15 minutes, and every step ends with a check.
 - **Airflow and the DAG don't change.** The DAG's calls back into the app keep working without a session.
 - **New image `1.0.0`.** It carries the sign-in libraries. The old image can't run the new code, so
   this time you need a pull and a recreate, not a restart.
-- **Model zoo** shows all 11 models now, without any setup.
-- **Data.** Users and projects go in a small SQLite file, `data/corestack.db`. The central Postgres
-  comes in the next round.
+- **Data.** Users and projects go in a small SQLite file, `data/corestack.db`. Postgres is on hold.
 
 ---
 
@@ -96,7 +94,6 @@ Then `nginx -s reload`.
 1. Open the site and hard refresh once (Ctrl+Shift+R). The front page shows with the video playing.
 2. **Sign in with Google**, create a small project and press **Run classification**. The run
    goes through Airflow as before and the map paints.
-3. Open the Model Zoo. It lists 11 models.
 
 Logs are in `data/logs/corestack-lulc/app.log`.
 
@@ -122,10 +119,3 @@ docker compose -f docker-compose.hub.yml up -d
 ```
 
 The `1.0.0` image runs the old code too, so the image doesn't need to change for a rollback.
-
-## Later updates
-
-Code only: `git pull`, then `docker compose -f docker-compose.hub.yml restart lulc`.
-If `.env` or the image tag changed: `pull`, then `up -d`. We'll say which one each time.
-
-Contact: Salil Gujar
