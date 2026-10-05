@@ -60,7 +60,7 @@ cp -a models/. /srv/corestack-lulc-models/
 
 ```bash
 cp deploy/.env.example .env
-python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # run twice: SESSION_SECRET, SERVICE_TOKEN
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"   # SESSION_SECRET (and SERVICE_TOKEN, once step 9 happens)
 ```
 
 Fill in exactly these and leave the rest as they are:
@@ -72,7 +72,7 @@ EE_SERVICE_ACCOUNT_KEY=/app/deploy/ee-key.json   # the checkout is /app, so no e
 STAC_ASSET_BASE=https://<host>/act4dws5/diy-lulc # public URL, no trailing slash
 
 SESSION_SECRET=<first random string>
-SERVICE_TOKEN=<second random string>             # Saharsh gets the same value (step 9)
+# SERVICE_TOKEN=                                 # optional for now, see step 9
 # DATABASE_URL=postgresql://USER:PASSWORD@POSTGRES_HOST:5432/DBNAME   # on hold; unset = data/corestack.db
 
 AIRFLOW_API_BASE=http://<airflow-host>:8080/api/v1
@@ -164,7 +164,7 @@ Signed in, create a small project (well under 250 km²), press **Run classificat
 the GeoTIFF. Then from the tower:
 
 ```bash
-curl -s -X POST localhost:8000/api/export-asset -H "X-Service-Token: $SERVICE_TOKEN" \
+curl -s -X POST localhost:8000/api/export-asset \
   -H 'Content-Type: application/json' -d '{"region":[77.16,28.53,77.20,28.57],"year":2024}'
 ```
 
@@ -179,14 +179,18 @@ In `deploy/stacd/corestack_lulc_algorithm_repo.yaml` set `url:` to the public ex
 (`https://<host>/act4dws5/diy-lulc/api/export-asset`), then upload the three YAMLs through the STACD
 plugin (**Initialize Workflow**).
 
-## 9. Airflow side (Saharsh)
+## 9. Airflow side
 
-- `CORESTACK_SERVICE_TOKEN=<the same SERVICE_TOKEN>` on the Airflow worker.
-- The STACD pipeline sends the `X-Service-Token` header, and `project_id` in the conf. Without it, a
-  run classifies the shared default scheme instead of the user's project.
+The live DAG stays as it is: with `SERVICE_TOKEN` unset, its callbacks (export-asset, jobs,
+classify) are accepted without a session, which is exactly as open as before sign-in. Everything
+else needs sign-in. The DAG has to pass the run conf through untouched, since the app puts
+`project_id` in it.
+
+To lock the callbacks down later (checklist #4 in full): set `SERVICE_TOKEN` here,
+`CORESTACK_SERVICE_TOKEN=<same value>` on the Airflow worker, and swap in the repo's DAG file, which
+sends it as `X-Service-Token`. All three on the same day, or Run gets 401s.
 
 **Check:** press Run in the app with Airflow on, and the run shows up in Airflow and finishes green.
-A 401 in our log means the tokens don't match.
 
 ## 10. Hand-off
 
@@ -234,7 +238,7 @@ Users and projects live in Postgres and `data/projects/`, which a rollback doesn
 | Boot crash after moving weights | a stored `data/...joblib` path no longer existed | `model_path()` takes both spellings; keep the mounts on the checkout or copy first (2) |
 | Models unpickled with the wrong scikit-learn | the image floated to a newer sklearn | pinned 1.8.0 in the 1.0.0 image (4) |
 | No one could tell which build was live | only `:latest` was ever pushed | `VERSION` tag pushed, and compose pins it (4, Updating) |
-| The DAG locked out after sign-in landed | callbacks have no browser cookie | `SERVICE_TOKEN` on both sides (3, 9) |
+| The DAG would be locked out by sign-in | callbacks have no browser cookie | callback paths stay open until `SERVICE_TOKEN` is set on both sides (9) |
 | A DAG run ignored the user's classes | the pipeline didn't pass `project_id` | Airflow checklist (9) |
 | Sessions clashing with other apps on the host | every app shares one cookie jar at `path=/` | cookie named `corestack_lulc_session` |
 | Trusting an `X-User-Email` header, like the drone app | anyone can send that header | the Google token is verified on the server; check 401 in 4 |
