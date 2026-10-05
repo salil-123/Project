@@ -2146,3 +2146,34 @@ def frontend_config():
 
 
 app.mount("/", StaticFiles(directory=_STATIC), name="static")
+
+
+# ----------------------------- the sample project -----------------------------
+# A fresh deploy shows one public project on the front page: the walkthrough's Jharia run (mining split
+# out of barren), shipped as its own download zip and imported once. Kept under samples/ in the code,
+# not data/, so a relocated data mount still has it. The marker means deleting it on the box sticks.
+SAMPLE_ZIP = _ROOT / "samples" / "jharia_sample.zip"
+SAMPLE_OWNER = ("sample@local.dev", "Core Stack sample")
+
+
+def _seed_sample():
+    marker = config.DATA_DIR / ".sample_seeded"
+    if marker.exists() or not SAMPLE_ZIP.exists():
+        return
+    email, name = SAMPLE_OWNER
+    try:
+        with db.Session() as s:
+            if not s.get(db.User, email):
+                s.add(db.User(email=email, name=name))
+                s.commit()
+        p, _ = _import_zip(email, SAMPLE_ZIP.read_bytes(), SAMPLE_ZIP.stem)
+        with db.Session() as s:
+            s.get(db.Project, p.id).is_public = True
+            s.commit()
+        marker.write_text(p.id)
+        log.info("seeded the sample project %s from %s", p.id, SAMPLE_ZIP.name)
+    except Exception:
+        log.exception("couldn't seed the sample project; carrying on without it")   # never blocks boot
+
+
+_seed_sample()
