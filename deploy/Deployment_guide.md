@@ -14,6 +14,8 @@ whether or not the previous update went in. About 15 minutes, and every step end
 - **A network check**, `/api/health?deep=1`, that says whether the container can reach Google.
   Sign-in and Earth Engine both need it.
 - **The off-white colours** of the drone app.
+- **A sample project on the front page**: the walkthrough's Jharia coalfield run, with mining split
+  out of barren. It's added once on the first start; delete it in the app and it stays deleted.
 - **A fix** so one person's run no longer freezes the site for everyone else.
 - **Airflow and the DAG don't change.** Users and projects stay in `data/corestack.db`; Postgres is on hold.
 
@@ -100,7 +102,8 @@ Then `nginx -s reload`.
 
 ## 6. Check it end to end
 
-1. Open the site and hard refresh once (Ctrl+Shift+R). The front page is off-white with the video.
+1. Open the site and hard refresh once (Ctrl+Shift+R). The front page is off-white with the video,
+   and **Jharia coalfield (sample)** is under Public projects; opening it shows its two runs.
 2. **Sign in with Google.** You land on "What are you working on?" within a couple of seconds.
 3. Create a small project (the IIT Delhi preset is quick) and press **Run classification**. The run
    goes through Airflow as before and the map paints with a legend.
