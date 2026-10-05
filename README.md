@@ -30,7 +30,8 @@ Earth Engine config goes in `.env` (see `deploy/.env.example`); headless servers
 Deploying on the tower: follow [`deploy/TOWER_DEPLOY.md`](deploy/TOWER_DEPLOY.md) step by step.
 
 `/` is the front page (what the tool is, the walkthrough video, public projects, sign in); `/app` is
-the tool. On a laptop with no `GOOGLE_CLIENT_ID`, sign in by typing any name.
+the tool. Google sign-in is on by default (our client id is in `config.py`); set `GOOGLE_CLIENT_ID=` empty in
+`.env` to sign in by typing any name on a laptop.
 
 ## Users, projects, runs
 Everything happens inside a **project**: one area, one year, one base scheme, the classes grown on

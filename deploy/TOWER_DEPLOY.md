@@ -18,7 +18,6 @@ YAMLs). This file is the order of operations.
 | The sub-path the app will live under (planned: `/act4dws5/diy-lulc/`) | tower admin | nginx, `STAC_ASSET_BASE` |
 | Postgres connection string (on hold: this deploy runs on SQLite, Postgres comes next time) | tower admin | `DATABASE_URL` |
 | Earth Engine service-account key `ee-key.json` for `modern-mystery-398416` | us | `deploy/ee-key.json` on the tower |
-| Google OAuth client id (made 3 Oct, project `modern-mystery-398416`) | us | `GOOGLE_CLIENT_ID` |
 | The Airflow REST URL and its creds | Saharsh | `AIRFLOW_*` |
 
 Don't start without the key: the app boots without it but can't reach Earth Engine, so the setup
@@ -72,7 +71,6 @@ EE_ASSET_ROOT=projects/modern-mystery-398416/assets/corestack_lulc
 EE_SERVICE_ACCOUNT_KEY=/app/deploy/ee-key.json   # the checkout is /app, so no extra mount needed
 STAC_ASSET_BASE=https://<host>/act4dws5/diy-lulc # public URL, no trailing slash
 
-GOOGLE_CLIENT_ID=<our client id>.apps.googleusercontent.com
 SESSION_SECRET=<first random string>
 SERVICE_TOKEN=<second random string>             # Saharsh gets the same value (step 9)
 # DATABASE_URL=postgresql://USER:PASSWORD@POSTGRES_HOST:5432/DBNAME   # on hold; unset = data/corestack.db

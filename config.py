@@ -119,8 +119,10 @@ def weights_write_path(clf) -> str:
 # ----------------------------- Users, sign-in, front page (week 18) -----------------------------
 # DATABASE_URL: Postgres on the cluster (checklist #9). Unset on a laptop -> a SQLite file in data/.
 DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{(DATA_DIR / 'corestack.db').as_posix()}"
-# The Google OAuth client id is public by design (it ships to the browser). Unset -> the dev login.
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
+# Our Google OAuth client id. Public by design (every visitor's browser gets it, and Google only honours
+# it on the origins we allowed), so it lives here and no deploy can forget it. Set GOOGLE_CLIENT_ID=
+# (empty) in .env to fall back to the type-your-name dev login on a laptop.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "621702464407-uto5aaa0f59nhtpc351ir0141k180d55.apps.googleusercontent.com")
 # Signs the session cookie. Must be set on any shared deploy; the fallback is only fit for a laptop.
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
