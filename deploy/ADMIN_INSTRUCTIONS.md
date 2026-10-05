@@ -1,7 +1,7 @@
 # Core Stack LULC: setting it up on the tower
 
-For the tower admin. About 30 minutes once the pieces below are in hand. Each step ends with a quick
-check, so if something is off it shows up right there.
+For the tower admin. About 20 minutes. Each step ends with a quick check, so if something is off it
+shows up right there.
 
 **What it is.** A web app for land-use / land-cover maps over India. One Docker container serves both
 the page and the API on port 8000. The heavy compute runs in Google Earth Engine, so it needs no GPU
@@ -13,26 +13,23 @@ means `git pull` and a restart, with no rebuild.
 
 ---
 
-## What we send you (privately, not in git)
-
-- `ee-key.json`, the Earth Engine service-account key
-- the Google sign-in client id
-
-## What we need back from you
-
-- **The public URL** the app will sit at, e.g. `https://www.cse.iitd.ernet.in/act4dws5/diy-lulc/`.
-  If the host isn't `https://www.cse.iitd.ernet.in`, tell us so we can allow it for Google sign-in.
-- **A Postgres database** on the central server, plus its connection string.
-- **The service token** you generate in step 2. Please pass it to Saharsh for the Airflow side.
-
----
-
 ## 1. Get the code
+
+Already have a checkout from the earlier deploy:
+
+```bash
+cd /srv/corestack-lulc        # wherever it lives
+git pull
+```
+
+If `git pull` complains about local changes in `data/*.json`, that's the app's own saved state from
+the old version. Run `git stash`, then `git pull` again.
+
+Fresh machine:
 
 ```bash
 git clone https://github.com/salil-123/Project.git /srv/corestack-lulc
 cd /srv/corestack-lulc
-cp /path/to/ee-key.json deploy/ee-key.json
 ```
 
 Check: `ls src/static/media/walkthrough.mp4 data/hierarchy.json models/` shows all three.
@@ -40,37 +37,31 @@ Check: `ls src/static/media/walkthrough.mp4 data/hierarchy.json models/` shows a
 Please keep `data/` and `models/` inside this folder. They already hold the starting files the app
 needs. If they have to live elsewhere, copy them over first; an empty folder won't work.
 
-## 2. Fill in `.env`
+## 2. `.env`
+
+Keep the Earth Engine settings you already have (`EE_PROJECT`, `EE_ASSET_ROOT`,
+`EE_SERVICE_ACCOUNT_KEY` pointing at the key) and the Airflow ones. Sign-in is new, so add these:
 
 ```bash
-cp deploy/.env.example .env
 python3 -c "import secrets; print(secrets.token_urlsafe(48))"    # run it twice
 ```
 
-Set these in `.env`:
-
 ```bash
-EE_PROJECT=modern-mystery-398416
-EE_ASSET_ROOT=projects/modern-mystery-398416/assets/corestack_lulc
-EE_SERVICE_ACCOUNT_KEY=/app/deploy/ee-key.json
-STAC_ASSET_BASE=<public URL, no trailing slash>
-
-GOOGLE_CLIENT_ID=<the id we sent>
+GOOGLE_CLIENT_ID=<the sign-in client id>
 SESSION_SECRET=<first random string>
-SERVICE_TOKEN=<second random string>
-DATABASE_URL=postgresql://USER:PASSWORD@HOST:5432/DBNAME
-
-AIRFLOW_API_BASE=http://<airflow host>:8080/api/v1
-AIRFLOW_USERNAME=<user>
-AIRFLOW_PASSWORD=<password>
-CORESTACK_API_BASE=http://<this machine's LAN address>:8000
+SERVICE_TOKEN=<second random string>      # Saharsh sets the same value on the Airflow side
+STAC_ASSET_BASE=<public URL, no trailing slash>
 ```
 
-Leave everything else as it is. In particular, leave `API_BASE_URL` and `INTRO_VIDEO_URL` empty.
+Leave `DATABASE_URL`, `API_BASE_URL` and `INTRO_VIDEO_URL` empty. For now users and projects sit in
+a small SQLite file at `data/corestack.db`; moving to the central Postgres is planned for the next deploy.
 
 Check: `grep -n '<' .env` prints nothing.
 
 ## 3. Start it
+
+The new code needs the 1.0.0 image (it carries the sign-in libraries), so pull it. A plain restart
+would keep the old image.
 
 ```bash
 docker compose -f docker-compose.hub.yml pull
@@ -81,8 +72,7 @@ Check:
 
 ```bash
 curl -s localhost:8000/api/health        # {"ok": true ...}
-docker compose -f docker-compose.hub.yml exec lulc python -c "import config; print(config.DATABASE_URL.split(':')[0])"
-# should print postgresql; sqlite means DATABASE_URL didn't load
+curl -s localhost:8000/api/auth/me       # google_client_id is set, dev_login is false
 ```
 
 ## 4. nginx
@@ -101,9 +91,12 @@ Both trailing slashes matter: they strip the prefix, and the app uses relative p
 The timeout covers map exports, and the body size covers uploaded polygons and project files.
 
 Check: the public URL opens a styled front page, the walkthrough video plays, and
-**Sign in with Google** works.
+**Sign in with Google** works. If Google says the origin isn't allowed, send me the URL and I'll
+add it on our side.
 
 ## 5. Model zoo (one line)
+
+Skip this if `data/catalogue` already exists from before.
 
 ```bash
 git clone https://github.com/salil-123/zoo_database.git data/catalogue
@@ -122,7 +115,7 @@ Check: the Model Zoo in the app lists 11 models.
 | Logs | `tail -f data/logs/corestack-lulc/app.log` |
 | More detail in logs | `LOG_LEVEL=debug` in `.env`, then restart |
 | Stop | `docker compose -f docker-compose.hub.yml down` |
-| Back up | the Postgres database together with `data/projects/` (the rows point at those folders) |
+| Back up | `data/corestack.db` together with `data/projects/` (the rows point at those folders) |
 
 If we ever change dependencies, we'll send a new image tag and the one-line compose change that goes with it.
 
