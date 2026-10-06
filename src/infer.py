@@ -50,7 +50,8 @@ def active_base():
 def set_active_base(scheme, model_path):
     import json
     os.makedirs(os.path.dirname(_active_base_file()), exist_ok=True)
-    json.dump({"scheme": scheme, "model_path": model_path}, open(_active_base_file(), "w"), indent=2)
+    # stored as models/<file>, never a full path: project zips travel between machines
+    json.dump({"scheme": scheme, "model_path": config.portable(model_path)}, open(_active_base_file(), "w"), indent=2)
 
 
 def load_model(path: str = None):

@@ -317,6 +317,44 @@ function needsExamples(c) {
 }
 const trainable = (n) => n && (n.children || []).length && !n.rule && !n.ee_rf;
 
+// Someone else's public project: the same panel, read only. It says what the class is and how it was
+// made (which zoo model, a rule, an IndiaSAT model, or a split trained here), with the model card one
+// click away. None of the editing blocks show.
+function renderViewOnly(cls, n) {
+  const ctx = $("context");
+  ctx.classList.remove("hidden");
+  document.body.classList.add("ctx-open");
+  setTimeout(() => map.invalidateSize(), 0);
+  ["ctxSplit", "ctxRuleSplit", "ctxImprove", "ctxExamples", "ctxMerge", "ctxAdd"]
+    .forEach((id) => $(id).classList.add("hidden"));
+  $("ctxBack").textContent = "← Close";
+  navStack = [];
+  $("ctxHead").textContent = n.name;
+  const kids = n.children || [];
+  const parent = TREE[n.parent];
+  const names = (ids) => ids.map((c) => `${swatch(c)} ${esc(TREE[c]?.name || c)}`).join("<br>");
+  let what, how = "";
+  if (kids.length) {
+    what = `Split into ${kids.map((c) => TREE[c]?.name || c).join(" / ")}.`;
+    if (n.from_model) how = `Made with the zoo model <b>${esc(n.from_model.name)}</b>.
+      <button class="ghost" id="viewCard">See its model card</button>`;
+    else if (n.rule) how = "Made with a rule on spectral indices, so no training.";
+    else if (n.ee_rf) how = "Made with an IndiaSAT model that runs inside Earth Engine.";
+    else if (n.classifier) how = "Trained in this project on its owner's example polygons.";
+  } else if (parent && n.parent !== "root") {
+    what = `One of the classes the ${parent.name} split decides between.`;
+  } else {
+    what = `A class of the base map (${PROJECT.base_scheme === "worldcover" ? "WorldCover" : "IndiaSAT"}).`;
+  }
+  $("ctxWhat").textContent = what;
+  const v = $("ctxView");
+  v.innerHTML = (kids.length ? `<h3>Classes</h3><div class="hint">${names(kids)}</div>` : "")
+    + (how ? `<h3>How it was made</h3><p class="hint">${how}</p>` : "")
+    + `<p class="hint">You're viewing a public project. Copy it to your projects to change it.</p>`;
+  v.classList.remove("hidden");
+  if ($("viewCard")) $("viewCard").onclick = async () => { openZoo(); await showCardFull(n.from_model.card_id); };
+}
+
 // The right panel appears once a class is picked and offers only what makes sense for that class
 // (points 9, 10). A leaf gets split (zoo model first, own data second); a node with a split gets
 // trained or replaced; a leaf inside a split takes examples for its parent. Root isn't refined here:
@@ -324,6 +362,8 @@ const trainable = (n) => n && (n.children || []).length && !n.rule && !n.ee_rf;
 function renderContext(cls) {
   const ctx = $("context");
   const n = TREE[cls];
+  $("ctxView").classList.add("hidden");
+  if (n && PROJECT && !PROJECT.mine && cls !== "root") return renderViewOnly(cls, n);
   if (!n || !PROJECT || !PROJECT.mine || cls === "root") {
     ctx.classList.add("hidden");
     document.body.classList.remove("ctx-open");

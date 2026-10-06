@@ -474,3 +474,7 @@ body.on-start .toast { left: 50%; z-index: 2600; }
 .help-table.files td:first-child { font-family: ui-monospace, Consolas, monospace; font-weight: 500;
   width: 32%; color: #8a5a12; }
 .help-table tr.hl td { background: rgba(180, 121, 31, .14); }   /* the row the walkthrough points at */
+
+/* the read-only class panel on someone else's public project */
+#ctxView .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+#ctxView .hint { line-height: 1.7; }
