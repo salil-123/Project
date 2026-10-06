@@ -789,8 +789,8 @@ function renderRuns() {
 }
 
 // ---------------- runs: classify on purpose, keep every run ----------------
-// Run fires the DAG when Airflow is wired (it exports the GEE asset), then records the run in the
-// project; without Airflow it just records it. Either way the map comes from the run we stored.
+// Run starts the DAG when Airflow is wired (it exports the GEE asset in the background) and records the
+// run straight away; without Airflow it just records it. Either way the map comes from the run we stored.
 async function runClassify() {
   if (!PROJECT) return;
   $("run").disabled = true;
@@ -803,13 +803,16 @@ async function runClassify() {
   try {
     let dagRunId = null;
     if (window.CORESTACK_CFG?.airflow) {
+      // Airflow exports the run as a GEE asset for the catalogue. That export sits in Earth Engine's
+      // queue for 10-20 minutes, and the map doesn't need it (it draws from live tiles), so the run is
+      // saved now and the export is watched in the background
       const conf = { region: PROJECT.bbox, year: String(PROJECT.year), base_scheme: PROJECT.base_scheme,
                      project_id: PROJECT.id, execution_type: "fullexec" };
-      const run = await triggerDagAndPoll(conf, {
-        onState: (state, runId) => { phase = `DAG ${runId}: ${state}`; tick(); },
-      });
+      const r = await postJSON(api("/api/dag/run"), { conf });
+      const start = await readJson(r);
+      if (!r.ok) throw new Error(start.detail || `couldn't start the Airflow run (HTTP ${r.status})`);
+      dagRunId = start.dag_run_id;
       phase = "Saving the run";
-      dagRunId = run.dag_run_id;
     }
     const r = await postJSON(api(`/api/projects/${PROJECT.id}/runs`), { dag_run_id: dagRunId });
     const d = await readJson(r);
@@ -823,10 +826,27 @@ async function runClassify() {
     updateStale();
     renderRuns();
     setStatus(`${d.run.name} saved.${countsLine(d.counts)}`, "ok");
+    if (dagRunId) watchExport(dagRunId, d.run.name);
   } catch (err) { clearInterval(ticker); setStatus("Error: " + err, "err"); }
   finally { clearInterval(ticker); $("run").disabled = false; }
 }
 $("run").onclick = runClassify;
+
+// the catalogue export of a run, followed quietly: only a failure interrupts, since the map is already
+// saved. Gives up watching after an hour (the export itself carries on in Airflow either way)
+async function watchExport(runId, runName) {
+  const until = Date.now() + 60 * 60 * 1000;
+  while (Date.now() < until) {
+    await new Promise((r) => setTimeout(r, 15000));
+    let s;
+    try { s = await getJSON(api(`/api/dag/status?run_id=${encodeURIComponent(runId)}`)); } catch { continue; }
+    if (s.success) { console.log(`[dag] ${runId}: catalogue export done`); return; }
+    if (s.state === "failed") {
+      setStatus(`${runName}'s catalogue export failed in Airflow (${runId}). The map and the run are fine.`, "err");
+      return;
+    }
+  }
+}
 
 // redraw a saved run from its frozen scheme (the server keeps one per run), no re-run needed
 async function showRun(n, quiet = false) {

@@ -1,0 +1,5 @@
+# The type-a-name login instead of Google, so the journey test can sign in on its own.
+services:
+  lulc:
+    environment:
+      GOOGLE_CLIENT_ID: ""

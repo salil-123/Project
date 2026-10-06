@@ -1,0 +1,49 @@
+# The tower on one laptop: the app exactly as the tower runs it (same image, code mounted), nginx at the
+# same sub-path, and Airflow driving a STACD-style DAG. Run it through sim.sh, not by hand (README.md).
+#
+#   tower-network.yml  the tower's broken DNS, to see sign-in and Earth Engine fail the way they do there
+#   local-login.yml    the type-a-name login, so the journey test can sign in without a Google account
+name: lulcsim
+
+services:
+  lulc:
+    image: salil2003/corestack-lulc:1.0.0          # the tower's image, not a local build
+    env_file: [../../.env]
+    environment:
+      EE_SERVICE_ACCOUNT_KEY: ""                    # EE through the mounted login below, not a key
+      EE_ASSET_ROOT: projects/modern-mystery-398416/assets/corestack_lulc_sim   # sim exports stay apart
+      AIRFLOW_API_BASE: http://airflow:8080/api/v1
+      AIRFLOW_USERNAME: admin
+      AIRFLOW_PASSWORD: admin
+      AIRFLOW_DAG_ID: corestack_lulc
+      CORESTACK_API_BASE: http://lulc:8000
+      SERVICE_TOKEN: ""                             # as on the tower: the DAG sends no token
+    volumes:
+      - ../..:/app                                  # the same three mounts as docker-compose.hub.yml
+      - ../../models:/app/models
+      - ../../data:/app/data
+      - ${EE_CREDS_DIR:?set EE_CREDS_DIR (sim.sh does)}:/root/.config/earthengine:ro
+    ports: ["8000:8000"]                            # direct, as Kapil sir's curl checks hit it
+
+  nginx:
+    image: nginx:alpine
+    volumes: [./nginx.conf:/etc/nginx/nginx.conf:ro]
+    ports: ["8080:8080"]                            # http://localhost:8080/act4dws5/diy-lulc/
+    depends_on: [lulc]
+
+  airflow:
+    image: apache/airflow:2.10.5-python3.11
+    environment:
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__EXECUTOR: SequentialExecutor
+      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "False"
+      AIRFLOW__API__AUTH_BACKENDS: airflow.api.auth.backend.basic_auth
+      AIRFLOW__SCHEDULER__DAG_DIR_LIST_INTERVAL: "15"
+      CORESTACK_API_BASE: http://lulc:8000
+    volumes: [./dags:/opt/airflow/dags:ro]
+    # one container: set up the db and the admin user, scheduler in the background, web + API in front
+    command: >
+      bash -c "airflow db migrate &&
+               (airflow users create -u admin -p admin -r Admin -f Sim -l Admin -e admin@sim.local || true) &&
+               (airflow scheduler &) && exec airflow webserver -p 8080"
+    ports: ["8081:8080"]                            # Airflow UI: http://localhost:8081 (admin / admin)
