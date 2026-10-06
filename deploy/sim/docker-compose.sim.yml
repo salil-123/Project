@@ -18,6 +18,7 @@ services:
       AIRFLOW_DAG_ID: corestack_lulc
       CORESTACK_API_BASE: http://lulc:8000
       SERVICE_TOKEN: ""                             # as on the tower: the DAG sends no token
+      EXPORT_WAIT_S: "120"                          # short here, so a slow export shows up in minutes
     volumes:
       - ../..:/app                                  # the same three mounts as docker-compose.hub.yml
       - ../../models:/app/models

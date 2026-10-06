@@ -65,7 +65,7 @@ def dag(B):
     check(r.ok and r.json().get("run", {}).get("run") == 1, "the run is saved without waiting for the export",
           f"{time.time() - t0:.0f} s")
     state = None
-    while time.time() - t0 < 45 * 60:          # Earth Engine queues asset exports; 10-20 min is normal
+    while time.time() - t0 < 30 * 60:          # the DAG must answer inside the tower's ~30 min
         st = s.get(f"{B}/api/dag/status", params={"run_id": run_id}).json()
         if st.get("state") != state:
             state = st.get("state")
