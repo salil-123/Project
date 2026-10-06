@@ -2128,16 +2128,21 @@ app.add_middleware(Gate)
 
 
 # serve the frontend (mount last so /api/* wins)
+# Google's sign-in opens a popup that hands the result back with postMessage; this is the opener
+# policy Google asks for on pages that do that, so no proxy default can block the hand-off
+_PAGE_HEADERS = {"Cross-Origin-Opener-Policy": "same-origin-allow-popups"}
+
+
 @app.get("/")
 def front_page():
     """The front page (point 8): what this is, the video, public outputs, sign in."""
-    return FileResponse(_STATIC / "landing.html")
+    return FileResponse(_STATIC / "landing.html", headers=_PAGE_HEADERS)
 
 
 @app.get("/app")
 def app_page():
     """The tool itself. Signed-out visitors get bounced to the front page by the page's own script."""
-    return FileResponse(_STATIC / "index.html")
+    return FileResponse(_STATIC / "index.html", headers=_PAGE_HEADERS)
 
 
 @app.get("/config.js")
