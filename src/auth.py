@@ -75,19 +75,35 @@ class GoogleUnreachable(RuntimeError):
     """The server couldn't fetch Google's keys, so it can't check anyone's sign-in right now."""
 
 
+_pool = None
+
+
+def with_deadline(fn, seconds, *args, **kw):
+    """Run fn with a hard wall-clock limit. requests' own timeout doesn't cover the DNS lookup, and on
+    a box whose DNS hangs that lookup alone outlives nginx's 60 s, so the call runs on a side thread
+    and we stop waiting for it (raises TimeoutError)."""
+    global _pool
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as Late
+    _pool = _pool or ThreadPoolExecutor(max_workers=4, thread_name_prefix="deadline")
+    try:
+        return _pool.submit(fn, *args, **kw).result(timeout=seconds)
+    except Late:
+        raise TimeoutError(f"no answer within {seconds} s") from None
+
+
 def _google_certs() -> dict:
     if _certs["keys"] and time.time() - _certs["at"] < 3600:
         return _certs["keys"]
     import requests
     try:
-        r = requests.get(CERTS_URL, timeout=10)
+        r = with_deadline(requests.get, 10, CERTS_URL, timeout=8)
         r.raise_for_status()
-    except requests.RequestException as e:
+    except (requests.RequestException, TimeoutError) as e:
         log.error("couldn't fetch Google's sign-in keys from %s: %s", CERTS_URL, e)
         if _certs["keys"]:
             return _certs["keys"]          # a stale key set beats locking everyone out
         raise GoogleUnreachable("the server can't reach www.googleapis.com to check the sign-in. "
-                                "If this machine goes out through a proxy, set HTTPS_PROXY in .env") from e
+                                "/api/health?deep=1 shows whether it's DNS or the proxy") from e
     _certs.update(keys=r.json(), at=time.time())
     return _certs["keys"]
 
