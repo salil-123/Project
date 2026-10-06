@@ -1,5 +1,6 @@
 """Central config + Earth Engine initialization for the Core Stack project."""
 import os
+import re
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -49,8 +50,14 @@ def model_path(rel) -> str:
     working untouched. Returns the models/ path when neither exists, so new writes land in the new
     home."""
     p = Path(rel)
-    if p.is_absolute():
+    if p.is_absolute() and p.exists():
         return str(p)
+    if _foreign_absolute(rel):
+        # a full path written on another machine (C:\...\models\x.joblib on a Linux box, or the
+        # reverse): keep what comes after its last models/ or data/ and resolve that here
+        bits = re.split(r"[\\/]+", str(rel))
+        cut = max((i for i, b in enumerate(bits) if b in ("models", "data")), default=len(bits) - 2)
+        p = Path(*bits[cut:])
     parts = p.parts
     # strip a leading data/ or models/ so either spelling maps onto the same relative tail
     tail = parts[1:] if parts and parts[0] in ("data", "models") else parts
@@ -60,6 +67,22 @@ def model_path(rel) -> str:
     legacy = DATA_DIR.joinpath(*tail)
     return str(legacy if legacy.exists() else new)
 
+
+def _foreign_absolute(rel) -> bool:
+    """A full path in either OS's spelling (/srv/x, a drive letter, a UNC share), whichever box we're on."""
+    return bool(re.match(r"^([A-Za-z]:[\\/]|[\\/])", str(rel)))
+
+
+def portable(path) -> str:
+    """The spelling to store in a file another box may read: models/<tail> or data/<tail> when the
+    path sits under those homes, otherwise unchanged. A stored Windows path breaks on the tower."""
+    p = Path(path)
+    for home, name in ((MODELS_DIR, "models"), (DATA_DIR, "data")):
+        try:
+            return (Path(name) / p.resolve().relative_to(home.resolve())).as_posix()
+        except ValueError:
+            pass
+    return str(path)
 
 # ----------------------------- Per-project workspace (week 18) -----------------------------
 # A user's scheme state (hierarchy, op log, merges, examples, the weights trained for it) used to be
