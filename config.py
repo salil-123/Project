@@ -157,6 +157,12 @@ SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "")
 _BUNDLED_VIDEO = Path(__file__).resolve().parent / "src" / "static" / "media" / "walkthrough.mp4"
 INTRO_VIDEO_URL = os.getenv("INTRO_VIDEO_URL") or ("media/walkthrough.mp4" if _BUNDLED_VIDEO.exists() else "")
 
+# How long /api/export-asset waits for Earth Engine to finish writing the asset before answering anyway.
+# The tower's STACD DAG gives up on a call after about 30 min, and Earth Engine's asset-writing step can
+# sit far longer than that on a slow day, so this stays under it. Past it the answer is still a success
+# with the asset id (the asset lands there when Google finishes) and the app watches the rest.
+EXPORT_WAIT_S = int(os.getenv("EXPORT_WAIT_S", "1200"))
+
 # ----------------------------- AOI size caps (#3) -----------------------------
 # Guardrails so a user can't draw a huge box and blow up compute/download time. All
 # admin-tunable via .env (a server admin sizing the deployment can loosen/tighten these;

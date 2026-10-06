@@ -417,6 +417,30 @@ def _truthy(v) -> bool:
     return bool(v)
 
 
+def _watch_export(task_id, asset_id):
+    """Follow an export we've already answered for, and log how it ends: a late failure shows in the log."""
+    import threading
+
+    def watch():
+        ee = config.ee_init()
+        while True:
+            try:
+                st = ee.data.getTaskStatus(task_id)[0]
+            except Exception as e:
+                log.warning("export %s: can't read its status (%s)", task_id, e)
+                return
+            if st.get("state") == "COMPLETED":
+                log.info("export %s finished late: %s is in place", task_id, asset_id)
+                return
+            if st.get("state") in ("FAILED", "CANCELLED"):
+                log.error("export %s %s after we answered: %s", task_id, st["state"], st.get("error_message", ""))
+                return
+            time.sleep(60)
+
+    if task_id:
+        threading.Thread(target=watch, daemon=True, name=f"export-{task_id}").start()
+
+
 def _run_export(project_id=None, **kw):
     """The DAG's export, run against a project's scheme when its conf names one (week 18), else the
     shared data/ workspace exactly as before. The DAG calls back without a browser cookie, so the
@@ -522,7 +546,7 @@ def _run_export_ws(west=None, south=None, east=None, north=None, roi_asset=None,
     try:
         out = infer.classify_to_asset(bbox, asset_id, year=yr, region_geom=region_geom,
                                       model_bundle=_base_model(), refinements=_refs(),
-                                      wait=wait, overwrite=overwrite)
+                                      wait=wait, overwrite=overwrite, timeout_s=config.EXPORT_WAIT_S)
     except (ValueError, KeyError) as e:
         raise HTTPException(400, str(e))
     except Exception as e:
@@ -541,13 +565,21 @@ def _run_export_ws(west=None, south=None, east=None, north=None, roi_asset=None,
         except Exception as ex:
             stac_items = []                        # never fail the export over the stac add-on
             _stac_err = str(ex)
-    resp = {"status": "success" if state == "COMPLETED" else (state or "unknown").lower(),
+    # a sync call whose asset is still being written: the export is accepted and its id is final, so it's
+    # a success for the caller; the asset appears there when Earth Engine is done (watched below)
+    pending = bool(wait) and state in ("READY", "RUNNING")
+    if pending:
+        _watch_export(out.get("task_id"), out["asset_id"])
+    resp = {"status": "success" if state == "COMPLETED" or pending else (state or "unknown").lower(),
             "asset_id": out["asset_id"],           # single string; the pipeline lists it itself
             "version": out.get("version", "1"),
             "hosting_platform": out.get("hosting_platform", "GEE"),
             "stac_items": stac_items,
             # extras the generator ignores; our async poll / debugging use them
             "state": state, "task_id": out.get("task_id"), "classes": out.get("classes")}
+    if pending:
+        resp["note"] = (f"Earth Engine is still writing the asset after {config.EXPORT_WAIT_S // 60} min; "
+                        "it appears at asset_id when done. /api/export-status?task_id=... follows it.")
     if retrain_result is not None:
         resp["retrain"] = retrain_result       # so one job can report "trained, then exported"
     log.info("export complete: asset=%s state=%s", out["asset_id"], state)

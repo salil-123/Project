@@ -493,8 +493,8 @@ def classify_to_asset(bbox, asset_id, year: int = 2024, region_geom=None, model_
     Engine batch Export.image.toAsset. `region_geom` (an ee.Geometry) overrides the bbox rectangle for the
     export clip + region, so an admin boundary read from a FeatureCollection exports clipped to the actual
     boundary, not its bounding box. Blocks until the task finishes (the CoreStack APIs are synchronous),
-    then returns {asset_id, version, hosting_platform, classes, state, task_id}. wait=False fires and
-    returns immediately. `asset_id` is a full path like projects/<proj>/assets/<folder>/<name>."""
+    then returns {asset_id, version, hosting_platform, classes, state, task_id}; past `timeout_s` it
+    returns with the task still RUNNING rather than failing. wait=False fires and returns immediately. `asset_id` is a full path like projects/<proj>/assets/<folder>/<name>."""
     import re
     import time
     ee, final, final_classes, region, _vis = _labelled_bbox(bbox, year, model_bundle, refinements, colors)
@@ -533,7 +533,7 @@ def classify_to_asset(bbox, asset_id, year: int = 2024, region_geom=None, model_
             if state in ("FAILED", "CANCELLED", "CANCEL_REQUESTED"):
                 raise RuntimeError(f"export {state}: {st.get('error_message', '')}")
             if time.time() - start > timeout_s:
-                raise TimeoutError(f"export still {state} after {timeout_s}s (task {task.id})")
+                break              # still writing: the caller answers anyway and keeps an eye on it
             time.sleep(5)
 
     return {"asset_id": asset_id, "version": "1", "hosting_platform": "GEE",

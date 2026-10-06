@@ -20,7 +20,8 @@ API_BASE = os.getenv("CORESTACK_API_BASE", "http://lulc:8000").rstrip("/")
 def export(**context):
     conf = context["dag_run"].conf or {}
     body = {**conf, "execution_id": str(uuid.uuid4())}
-    r = requests.post(f"{API_BASE}/api/export-asset", json=body, timeout=3600)
+    # about how long the tower's DAG waits on one call
+    r = requests.post(f"{API_BASE}/api/export-asset", json=body, timeout=1800)
     if not r.ok:                      # a failed export fails the run, so the app sees "failed"
         raise RuntimeError(f"export-asset answered {r.status_code}: {r.text[:500]}")
     out = r.json()
