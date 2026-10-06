@@ -1,0 +1,6 @@
+# The tower's network as we found it on 6 Oct: the container's DNS never answers. 192.0.2.1 is a
+# documentation-only address, so every lookup of an outside name hangs; names inside this setup
+# (airflow, lulc) still resolve through Docker's own DNS, as they do on the tower.
+services:
+  lulc:
+    dns: [192.0.2.1]
