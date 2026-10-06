@@ -9,14 +9,17 @@ whether or not the previous update went in. About 15 minutes, and every step end
 
 ## What this update brings
 
-- **Google sign-in that doesn't freeze.** If the server can't reach Google, sign-in now says so within
-  10 seconds instead of hanging.
+- **Google sign-in that doesn't freeze.** If the server can't reach Google (DNS or proxy), sign-in now
+  says so within 10 seconds instead of hanging.
 - **A network check**, `/api/health?deep=1`, that says whether the container can reach Google.
   Sign-in and Earth Engine both need it.
 - **The off-white colours** of the drone app.
 - **A sample project on the front page**: the walkthrough's Jharia coalfield run, with mining split
   out of barren. It's added once on the first start; delete it in the app and it stays deleted.
 - **A fix** so one person's run no longer freezes the site for everyone else.
+- **Run doesn't wait for the asset export.** The run is saved and drawn in seconds; Airflow finishes the
+  GEE export in the background, and export-asset always answers within 20 minutes, under the DAG's limit.
+- **Public projects viewable without signing in**, including how each class was made.
 - **Airflow and the DAG don't change.** Users and projects stay in `data/corestack.db`; Postgres is on hold.
 
 ---
