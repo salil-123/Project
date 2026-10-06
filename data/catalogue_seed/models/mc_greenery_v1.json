@@ -85,7 +85,7 @@
     "derived_from": null
   },
   "about": {
-    "description": "Greenery split (acacia / non_acacia)",
+    "description": "Splits greenery into acacia and non-acacia. Trained on tree crowns from the drone tree-crown pipeline over IIT Delhi and Sanjay Van: 336 acacia and 576 non-acacia crowns, labelled from the drone imagery, only the confident ones.",
     "intended_use": "Layered on the India base map.",
     "limitations": "Linear model; rare-class recall limited.",
     "evidence": ""
