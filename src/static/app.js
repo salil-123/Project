@@ -884,16 +884,30 @@ function applyOverlayVisibility() {
 $("eyeToggle").onclick = () => { overlayVisible = !overlayVisible; applyOverlayVisibility(); };
 
 // ---------------- downloads: the run's GeoTIFF, the whole project ----------------
-// plain links: the session cookie rides along, and the server saves the GeoTIFF into the run folder
+// the session cookie rides along, and the server saves the GeoTIFF into the run folder
 // the first time, so the second download is a file read, not an Earth Engine export
-$("dlTif").onclick = () => {
+$("dlTif").onclick = async () => {
   if (!RUN_META) return;
   if (bboxAreaKm2(PROJECT.bbox) > AOI_GEOTIFF_CAP_KM2) {
     setStatus(`GeoTIFF download works up to ${AOI_GEOTIFF_CAP_KM2} km²; this project is ${Math.round(bboxAreaKm2(PROJECT.bbox))} km². The map and the project zip still work.`, "err");
     return;
   }
   setStatus("Preparing the GeoTIFF (first time takes a minute)…", "work");
-  location.href = api(`/api/projects/${PROJECT.id}/runs/${RUN_META.run}/geotiff`);
+  // fetched rather than followed, so the page knows when it's done (or why it failed) and says so
+  const r = await fetch(api(`/api/projects/${PROJECT.id}/runs/${RUN_META.run}/geotiff`));
+  if (!r.ok) {
+    const d = (await readJson(r)).detail;
+    setStatus(`GeoTIFF failed: ${typeof d === "string" ? d : JSON.stringify(d)}`, "err");
+    return;
+  }
+  const name = (r.headers.get("content-disposition") || "").match(/filename="?([^";]+)/)?.[1]
+    || `run_${RUN_META.run}.tif`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(await r.blob());
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  setStatus(`Saved ${name}.`, "ok");
 };
 $("dlProject").onclick = () => { location.href = api(`/api/projects/${PROJECT.id}/download`); };
 

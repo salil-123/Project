@@ -1,7 +1,7 @@
 {
   "id": "ds_acacia_polygons_v1",
   "name": "acacia expert polygons",
-  "description": "User-marked example polygons for the 'acacia' class.",
+  "description": "336 acacia tree crowns over IIT Delhi and Sanjay Van, outlined by the drone tree-crown pipeline and labelled from the drone imagery (confident labels only).",
   "type": "training",
   "kind": "polygons",
   "classes": [
@@ -31,7 +31,7 @@
   },
   "provenance": {
     "annotator": "user contribution",
-    "method": "drawn/uploaded polygons",
+    "method": "tree crowns from drone orthomosaics, species labelled from the imagery",
     "evidence": [],
     "license": null,
     "notes": "marked between 2026-07-15T04:23:36.114228+00:00 and 2026-07-15T04:23:36.138566+00:00"
