@@ -172,14 +172,22 @@ def _tree_payload():
 @app.get("/api/health")
 def health(deep: bool = False):
     out = {"status": "ok", "classes": _base_model().get("classes"), "wc_weight": _base_model().get("wc_weight")}
-    if deep:   # ?deep=1: can this box reach the Google hosts sign-in and Earth Engine need? 5 s each
+    if deep:   # ?deep=1: can this box look up and reach the Google hosts sign-in and Earth Engine need?
+        import socket
         import requests
         reach = {}
         for host in ("www.googleapis.com", "oauth2.googleapis.com", "earthengine.googleapis.com"):
+            # the lookup on its own first: a hung DNS is the usual culprit and requests can't time it out
             try:
-                reach[host] = f"ok ({requests.head(f'https://{host}', timeout=5).status_code})"
-            except requests.RequestException as e:
-                reach[host] = f"unreachable: {type(e).__name__}"
+                auth.with_deadline(socket.getaddrinfo, 5, host, 443)
+            except (OSError, TimeoutError) as e:
+                reach[host] = f"unreachable: DNS lookup failed ({type(e).__name__})"
+                continue
+            try:
+                code = auth.with_deadline(requests.head, 6, f"https://{host}", timeout=5).status_code
+                reach[host] = f"ok ({code})"
+            except (requests.RequestException, TimeoutError) as e:
+                reach[host] = f"unreachable: lookup ok, no connection ({type(e).__name__})"
         out["reach"] = reach
         out["proxy"] = {k: bool(os.getenv(k) or os.getenv(k.lower())) for k in ("HTTPS_PROXY", "HTTP_PROXY")}
     return out

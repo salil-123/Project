@@ -75,8 +75,31 @@ docker compose -f docker-compose.hub.yml exec lulc python config.py    # EE init
 ```
 
 **If any host under `reach` says `unreachable`**, the container can't get out to Google. That's what
-freezes sign-in and stops the maps. The box most likely goes out through the campus proxy, so add it
-to `.env` and recreate:
+freezes sign-in and stops the maps. The message says which of two things it is.
+
+*`DNS lookup failed`*: the container can't turn names into addresses. Compare the host with the container:
+
+```bash
+getent hosts www.googleapis.com                                              # on the host
+docker compose -f docker-compose.hub.yml exec lulc getent hosts www.googleapis.com   # in the container
+cat /etc/resolv.conf                                                          # the host's DNS servers
+```
+
+If the host resolves and the container doesn't, Docker is handing the container a DNS server the campus
+network blocks (it falls back to 8.8.8.8 when the host uses a local resolver). Give Docker the host's
+real DNS servers in `/etc/docker/daemon.json`, then restart Docker and recreate:
+
+```json
+{ "dns": ["<campus DNS 1>", "<campus DNS 2>"] }
+```
+
+```bash
+sudo systemctl restart docker
+docker compose -f docker-compose.hub.yml up -d
+```
+
+*`lookup ok, no connection`*: names resolve but traffic has to go through the campus proxy. Add it to
+`.env` and recreate:
 
 ```bash
 HTTPS_PROXY=http://<proxy host>:<port>
@@ -86,8 +109,9 @@ NO_PROXY=localhost,127.0.0.1,<airflow host>    # Airflow and local calls skip th
 
 ```bash
 docker compose -f docker-compose.hub.yml up -d
-curl -s 'localhost:8000/api/health?deep=1'         # now all ok
 ```
+
+Either way, finish with `curl -s 'localhost:8000/api/health?deep=1'`: every host should now say `ok`.
 
 ## 5. nginx
 
@@ -116,7 +140,7 @@ Logs are in `data/logs/corestack-lulc/app.log`.
 
 | What you see | What it means | Fix |
 |---|---|---|
-| Sign-in says "the server can't reach www.googleapis.com", or the map never paints | the container can't reach Google | step 4: the proxy lines in `.env`, then `up -d` |
+| Sign-in says "the server can't reach www.googleapis.com", or the map never paints | the container can't reach Google | step 4: the deep check says whether it's DNS or the proxy, and the fix for each |
 | Container keeps restarting, `ModuleNotFoundError` in the logs | still on the old image | step 4: `pull`, then `up -d` |
 | Container keeps restarting, `disk I/O error` in the logs | `data/` is on a network share; the database needs a local disk | keep `data/` on the tower's own disk |
 | `git pull` refuses: local changes would be overwritten | a file edited on the box | step 1: `git checkout -- <that file>` or `git stash`, then pull |
