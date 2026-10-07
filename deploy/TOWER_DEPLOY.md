@@ -36,7 +36,7 @@ git log --oneline -1
 **Check:** the commit matches the latest one on GitHub, and these files exist:
 
 ```bash
-ls src/static/media/walkthrough.mp4 data/hierarchy.json data/active_base.json models/model_pooled.joblib
+ls src/static/media/diy_lulc_acacia.mp4 data/hierarchy.json data/active_base.json models/model_pooled.joblib
 ```
 
 The video, the starting class tree and the weights all come with the clone. Nothing is fetched separately.
@@ -113,7 +113,7 @@ curl -s localhost:8000/api/health                    # {"ok": true ...}
 curl -s localhost:8000/api/auth/me                   # google_client_id is ours, dev_login false
 curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/api/projects \
   -H 'Content-Type: application/json' -d '{"name":"x","bbox":[77.17,28.53,77.19,28.55]}'   # 401
-curl -s localhost:8000/config.js                     # introVideo: "media/walkthrough.mp4"
+curl -s localhost:8000/config.js                     # introVideo: "media/diy_lulc_acacia.mp4"
 ```
 
 Once Postgres is switched on (next deploy), make sure the app is actually using it:
