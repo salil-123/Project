@@ -1,0 +1,7 @@
+# Our best guess at the tower's start command until the real compose file arrives: gunicorn with
+# uvicorn's worker, two worker processes. The image has no gunicorn, so it's installed on start.
+# Keep it on one line: gunicorn without -b listens on 127.0.0.1, which nginx can't reach (502).
+# Swap this for the tower's exact command once we have it.
+services:
+  lulc:
+    command: ["sh", "-c", "pip install -q gunicorn && exec gunicorn backend:app --chdir src -k uvicorn.workers.UvicornWorker -w 2 -b 0.0.0.0:8000 --timeout 1500"]

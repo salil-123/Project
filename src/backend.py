@@ -16,6 +16,8 @@ import json
 import time
 import logging
 import tempfile
+import threading
+import contextvars
 from pathlib import Path
 
 log = logging.getLogger("corestack.backend")   # jobs, export, DAG proxy, retrain
@@ -208,11 +210,18 @@ TESSERA_SITES = {
 }
 
 
+def _has_tessera():
+    # the slim Docker image leaves geotessera out, so there Tessera isn't on offer at all
+    import importlib.util
+    return importlib.util.find_spec("geotessera") is not None
+
+
 @app.get("/api/tessera-sites")
 def tessera_sites():
     """The bboxes Tessera training is available for (#16) — the 4 sites we requested GeoTessera
-    coverage for. The UI shows the Tessera embedding option only when the AOI sits in one of these."""
-    return {"sites": TESSERA_SITES}
+    coverage for. The UI shows the Tessera embedding option only when the AOI sits in one of these,
+    and not at all when this server has no geotessera installed."""
+    return {"sites": TESSERA_SITES if _has_tessera() else {}, "available": _has_tessera()}
 
 
 @app.get("/api/tree")
@@ -735,8 +744,14 @@ def get_job(run_id: str):
     if job["state"] == "failed":
         return {"run_id": run_id, "done": True, "success": False, "error": job["error"]}
 
+    if job.get("op") == "retrain" and time.time() - job.get("updated", 0) > _DEAD_S:
+        msg = "the training stopped (the server restarted while it ran); train again"
+        jobs.set_failed(run_id, msg)
+        return {"run_id": run_id, "done": True, "success": False, "error": msg}
+
     # still running — if Airflow says the run failed but no result came back, mark it failed
-    if airflow_client.configured():
+    # (a retrain runs right here in the app, Airflow never hears of it)
+    if airflow_client.configured() and job.get("op") != "retrain":
         st = airflow_client.run_state(run_id)
         if st == "failed":
             jobs.set_failed(run_id, "the Airflow DAG run failed (see Airflow logs)")
@@ -1167,12 +1182,98 @@ def _do_retrain(node: str, balance: str = "balanced", years=None,
             "cards": cards, **_tree_payload()}
 
 
+def _check_train_options(op: RetrainIn, project=None):
+    """Refuse a training that can't work in a blink, instead of letting it sample for minutes and
+    die somewhere unhelpful. Mirrors what the data actually has: Alpha Earth is 2017 to 2024, Tessera
+    is 2024 only and only at the prepared sites."""
+    if op.embedding not in ("ae", "tessera"):
+        raise HTTPException(400, f"unknown feature embedding {op.embedding!r}")
+    if op.balance not in ("balanced", "undersample", "oversample"):
+        raise HTTPException(400, f"unknown class balance {op.balance!r}")
+    if op.algo != "auto" and op.algo not in refine._ALL_ALGOS:
+        raise HTTPException(400, f"unknown algorithm {op.algo!r}")
+    if op.algo in refine._NONLINEAR_ALGOS and op.algo != "randomforest" and op.embedding != "tessera":
+        raise HTTPException(400, f"{op.algo} runs on Tessera features only; pick a linear model or "
+                                 "Random Forest for Alpha Earth")
+    years = op.years or []
+    bad = [y for y in years if y not in AE_YEARS]
+    if bad:
+        raise HTTPException(400, f"no embeddings for {', '.join(map(str, bad))}: Alpha Earth covers "
+                                 f"{AE_YEARS[0]} to {AE_YEARS[-1]}")
+    if op.embedding == "tessera":
+        if not _has_tessera():
+            raise HTTPException(400, "Tessera isn't installed on this server; use Alpha Earth")
+        if any(y != 2024 for y in years):
+            raise HTTPException(400, "Tessera only exists for 2024; leave the years empty or put 2024, "
+                                     "or switch to Alpha Earth to train across years")
+        bbox = (project or {}).get("bbox")
+        if bbox and not any(_overlaps(s, bbox) for s in TESSERA_SITES.values()):
+            raise HTTPException(400, "Tessera isn't prepared for this area; use Alpha Earth")
+
+
+def _overlaps(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+# a training can take minutes (sampling every polygon per year, then fitting), far past the 60 s a
+# proxy gives one request. So the POST only starts it and the page polls /api/jobs/<id>.
+# One training per workspace at a time; two at once would trample the same hierarchy. Checked on
+# the job files, since gunicorn may run several worker processes. The lock only closes the gap
+# between the check and the job file landing.
+_training_lock = threading.Lock()
+
+
+_BEAT_S, _DEAD_S = 15, 120      # training heartbeat, and how long without one means it died
+
+
+def _retrain_job(run_id, op: RetrainIn):
+    # beat while we work, so a poll can tell a slow training from one whose worker was killed
+    # (gunicorn restarts workers on a timeout or after N requests, taking the thread with it)
+    done = threading.Event()
+
+    def beat():
+        while not done.wait(_BEAT_S):
+            jobs.touch(run_id)
+    beater = threading.Thread(target=beat, daemon=True)
+    beater.start()
+    try:
+        result, error = _do_retrain(op.node, balance=op.balance, years=op.years,
+                                    algo=op.algo, embedding=op.embedding), None
+    except HTTPException as e:
+        result, error = None, str(e.detail)
+    except Exception as e:
+        log.exception("retrain job %s failed", run_id)
+        result, error = None, f"training failed: {e}"
+    # stop beating before the outcome lands, or a late beat could write "running" back over it
+    done.set()
+    beater.join()
+    if error:
+        jobs.set_failed(run_id, error)
+    else:
+        jobs.set_result(run_id, json.loads(json.dumps(result, default=str)))
+
+
 @app.post("/api/retrain")
-def retrain(op: RetrainIn):
-    """Train (or retrain) the classifier that resolves `node`'s children, then make the
-    new model live. Returns the held-out metrics. Slow: samples embeddings + fits."""
-    return _do_retrain(op.node, balance=op.balance, years=op.years,
-                       algo=op.algo, embedding=op.embedding)
+def retrain(op: RetrainIn, request: Request, wait: bool = False):
+    """Train (or retrain) the classifier that resolves `node`'s children, then make the new model
+    live. Checks the options straight away, then trains in the background and returns a job id to
+    poll. `?wait=1` trains inline and returns the result, for scripts that don't sit behind a proxy."""
+    _check_train_options(op, getattr(request.state, "project", None))
+    _shared_base_guard(op.node)
+    if wait:
+        return _do_retrain(op.node, balance=op.balance, years=op.years,
+                           algo=op.algo, embedding=op.embedding)
+    ws = str(config.workspace_dir())
+    with _training_lock:
+        if jobs.live("retrain", ws, _DEAD_S):
+            raise HTTPException(409, "a training is already running in this project; wait for it")
+        run_id = jobs.new_run_id()
+        jobs.create(run_id, "retrain", {**op.dict(), "ws": ws})
+    # copy the context so the thread keeps this request's project workspace
+    ctx = contextvars.copy_context()
+    threading.Thread(target=ctx.run, args=(_retrain_job, run_id, op), daemon=True,
+                     name=f"retrain-{op.node}").start()
+    return {"run_id": run_id, "done": False}
 
 
 # ----------------------------- base-class scheme picker (#5) -----------------------------

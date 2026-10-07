@@ -52,13 +52,18 @@ def _has_xgb():
         return False
 
 
+# trees fit on a couple of cores, not all of them: on a shared server one user's Random Forest
+# shouldn't freeze everyone else's page
+_FIT_JOBS = int(os.getenv("FIT_JOBS", "2"))
+
+
 def _xgb(cw):
     from xgboost import XGBClassifier
-    return XGBClassifier(n_estimators=300, max_depth=6, n_jobs=-1, tree_method="hist")
+    return XGBClassifier(n_estimators=300, max_depth=6, n_jobs=_FIT_JOBS, tree_method="hist")
 
 
 _NONLINEAR_ALGOS = {
-    "randomforest": lambda cw: RandomForestClassifier(n_estimators=300, n_jobs=-1, class_weight=cw),
+    "randomforest": lambda cw: RandomForestClassifier(n_estimators=300, n_jobs=_FIT_JOBS, class_weight=cw),
 }
 if _has_xgb():
     _NONLINEAR_ALGOS["xgboost"] = _xgb

@@ -23,6 +23,7 @@ import hashlib
 import io
 import json
 import sys
+import time
 import zipfile
 from pathlib import Path
 
@@ -62,6 +63,20 @@ def session(base, name=None):
     return s
 
 
+def train(sess, base, headers, timeout=3600, **opts):
+    """Train the way the page does: start the job, then poll it. Returns (ok, result or error)."""
+    r = sess.post(f"{base}/api/retrain", json=opts, headers=headers, timeout=60)
+    if not r.ok:
+        return False, r.json().get("detail", r.text) if "json" in r.headers.get("content-type", "") else r.text
+    run_id, t0 = r.json()["run_id"], time.time()
+    while time.time() - t0 < timeout:
+        time.sleep(3)
+        j = sess.get(f"{base}/api/jobs/{run_id}", headers=headers, timeout=60).json()
+        if j.get("done"):
+            return j["success"], j.get("result") if j["success"] else j.get("error")
+    return False, "still training after the timeout"
+
+
 def weights_hash(pid, node):
     f = ROOT / "data" / "projects" / pid / "weights" / f"{node}.joblib"
     return hashlib.md5(f.read_bytes()).hexdigest() if f.exists() else None
@@ -98,10 +113,9 @@ def main():
                    files={"file": ("crowns.geojson", raw)}, headers=HA)
     check(r.status_code == 200 and set(r.json()["classes"]) == {"acacia", "non_acacia"},
           f"upload split greenery into acacia / non_acacia ({counts})")
-    r = alice.post(f"{base}/api/retrain", json={"node": "greenery", "years": [2024]}, headers=HA, timeout=900)
-    ok = r.status_code == 200
-    check(ok, "trained the split" + (f", held-out acc {r.json()['report']['accuracy']:.3f} on {r.json()['n_test']} px"
-                                      if ok else f": {r.text[:200]}"))
+    ok, res = train(alice, base, HA, node="greenery", years=[2024])
+    check(ok, "trained the split" + (f", held-out acc {res['report']['accuracy']:.3f} on {res['n_test']} px"
+                                      if ok else f": {str(res)[:200]}"))
     check(weights_hash(pa["id"], "greenery") is not None, "weights landed in Alice's own folder")
 
     print("4  Alice: run, then reopen without re-running")
