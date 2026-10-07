@@ -436,6 +436,7 @@ body.on-start .toast { left: 50%; z-index: 2600; }
 /* the panel's way out: Back to the previous class, or close it */
 #context > .ctx-nav { order: -3; display: flex; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .ctx-nav .mini { max-width: 75%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#ctxClose { margin-left: auto; }   /* stays on the right even when Back is hidden */
 
 /* a held-out score resting on very few pixels */
 .thin { color: #b4791f; }

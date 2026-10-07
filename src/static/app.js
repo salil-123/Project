@@ -294,7 +294,13 @@ function select(cls, { back = false } = {}) {
   updateDataDist();
 }
 
-// Back retraces the classes you opened; with nowhere left to go it closes the panel. ✕ always closes.
+// Back retraces the classes you opened and only shows when there's one to go back to. ✕ always closes.
+function showBack(cls) {
+  navStack = navStack.filter((c) => TREE[c] && c !== "root" && c !== cls);
+  const prev = navStack[navStack.length - 1];
+  $("ctxBack").classList.toggle("hidden", !prev);
+  if (prev) $("ctxBack").textContent = `← ${TREE[prev].name}`;
+}
 function closePanel() {
   navStack = [];
   selected = null;
@@ -305,7 +311,6 @@ function closePanel() {
 $("ctxBack").onclick = () => {
   const prev = navStack.pop();
   if (prev && TREE[prev]) select(prev, { back: true });
-  else closePanel();
 };
 $("ctxClose").onclick = closePanel;
 
@@ -327,8 +332,7 @@ function renderViewOnly(cls, n) {
   setTimeout(() => map.invalidateSize(), 0);
   ["ctxSplit", "ctxRuleSplit", "ctxImprove", "ctxExamples", "ctxMerge", "ctxAdd"]
     .forEach((id) => $(id).classList.add("hidden"));
-  $("ctxBack").textContent = "← Close";
-  navStack = [];
+  showBack(cls);
   $("ctxHead").textContent = n.name;
   const kids = n.children || [];
   const parent = TREE[n.parent];
@@ -373,9 +377,7 @@ function renderContext(cls) {
   }
   ctx.classList.remove("hidden");
   document.body.classList.add("ctx-open");
-  navStack = navStack.filter((c) => TREE[c] && c !== "root" && c !== cls);
-  const prev = navStack[navStack.length - 1];
-  $("ctxBack").textContent = prev ? `← ${TREE[prev].name}` : "← Close";
+  showBack(cls);
   setTimeout(() => map.invalidateSize(), 0);
   const kids = n.children || [];
   const isLeaf = !kids.length;
