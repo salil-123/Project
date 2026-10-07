@@ -1,4 +1,7 @@
-"""Airflow DAG for the Core Stack LULC job flow.
+"""Airflow DAG for the Core Stack LULC job flow (week 12 template, not the simulation one).
+
+Not what the tower runs either: the tower uses the STACD DAG, and the laptop simulation of it lives in
+deploy/sim/dags/corestack_lulc_stacd.py. Kept for the /api/jobs path and as a reference.
 
 Triggered over the REST API by the backend (POST /api/jobs) with a run conf carrying the op, its
 params, and where to reach the backend. The single task calls the backend's real work endpoint and
