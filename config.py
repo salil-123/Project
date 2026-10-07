@@ -152,10 +152,10 @@ SESSION_DAYS = int(os.getenv("SESSION_DAYS", "7"))
 # Lets the Airflow DAG (and scripts) call back without a browser session, like Susmit's
 # X-Service-Token. Unset -> the callback paths stay open as they were; set it on the tower.
 SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "")
-# The explainer video on the front page: a YouTube url or an mp4 path. Empty -> the walkthrough that
+# The explainer video on the front page: a YouTube url or an mp4 path. Empty -> the DIY LULC video that
 # ships in src/static/media (relative, so a sub-path deploy still finds it), else a placeholder.
-_BUNDLED_VIDEO = Path(__file__).resolve().parent / "src" / "static" / "media" / "walkthrough.mp4"
-INTRO_VIDEO_URL = os.getenv("INTRO_VIDEO_URL") or ("media/walkthrough.mp4" if _BUNDLED_VIDEO.exists() else "")
+_BUNDLED_VIDEO = Path(__file__).resolve().parent / "src" / "static" / "media" / "diy_lulc_acacia.mp4"
+INTRO_VIDEO_URL = os.getenv("INTRO_VIDEO_URL") or ("media/diy_lulc_acacia.mp4" if _BUNDLED_VIDEO.exists() else "")
 
 # How long /api/export-asset waits for Earth Engine to finish writing the asset before answering anyway.
 # The tower's STACD DAG gives up on a call after about 30 min, and Earth Engine's asset-writing step can
