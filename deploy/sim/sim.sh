@@ -1,8 +1,9 @@
 #!/bin/bash
 # The tower on this laptop. Run from WSL (or any Linux with Docker), from anywhere:
 #
-#   deploy/sim/sim.sh up [--tower-net] [--local-login]   start (recreates, so code and .env changes land)
+#   deploy/sim/sim.sh up [--tower-net] [--local-login] [--gunicorn]   start (recreates, so code and .env changes land)
 #   deploy/sim/sim.sh test       journey + visitor + a Run through Airflow  (needs --local-login)
+#   deploy/sim/sim.sh trainmatrix  every training option through nginx  (needs --local-login)
 #   deploy/sim/sim.sh towernet   sign-in and the deep check under broken DNS (needs --tower-net)
 #   deploy/sim/sim.sh status     what's running, RAM per container, the deep check
 #   deploy/sim/sim.sh down
@@ -18,6 +19,7 @@ for a in "$@"; do
   case $a in
     --tower-net)   files+=(-f tower-network.yml) ;;
     --local-login) files+=(-f local-login.yml) ;;
+    --gunicorn)    files+=(-f gunicorn.yml) ;;
   esac
 done
 dc() { docker compose "${files[@]}" "$@"; }
@@ -48,6 +50,9 @@ except Exception: ee.data.createAsset({'type': 'FOLDER'}, r); print('made', r)" 
     $IN deploy/sim/checks.py visitor
     $IN deploy/sim/checks.py dag
     ;;
+  trainmatrix)
+    $IN deploy/sim/train_matrix.py --base http://nginx:8080/act4dws5/diy-lulc "${@:2}"
+    ;;
   towernet)
     $IN deploy/sim/checks.py towernet
     ;;
@@ -60,5 +65,5 @@ except Exception: ee.data.createAsset({'type': 'FOLDER'}, r); print('made', r)" 
     docker compose -f docker-compose.sim.yml down --remove-orphans
     ;;
   *)
-    sed -n 2,9p "$0"; exit 1 ;;
+    sed -n 2,10p "$0"; exit 1 ;;
 esac

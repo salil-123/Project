@@ -65,6 +65,28 @@ def set_failed(run_id: str, error: str) -> dict | None:
     return job
 
 
+def live(op: str, ws: str, fresh_s: float) -> str | None:
+    """A running job of this op in this workspace that beat within fresh_s, or None. On disk, so
+    every worker process sees the same answer."""
+    for p in _DIR.glob("*.json") if _DIR.exists() else []:
+        try:
+            j = json.loads(p.read_text())
+        except (OSError, ValueError):
+            continue
+        if (j.get("op") == op and j.get("state") == "running" and j.get("params", {}).get("ws") == ws
+                and time.time() - j.get("updated", 0) < fresh_s):
+            return j["run_id"]
+    return None
+
+
+def touch(run_id: str):
+    """A heartbeat: the job is still being worked on."""
+    job = get(run_id)
+    if job and job["state"] == "running":
+        job["updated"] = time.time()
+        _write(job)
+
+
 def _write(job: dict):
     # write-then-rename so a reader never sees a half-written file
     p = _path(job["run_id"])

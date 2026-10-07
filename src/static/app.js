@@ -426,6 +426,14 @@ function renderContext(cls) {
   updateTesseraAvailability();
 }
 
+// Tessera only has 2024, so with it picked the years box has nothing to offer
+function tesseraYears() {
+  const te = $("embedding") && $("embedding").value === "tessera" && !$("embeddingRow").classList.contains("hidden");
+  $("trainYears").disabled = te;
+  $("trainYears").placeholder = te ? "Tessera is 2024 only" : "e.g. 2019, 2021, 2023";
+  if (te) $("trainYears").value = "";
+}
+
 // Tessera training is offered only when the area sits inside one of the prepared sites (#16)
 function updateTesseraAvailability() {
   const row = $("embeddingRow");
@@ -434,6 +442,7 @@ function updateTesseraAvailability() {
   const inSite = bb && Object.values(TESSERA_SITES).some((s) => bboxOverlap(s, bb));
   row.classList.toggle("hidden", !inSite);
   if (!inSite && $("embedding")) $("embedding").value = "ae";
+  tesseraYears();
   refreshModelFamilies();
 }
 
@@ -600,7 +609,7 @@ async function init() {
   try { STANDARDS = await getJSON(api("/api/standards")); } catch { /* best-effort */ }
   try { INFER_OPTS = await getJSON(api("/api/inference-options")); } catch { /* best-effort */ }
   await loadRuleRegistry();
-  if ($("embedding")) $("embedding").onchange = refreshModelFamilies;
+  if ($("embedding")) $("embedding").onchange = () => { tesseraYears(); refreshModelFamilies(); };
   await refreshModelFamilies();
   if (pid) await openProject(pid);
   else showStart();
@@ -1149,22 +1158,41 @@ $("doAdd").onclick = async () => {
   setStatus(`Added “${name}”. Draw examples of it, then Train.`, "ok");
 };
 
+// training runs in the background on the server (a proxy won't hold one request for minutes),
+// so we ask every few seconds how it's going; a blip in the network just means asking again
+async function waitForJob(runId) {
+  for (;;) {
+    await new Promise((ok) => setTimeout(ok, 3000));
+    try {
+      const r = await fetch(api(`/api/jobs/${runId}`));
+      if (r.status === 404) return { success: false, error: "the server lost track of this training (restarted?); train again" };
+      if (!r.ok) continue;
+      const j = await r.json();
+      if (j.done) return j;
+    } catch { /* try again on the next tick */ }
+  }
+}
+
 $("doRetrain").onclick = async () => {
   const btn = $("doRetrain");
   const years = ($("trainYears").value.match(/\d{4}/g) || []).map(Number);
-  const yearList = years.length ? years : [PROJECT.year];
+  const embedding = ($("embedding") && !$("embeddingRow").classList.contains("hidden")) ? $("embedding").value : "ae";
+  const yearList = embedding === "tessera" ? [2024] : years.length ? years : [PROJECT.year];
   btn.disabled = true; btn.textContent = "Training… (sampling + fitting)";
   $("metrics").textContent = "";
-  const embedding = ($("embedding") && !$("embeddingRow").classList.contains("hidden")) ? $("embedding").value : "ae";
-  const est = await fetchEstimate($("algo").value);
+  const est1 = await fetchEstimate($("algo").value);
+  const est = est1 && est1 * yearList.length;          // every year is sampled again
   const node = selected;
   const stopTimer = startWorkTimer(`Training “${TREE[node].name}”`, est);
   const params = { node, balance: $("balance").value, years: yearList, algo: $("algo").value, embedding };
   try {
     const r = await postJSON(api("/api/retrain"), params);
+    const started = await readJson(r);
+    if (!r.ok) { stopTimer(); setStatus("Error: " + errText(started, r), "err"); return; }
+    const job = await waitForJob(started.run_id);
     stopTimer();
-    const d = await readJson(r);
-    if (!r.ok) { setStatus("Error: " + errText(d, r), "err"); return; }
+    if (!job.success) { setStatus("Error: " + job.error, "err"); return; }
+    const d = job.result;
     await refreshTree(d);
     select(node);
     $("metrics").textContent = formatReport(d.report, d.n_test);

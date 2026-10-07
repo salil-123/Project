@@ -3,6 +3,7 @@
 #
 #   tower-network.yml  the tower's broken DNS, to see sign-in and Earth Engine fail the way they do there
 #   local-login.yml    the type-a-name login, so the journey test can sign in without a Google account
+#   gunicorn.yml       gunicorn + uvicorn workers, our guess at the tower's start command
 name: lulcsim
 
 services:
