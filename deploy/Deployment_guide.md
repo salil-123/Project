@@ -44,7 +44,7 @@ git pull
 ```
 
 Check: `git log --oneline -1` matches the latest commit on GitHub, and
-`ls src/static/media/walkthrough.mp4` finds the video.
+`ls src/static/media/diy_lulc_acacia.mp4` finds the video.
 
 ## 3. `.env`
 
