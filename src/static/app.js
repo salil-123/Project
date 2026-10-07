@@ -1911,12 +1911,17 @@ async function deleteCardUI(id) {
 function formatReport(rep, nTest) {
   if (!rep) return "";
   const perClass = rep.per_class || rep;
-  const lines = [`held-out: ${nTest ?? rep.n_test ?? "?"} px   acc ${(rep.accuracy ?? 0).toFixed(3)}`];
+  const n = nTest ?? rep.n_test;
+  // too few polygons to hold any out: trained, but there's nothing honest to score it on yet
+  if (!n) return "Trained, but not scored: add at least two polygons for each class to get held-out scores.";
+  const lines = [`held-out: ${n} px   acc ${(rep.accuracy ?? 0).toFixed(3)}`];
   for (const [k, v] of Object.entries(perClass)) {
-    if (["accuracy", "macro avg", "weighted avg"].includes(k) || typeof v !== "object") continue;
+    if (["accuracy", "macro avg", "weighted avg"].includes(k) || typeof v !== "object" || Array.isArray(v)) continue;
     const f1 = v["f1-score"] ?? v.f1 ?? 0;
     lines.push(`${k.padEnd(14)} P${v.precision.toFixed(2)} R${v.recall.toFixed(2)} F${f1.toFixed(2)}`);
   }
+  if ((rep.unscored || []).length)
+    lines.push(`not scored (one polygon each): ${rep.unscored.join(", ")}; add another to score them`);
   return lines.join("\n");
 }
 

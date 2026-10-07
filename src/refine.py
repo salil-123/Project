@@ -190,8 +190,19 @@ def _child_frame(tree, child, n_pix, year=sampling.YEAR, embedding="ae"):
     else:  # examples — sample the chosen embedding
         te = embedding == "tessera"
         df = examples.build_training_frame(child, with_tessera=te, n_pix=n_pix, year=year)
+        # a counter example says "not this class": it must never be trained as this class
+        df = df[df["role"] != "negative"] if "role" in df.columns else df
         df = df[["label", "poly"] + cols]
         log.debug(f"  {child}: {len(df)} expert pixels ({embedding}) from {df.poly.nunique()} polygons")
+        # in a two-way split, "not the other class" can only mean this one
+        sibs = [c for c in tree[node["parent"]]["children"] if c != child]
+        if len(sibs) == 1 and embedding == "ae":
+            neg = _negatives_frame(sibs[0], n_pix, year=year)
+            if neg is not None and len(neg):
+                neg["label"] = child
+                neg["poly"] = [f"counter:{sibs[0]}:{p}" for p in neg["poly"]]
+                df = pd.concat([df, neg[["label", "poly"] + AE_COLS]], ignore_index=True)
+                log.debug(f"  {child}: +{len(neg)} rows from counter examples against {sibs[0]}")
     return df
 
 
@@ -289,6 +300,23 @@ def _rebalance(X, y, how, seed=0):
     return X[idx], y[idx]
 
 
+def _holdout_by_class(y, groups, test_size, seed=0):
+    """Whole polygons into train/test, class by class. A class with two or more polygons gives about
+    test_size of them (at least one, never all) to the test set; a class with a single polygon stays
+    in training and goes unscored. Returns (train idx, test idx, unscored classes)."""
+    rng = np.random.RandomState(seed)
+    test_polys, unscored = set(), []
+    for cls in sorted(set(y)):
+        polys = sorted(set(groups[y == cls]))
+        if len(polys) < 2:
+            unscored.append(str(cls))
+            continue
+        k = min(len(polys) - 1, max(1, int(round(len(polys) * test_size))))
+        test_polys.update(rng.choice(polys, k, replace=False).tolist())
+    te_mask = np.isin(groups, list(test_polys))
+    return np.where(~te_mask)[0], np.where(te_mask)[0], unscored
+
+
 def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="balanced",
           years=None, algo="linearsvc", embedding="ae"):
     """Train the parent's split classifier.
@@ -309,9 +337,9 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
     data = build_split_dataset(parent, n_pix=n_pix, resample=resample, years=years, embedding=embedding)
     X, y, groups = data[cols].values, data.label.values, data.poly.values
 
-    # hold out whole polygons so train/test never share a polygon's pixels
-    tr, te = next(GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=0)
-                  .split(X, y, groups))
+    # hold out whole polygons so train/test never share a polygon's pixels, class by class, so no
+    # class can lose all its polygons to the test set (one polygon of a class used to do exactly that)
+    tr, te, unscored = _holdout_by_class(y, groups, test_size)
     # under/oversample balances the data itself, so drop class_weight then; else lean on it
     cw = None if balance in ("undersample", "oversample") else "balanced"
     Xtr, ytr = _rebalance(X[tr], y[tr], balance)
@@ -326,11 +354,13 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
         candidates = list(_LINEAR_ALGOS) + extra
     else:
         candidates = [algo if algo in _ALL_ALGOS else "linearsvc"]
+    if not len(te):          # nothing to score on: train the first candidate and say so
+        candidates = candidates[:1]
     scored = []
     for name in candidates:
         m = make_pipeline(StandardScaler(), _ALL_ALGOS[name](cw))
         m.fit(Xtr, ytr)
-        acc = accuracy_score(y[te], m.predict(X[te]))
+        acc = accuracy_score(y[te], m.predict(X[te])) if len(te) else 0.0
         scored.append((acc, name, m))
         if algo == "auto":
             log.debug(f"  bake-off {name:10} held-out acc {acc:.3f}")
@@ -339,12 +369,18 @@ def train(parent="greenery", n_pix=50, test_size=0.25, resample=False, balance="
     if algo == "auto":
         log.debug(f"  -> best linear model: {best_algo} ({best_acc:.3f})")
 
-    pred = model.predict(X[te])
-    log.info(f"\n=== {parent} split ({balance}, {best_algo}, {embedding}): held-out report ({len(te)} px) ===")
-    log.info(classification_report(y[te], pred, digits=3))
-    log.info("confusion (rows=true, cols=pred): %s", labels)
-    log.info(confusion_matrix(y[te], pred, labels=labels))
-    report = classification_report(y[te], pred, output_dict=True, zero_division=0)
+    if len(te):
+        pred = model.predict(X[te])
+        log.info(f"\n=== {parent} split ({balance}, {best_algo}, {embedding}): held-out report ({len(te)} px) ===")
+        log.info(classification_report(y[te], pred, digits=3))
+        log.info("confusion (rows=true, cols=pred): %s", labels)
+        log.info(confusion_matrix(y[te], pred, labels=labels))
+        report = classification_report(y[te], pred, output_dict=True, zero_division=0)
+    else:
+        log.info(f"{parent} split trained on all {len(y)} px; no class had two polygons, so nothing to score")
+        report = {}
+    if unscored:
+        report["unscored"] = unscored      # classes with one polygon: trained on, not scored
 
     Xall, yall = _rebalance(X, y, balance)
     model.fit(Xall, yall)  # refit on everything (balanced) for the deployed model
