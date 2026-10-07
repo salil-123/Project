@@ -1,4 +1,6 @@
-"""A stand-in for the tower's STACD DAG, for the simulation only.
+"""SIMULATION ONLY. Never deploy this to the tower; the tower runs Saharsh's real STACD DAG.
+
+A stand-in for the tower's STACD DAG, mounted by deploy/sim/docker-compose.sim.yml.
 
 STACD's API mode (deploy/stacd/corestack_lulc_algorithm_repo.yaml) forwards the run conf, as it is, to
 the algorithm's url, our POST /api/export-asset, plus an execution_id so a backend can tell a DAG's

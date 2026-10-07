@@ -77,7 +77,8 @@ scripts/             offline data-prep + training scripts (GEDI biomass, acacia,
 data/                runtime state (hierarchy, op-log), trained .joblib models, zoo cards, examples
 deploy/              Dockerize + deployment: requirements, .env.example, build/push scripts,
                      DEPLOYMENT.md, and stacd/ (onboarding YAMLs for the STACD framework)
-airflow/dags/        the Airflow DAG the backend triggers (see deploy/AIRFLOW_API.md)
+airflow/dags/        week 12 template DAG for the /api/jobs flow (see deploy/AIRFLOW_API.md)
+deploy/sim/dags/     simulation only: a stand-in for the tower's STACD DAG, used by deploy/sim/
 Dockerfile           the serving image  ·  docker-compose*.yml  ·  .dockerignore
 master_document.md   the full week-by-week build narrative (deep-dive)
 ```
