@@ -167,7 +167,7 @@ def build_stack_item(bbox, year, base_scheme=None, archive=False, base_url="", a
             "datetime": dt,
             "start_datetime": dt,
             "end_datetime": f"{year}-12-31T23:59:59Z",
-            "title": f"Core Stack LULC {year}",
+            "title": f"Do It Yourself LULC {year}",
             "description": "10 m land-use / land-cover, Alpha Earth linear models composited over a "
                            "user-grown class hierarchy (with any rule splits + merges).",
             "keywords": ["lulc", "land-cover", "alpha-earth", "india", "10m"],
@@ -197,7 +197,7 @@ def build_stack_item(bbox, year, base_scheme=None, archive=False, base_url="", a
         "links": [
             {"rel": "self", "href": _abs(f"/api/stacd?{q}&year={year}"), "type": "application/json"},
             {"rel": "root", "href": _abs("/catalog.json"), "type": "application/json",
-             "title": "Core Stack LULC catalog"},
+             "title": "Do It Yourself LULC catalog"},
             {"rel": "collection", "href": _abs("/collection.json"), "type": "application/json", "title": COLLECTION},
             {"rel": "parent", "href": _abs("/collection.json"), "type": "application/json", "title": COLLECTION},
         ],
@@ -231,7 +231,7 @@ def build_stacd(bbox, year, since=0, archive=False):
                      + [{"id": "CoreStack_LULC_Raster", "name": "LULC raster @ 10 m"}])
 
     algorithm_type = {
-        "id": "CoreStack_LULC", "name": "Core Stack LULC classification",
+        "id": "CoreStack_LULC", "name": "Do It Yourself LULC classification",
         "params": ["region", "year", "base_scheme", "hierarchy"],
         "input_datasets": input_dsets,
         "outputs": ["CoreStack_LULC_Raster"],
@@ -255,7 +255,7 @@ def build_stacd(bbox, year, since=0, archive=False):
 
     return {
         "dag": {
-            "id": "corestack_lulc_workflow", "name": "Core Stack LULC", "version": "1.0",
+            "id": "corestack_lulc_workflow", "name": "Do It Yourself LULC", "version": "1.0",
             "description": "Alpha Earth -> per-node linear/rule splits -> merges -> LULC raster.",
             "params": ["region", "year", "base_scheme", "hierarchy"],
             "alg_type_nodes": ["CoreStack_LULC"],

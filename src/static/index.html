@@ -4,19 +4,19 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%232e8b2e'/%3E%3Crect x='8' width='8' height='8' fill='%231e88e5'/%3E%3Crect y='8' width='8' height='8' fill='%23c2a05a'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23d7301f'/%3E%3C/svg%3E">
-  <title>Custom LULC</title>
+  <title>Do It Yourself LULC · CoRE stack</title>
   <!-- Leaflet is vendored, not pulled from a CDN: the campus proxy blocks unpkg on the deploy host,
        which left the page with a dead map. Every href here is RELATIVE so the app also works when
        it's served under a reverse-proxy subpath (/corestack-lulc/) instead of the domain root. -->
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <link rel="stylesheet" href="vendor/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="style.css?v=42" />
+  <link rel="stylesheet" href="style.css?v=44" />
 </head>
 <body>
   <aside id="sidebar">
     <div class="topbar">
-      <h1><a href="./" class="home">Core Stack <span>LULC</span></a></h1>
+      <h1><a href="./" class="home">Do It Yourself <span>LULC</span></a></h1>
       <span id="whoami" class="whoami"></span>
     </div>
 
@@ -58,6 +58,8 @@
         <button id="dlProject" class="ghost" title="Scheme, examples, models and every run, as one zip">⬇ Project</button>
         <button id="exportStacd" class="ghost" title="STAC Item + DAG provenance for the run">⬇ STACD</button>
       </div>
+      <a id="runFiles" class="files-link hidden" target="_blank" rel="noopener"
+         title="Every run's saved scheme, counts and GeoTIFF, in File Browser">📂 Browse this project's files</a>
     </section>
 
     <section id="hierBox" class="hidden">
@@ -291,7 +293,7 @@
   <!-- start: new project or open one, nothing else (point 9) -->
   <div id="start" class="hidden">
     <header class="start-bar">
-      <a href="./" class="brand">Core Stack <span>LULC</span></a>
+      <a href="./" class="brand">Do It Yourself <span>LULC</span></a>
       <span id="startWho" class="whoami"></span>
     </header>
     <div class="start-wrap">
@@ -381,6 +383,6 @@
   <!-- runtime config from the server (API base, sign-in, Airflow). Served, not baked, so retargeting
        the UI at another backend is an .env change rather than a code edit. Must load before app.js. -->
   <script src="config.js"></script>
-  <script src="app.js?v=54"></script>
+  <script src="app.js?v=55"></script>
 </body>
 </html>

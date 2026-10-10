@@ -72,6 +72,7 @@ data/projects/
 data/corestack.db*
 data/.session_secret
 data/.sample_seeded
+data/.samples_seeded
 data/jobs/
 
 # reference decks from other students, big and not ours to publish

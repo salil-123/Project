@@ -157,6 +157,10 @@ SERVICE_TOKEN = os.getenv("SERVICE_TOKEN", "")
 _BUNDLED_VIDEO = Path(__file__).resolve().parent / "src" / "static" / "media" / "diy_lulc_acacia.mp4"
 INTRO_VIDEO_URL = os.getenv("INTRO_VIDEO_URL") or ("media/diy_lulc_acacia.mp4" if _BUNDLED_VIDEO.exists() else "")
 
+# Where File Browser serves data/projects read-only (the filebrowser service in docker-compose.hub.yml),
+# so anyone can look through a run's files. Relative to the app ("files") or a full URL. Empty -> no link.
+FILEBROWSER_URL = os.getenv("FILEBROWSER_URL", "").rstrip("/")
+
 # How long /api/export-asset waits for Earth Engine to finish writing the asset before answering anyway.
 # The tower's STACD DAG gives up on a call after about 30 min, and Earth Engine's asset-writing step can
 # sit far longer than that on a slow day, so this stays under it. Past it the answer is still a success

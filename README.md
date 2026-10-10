@@ -1,4 +1,4 @@
-# Core Stack LULC
+# Do It Yourself LULC (CoRE stack)
 
 A web tool to paint a **land-use / land-cover map** over any part of India at **10 m**, then *grow your
 own class scheme* on top of it — split a class into finer ones, add a new class, merge/relabel across
