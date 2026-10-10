@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='8' height='8' fill='%232e8b2e'/%3E%3Crect x='8' width='8' height='8' fill='%231e88e5'/%3E%3Crect y='8' width='8' height='8' fill='%23c2a05a'/%3E%3Crect x='8' y='8' width='8' height='8' fill='%23d7301f'/%3E%3C/svg%3E">
-  <title>Custom LULC</title>
+  <title>Do It Yourself LULC · CoRE stack</title>
   <style>
     /* the front page (point 8). Same palette as the app so stepping in doesn't feel like a new site */
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -75,10 +75,11 @@
 <body>
   <header>
     <div class="wrap">
-      <div class="brand">Core Stack <span>LULC</span></div>
+      <div class="brand">Do It Yourself <span>LULC</span></div>
       <nav>
         <a href="#how">How it works</a>
         <a href="#public">Public projects</a>
+        <a href="#about">About CoRE stack</a>
         <a href="https://core-stack.org/" target="_blank" rel="noopener">core-stack.org</a>
         <div class="auth" id="signin">
           <div id="gsi"></div>
@@ -133,11 +134,24 @@
       <h2>Public projects</h2>
       <div class="pub" id="pubList"><p class="note">Loading…</p></div>
     </section>
+
+    <!-- sir's wording for every CoRE stack service page, kept as he wrote it -->
+    <section class="band" id="about">
+      <h2>CoRE stack: Commoning for Resilience and Equality</h2>
+      <p class="lede">The CoRE Stack is an open initiative dedicated to empowering communities and researchers
+        with geospatial data tools for sustainable land and natural resource management. Centered on
+        collaboration and participation, it is intended to contribute towards scientific decision-making,
+        climate resilience, and improved social-ecological sustainability. A large network of computer
+        scientists, open-source product developers, environmental research organizations, civil society
+        organizations, and philanthropic donors have come together to build the CoRE stack as a truly
+        digital public infrastructure built and managed by the public.</p>
+    </section>
   </main>
 
   <footer>
-    <div class="wrap">Part of <a href="https://core-stack.org/" target="_blank" rel="noopener">CoRE Stack</a>,
-      IIT Delhi.</div>
+    <div class="wrap">Do It Yourself LULC is part of the
+      <a href="https://core-stack.org/" target="_blank" rel="noopener">CoRE stack</a>
+      (Commoning for Resilience and Equality), IIT Delhi.</div>
   </footer>
 
   <script src="config.js"></script>
@@ -154,12 +168,12 @@
       const box = $("video");
       if (!url) {
         box.innerHTML = `<div class="ph"><b>Video coming soon</b>
-          <span>The walkthrough goes up on the CoRE Stack YouTube channel and plays here.</span></div>`;
+          <span>The walkthrough goes up on the CoRE stack YouTube channel and plays here.</span></div>`;
         return;
       }
       const yt = url.match(/(?:youtu\.be\/|v=|embed\/)([\w-]{11})/);
       box.innerHTML = yt
-        ? `<iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}" title="Core Stack LULC walkthrough"
+        ? `<iframe src="https://www.youtube-nocookie.com/embed/${yt[1]}" title="Do It Yourself LULC walkthrough"
              allow="accelerometer; encrypted-media; picture-in-picture" allowfullscreen></iframe>`
         : `<video src="${esc(url)}" poster="${esc(url.replace(/\.mp4$/i, ".jpg"))}" controls
              preload="metadata" playsinline></video>`;   // poster: the same name as a .jpg, if there is one

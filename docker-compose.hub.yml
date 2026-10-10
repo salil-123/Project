@@ -30,3 +30,30 @@ services:
       # Earth Engine service-account key (headless auth). Point EE_SERVICE_ACCOUNT_KEY at it in .env.
       # - ./deploy/ee-key.json:/app/ee-key.json:ro
     restart: unless-stopped
+
+  # File Browser over every project's folder: runs, schemes, GeoTIFFs. Read-only mount and no login, so
+  # anyone can look and nobody can change a thing. nginx serves it at /act4dws5/diy-lulc/files/ (the
+  # baseurl below has to match that path); set FILEBROWSER_URL=files in .env so the app links to it.
+  files:
+    image: filebrowser/filebrowser:v2.31.2
+    ports:
+      - "8081:8080"
+    volumes:
+      - ${CORESTACK_DATA_HOST:-./data}/projects:/srv:ro
+    entrypoint: ["/bin/sh", "-c"]
+    # the settings db is rebuilt on every start, so a restart always comes back the same way. The image's
+    # own /.filebrowser.json would reset the base url, hence -b again on the serve line
+    command:
+      - >
+        B=$${FILEBROWSER_BASEURL:-/act4dws5/diy-lulc/files} && rm -f /tmp/fb.db &&
+        /filebrowser -d /tmp/fb.db config init --auth.method=noauth > /dev/null &&
+        /filebrowser -d /tmp/fb.db users add corestack corestack --perm.admin=false
+        --perm.create=false --perm.delete=false --perm.modify=false --perm.rename=false
+        --perm.share=false --perm.execute=false --perm.download=true > /dev/null &&
+        exec /filebrowser -d /tmp/fb.db -r /srv -a 0.0.0.0 -p 8080 -b "$$B"
+    environment:
+      - FILEBROWSER_BASEURL
+    healthcheck:                 # the image's own check knocks on port 80 without the base url
+      test: ["CMD-SHELL", "curl -fs http://localhost:8080$${FILEBROWSER_BASEURL:-/act4dws5/diy-lulc/files}/health"]
+      interval: 30s
+    restart: unless-stopped

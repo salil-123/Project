@@ -1,4 +1,4 @@
-"""FastAPI backend for the Core Stack LULC web interface.
+"""FastAPI backend for the Do It Yourself LULC web interface (CoRE stack).
 
 Serves the 10 m classifier and the hierarchy-editing loop: view the class tree, add
 example polygons (drawn or uploaded), grow it with SPLIT/ADD at any level, and retrain
@@ -62,7 +62,7 @@ _req_log = logging_setup.get("request")
 log.debug("paths root=%s data=%s models=%s catalogue=%s",
           config.PROJECT_ROOT, config.DATA_DIR, config.MODELS_DIR, catalogue.CATALOGUE_DIR)
 
-app = FastAPI(title="Core Stack LULC")
+app = FastAPI(title="Do It Yourself LULC")
 
 
 @app.middleware("http")
@@ -1921,7 +1921,7 @@ def _import_zip(user, raw, stem):
     try:
         meta = json.loads(z.read("project.json"))
     except KeyError:
-        raise HTTPException(400, "this zip has no project.json; it isn't a Core Stack project download")
+        raise HTTPException(400, "this zip has no project.json; it isn't a Do It Yourself LULC project download")
     p = _new_project_row(user, meta.get("name") or stem, meta.get("bbox") or [], meta.get("year"),
                          meta.get("base_scheme", "indiasat"))
     dest = projects.folder(p.id)
@@ -2286,7 +2286,8 @@ def frontend_config():
     this route wins over any file of the same name."""
     cfg = json.dumps({"apiBase": config.API_BASE_URL, "airflow": airflow_client.configured(),
                       "googleClientId": config.GOOGLE_CLIENT_ID or None,
-                      "devLogin": auth.dev_login_allowed(), "introVideo": config.INTRO_VIDEO_URL or None})
+                      "devLogin": auth.dev_login_allowed(), "introVideo": config.INTRO_VIDEO_URL or None,
+                      "filesUrl": config.FILEBROWSER_URL or None})
     return Response(f"window.CORESTACK_CFG = {cfg};\n", media_type="application/javascript",
                     headers={"Cache-Control": "no-store"})   # no-store: it changes with the .env
 
@@ -2294,32 +2295,47 @@ def frontend_config():
 app.mount("/", StaticFiles(directory=_STATIC), name="static")
 
 
-# ----------------------------- the sample project -----------------------------
-# A fresh deploy shows one public project on the front page: the walkthrough's Jharia run (mining split
-# out of barren), shipped as its own download zip and imported once. Kept under samples/ in the code,
-# not data/, so a relocated data mount still has it. The marker means deleting it on the box sticks.
-SAMPLE_ZIP = _ROOT / "samples" / "jharia_sample.zip"
-SAMPLE_OWNER = ("sample@local.dev", "Core Stack sample")
+# ----------------------------- the sample projects -----------------------------
+# A fresh deploy shows the demo public projects on the front page: Sanjay Van acacia / non-acacia and
+# the Jharia coalfield mining split. Each is a "Download project" zip under samples/ (code, not data/, so
+# a relocated data mount still has them), imported once. The marker lists what's been seeded, so deleting
+# one on the box sticks; a public project already carrying the same name (added by hand) counts as seeded.
+SAMPLES_DIR = _ROOT / "samples"
+SAMPLE_OWNER = ("sample@local.dev", "CoRE stack sample")
 
 
-def _seed_sample():
-    marker = config.DATA_DIR / ".sample_seeded"
-    if marker.exists() or not SAMPLE_ZIP.exists():
-        return
-    email, name = SAMPLE_OWNER
-    try:
-        with db.Session() as s:
-            if not s.get(db.User, email):
-                s.add(db.User(email=email, name=name))
+def _seed_samples():
+    import io
+    import zipfile
+    marker = config.DATA_DIR / ".samples_seeded"
+    done = set(marker.read_text().split()) if marker.exists() else set()
+    if (config.DATA_DIR / ".sample_seeded").exists():
+        done.add("jharia_sample.zip")             # the one-sample marker from before
+    email, owner = SAMPLE_OWNER
+    for z in sorted(SAMPLES_DIR.glob("*.zip")):
+        if z.name in done:
+            continue
+        try:
+            raw = z.read_bytes()
+            title = json.loads(zipfile.ZipFile(io.BytesIO(raw)).read("project.json")).get("name")
+            with db.Session() as s:
+                u = s.get(db.User, email)
+                if not u:
+                    s.add(db.User(email=email, name=owner))
+                else:
+                    u.name = owner                # older deploys named it "Core Stack sample"
                 s.commit()
-        p, _ = _import_zip(email, SAMPLE_ZIP.read_bytes(), SAMPLE_ZIP.stem)
-        with db.Session() as s:
-            s.get(db.Project, p.id).is_public = True
-            s.commit()
-        marker.write_text(p.id)
-        log.info("seeded the sample project %s from %s", p.id, SAMPLE_ZIP.name)
-    except Exception:
-        log.exception("couldn't seed the sample project; carrying on without it")   # never blocks boot
+                taken = s.query(db.Project).filter_by(name=title, is_public=True).first()
+            if not taken:
+                p, _ = _import_zip(email, raw, z.stem)
+                with db.Session() as s:
+                    s.get(db.Project, p.id).is_public = True
+                    s.commit()
+                log.info("seeded the sample project %s from %s", p.id, z.name)
+            done.add(z.name)
+            marker.write_text(" ".join(sorted(done)))
+        except Exception:
+            log.exception("couldn't seed %s; carrying on without it", z.name)   # never blocks boot
 
 
-_seed_sample()
+_seed_samples()

@@ -1,4 +1,4 @@
-// Core Stack LULC — Leaflet frontend talking to the FastAPI backend.
+// Do It Yourself LULC (CoRE stack): Leaflet frontend talking to the FastAPI backend.
 // Week 18: everything happens inside a project (an area, a year, a base scheme, its classes and
 // runs), owned by the signed-in user. The journey and why it's shaped this way: week18/app_design.md.
 let PRESETS = {}, COLORS = {}, TREE = {}, STANDARDS = {}, INFER_OPTS = {};
@@ -762,6 +762,10 @@ function renderProjectHead() {
   ["projYear", "projPublic"].forEach((id) => ($(id).disabled = ro));
   ["run", "startFresh", "dlProject"].forEach((id) => $(id).classList.toggle("hidden", ro));
   $("eyeToggle").classList.toggle("hidden", false);
+  // File Browser over data/projects, when the deploy runs one: straight into this project's folder
+  const files = window.CORESTACK_CFG?.filesUrl;
+  $("runFiles").classList.toggle("hidden", !files);
+  if (files) $("runFiles").href = `${files}/files/${p.id}/`;
 }
 
 $("switchProject").onclick = showStart;
