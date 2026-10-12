@@ -679,7 +679,7 @@ def _sample_tessera(pts, year):
     than a single stream); geotessera then finds them cached and only grabs the small
     scales/landmask files. verify_hashes=False so it trusts our pre-placed tiles.
     """
-    import tessera_fast
+    import tessera_tiles
     import aoi
     # #3: guard the download fan-out — each 0.1 deg tile is ~150 MB. Derive the covering bbox
     # from the points and refuse if it needs more tiles than the admin cap allows.
@@ -688,10 +688,8 @@ def _sample_tessera(pts, year):
     g = aoi.check(box, "tessera")
     if not g["ok"]:
         raise ValueError(g["reason"])
-    tessera_fast.prefetch_for_points(pts, year)  # best-effort fast download
-    from geotessera import GeoTessera
-    gt = GeoTessera(verify_hashes=False)
-    emb = np.asarray(gt.sample_embeddings_at_points(pts, year=year), dtype=np.float32)
+    tessera_tiles.prefetch(pts, year)
+    emb = np.asarray(tessera_tiles.client().sample_embeddings_at_points(pts, year=year), dtype=np.float32)
     return emb
 
 

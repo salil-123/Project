@@ -4,7 +4,7 @@ Uses the full acacia crown file (336 acacia / 576 not), the same upload that hit
 Valid combinations must train (and the long ones must outlive nginx's 60 s); impossible ones must be
 refused in a second or two with a reason. Needs the dev login. Usage (sim.sh trainmatrix runs it):
 
-    python deploy/sim/train_matrix.py [--base http://nginx:8080/act4dws5/diy-lulc] [--part quick|slow|all]
+    python deploy/sim/train_matrix.py [--base http://nginx:8080/act4dws5/diy-lulc] [--part quick|slow|tessera|all]
 """
 import argparse
 import json
@@ -55,8 +55,8 @@ def trains(sess, base, h, why, run=False, **opts):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://127.0.0.1:8000")
-    ap.add_argument("--part", choices=("quick", "slow", "all"), default="all",
-                    help="quick: refusals + Alpha Earth 2024; slow: multi-year + Tessera")
+    ap.add_argument("--part", choices=("quick", "slow", "tessera", "all"), default="all",
+                    help="quick: refusals + Alpha Earth 2024; slow: multi-year + Tessera; tessera: just Tessera")
     a = ap.parse_args()
     base = a.base
     u = session(base, "Matrix Tester")
@@ -70,10 +70,12 @@ def main():
         check(r.ok, f"upload ({r.status_code} {r.text[:120]})")
         u.post(f"{base}/api/split", json={"parent": "greenery", "children": ["aa", "bb"]}, headers=hq)
 
-        if a.part != "slow":
+        if a.part in ("quick", "all"):
             quick(u, base, h, hq)
-        if a.part != "quick":
+        if a.part in ("slow", "all"):
             slow(u, base, h)
+        if a.part == "tessera":
+            tessera(u, base, h)
     finally:
         for x in (p, q):
             u.delete(f"{base}/api/projects/{x['id']}")
@@ -119,6 +121,10 @@ def slow(u, base, h):
     trains(u, base, h, "logreg, undersample, 2019/2021/2023/2024 (the user's case on AE)",
            algo="logreg", balance="undersample", years=[2019, 2021, 2023, 2024])
     trains(u, base, h, "auto, 2017-2024", algo="auto", years=list(range(2017, 2025)))
+    tessera(u, base, h)
+
+
+def tessera(u, base, h):
     if not u.get(f"{base}/api/tessera-sites").json().get("available"):
         print("Tessera: not installed on this server (the slim image)")
         refused(u, base, h, "Tessera without geotessera", embedding="tessera")
@@ -126,7 +132,7 @@ def slow(u, base, h):
     print("Tessera, 2024, IIT Delhi + Sanjay Van")
     trains(u, base, h, "logreg, undersample (the user's case, fixed years)",
            algo="logreg", embedding="tessera", balance="undersample")
-    trains(u, base, h, "linearsvc, years [2024]", embedding="tessera", years=[2024])
+    trains(u, base, h, "linearsvc, years [2024]", embedding="tessera", years=[2024], run=True)
     trains(u, base, h, "randomforest", algo="randomforest", embedding="tessera", run=True)
     trains(u, base, h, "auto", algo="auto", embedding="tessera")
 

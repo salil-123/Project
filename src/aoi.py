@@ -15,7 +15,7 @@ import config
 
 # rough metres-per-degree of latitude; longitude shrinks by cos(lat)
 _M_PER_DEG = 111_320.0
-_TESSERA_CELL = 0.1          # geotessera tile size in degrees (see tessera_fast._snap)
+_TESSERA_CELL = 0.1          # geotessera tile size in degrees (see tessera_tiles._snap)
 
 
 def area_km2(bbox):

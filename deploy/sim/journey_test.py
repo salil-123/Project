@@ -131,10 +131,10 @@ def main():
     check(r.json()["run"]["op_seq"] == proj["op_seq"], "and it knows the scheme hasn't moved on since")
 
     print("5  Bob: a zoo model with his own class names")
-    r = bob.post(f"{base}/api/apply", json={"card_id": "mc_greenery_prev1_v1", "target_node": "greenery",
+    r = bob.post(f"{base}/api/apply", json={"card_id": "mc_greenery_tea_v1", "target_node": "greenery",
                                             "mapping": {"tea": "tea", "non_tea": "tea"}}, headers=HB)
     check(r.status_code == 400, "a mapping that leaves one class is refused")
-    r = bob.post(f"{base}/api/apply", json={"card_id": "mc_greenery_prev1_v1", "target_node": "greenery",
+    r = bob.post(f"{base}/api/apply", json={"card_id": "mc_greenery_tea_v1", "target_node": "greenery",
                                             "mapping": {"tea": "Tea garden", "non_tea": "Other greenery"}},
                  headers=HB)
     check(r.status_code == 200 and r.json()["classes"] == ["tea_garden", "other_greenery"] or

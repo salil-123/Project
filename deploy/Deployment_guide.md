@@ -25,7 +25,10 @@ previous update went in. About 20 minutes, and every step ends with a check.
   training of any length no longer ends in a 504.
 - **Airflow off the public site, with a new admin password.** It stays reachable from inside the
   IITD network.
-- No image change: the code is mounted, so `git pull` plus `up -d` is the whole update.
+- **Tessera embeddings, in a new image `1.0.1`.** The Tessera option (128 numbers a pixel) shows for
+  areas at the prepared sites, and its tiles (~150 MB per 0.1 degree square) download on first use into
+  `data/tessera/`, where they stay. This is the one update that needs `pull` (step 4), and the box needs
+  to reach `dl2.geotessera.org`; the deep check in step 4 says whether it can.
 
 ---
 
@@ -80,10 +83,12 @@ curl -s localhost:8000/api/health                  # "status": "ok"
 curl -s localhost:8000/api/auth/me                 # google_client_id filled in, dev_login false
 curl -s 'localhost:8000/api/health?deep=1'         # every host under "reach" says ok
 docker compose -f docker-compose.hub.yml exec lulc python config.py    # EE init OK
+docker compose -f docker-compose.hub.yml exec lulc python -c "import geotessera"   # no error: the 1.0.1 image
 ```
 
-**If any host under `reach` says `unreachable`**, the container can't get out to Google. That's what
-freezes sign-in and stops the maps. The message says which of two things it is.
+**If any host under `reach` says `unreachable`**, the container can't get out to it. For the Google hosts
+that freezes sign-in and stops the maps; for `dl2.geotessera.org` only Tessera training fails, with that
+reason on the page, and everything else works. The message says which of two things it is.
 
 *`DNS lookup failed`*: the container can't turn names into addresses. Compare the host with the container:
 
@@ -207,4 +212,5 @@ cp .env.backup .env
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-The `1.0.0` image runs the older code too, so the image doesn't need to change for a rollback.
+To go back to before Tessera, also set the image line in `docker-compose.hub.yml` back to `1.0.0` and
+`up -d`. `data/tessera/` can be deleted to free its space; nothing else uses it.

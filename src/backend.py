@@ -22,8 +22,8 @@ from pathlib import Path
 
 log = logging.getLogger("corestack.backend")   # jobs, export, DAG proxy, retrain
 
-# repo root holds shared infra (config.py, tessera_fast.py) + the data/ dir; put it
-# on the path so infer can import them whichever directory uvicorn is launched from.
+# repo root holds shared infra (config.py) + the data/ dir; put it
+# on the path so infer can import it whichever directory uvicorn is launched from.
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
@@ -174,11 +174,12 @@ def _tree_payload():
 @app.get("/api/health")
 def health(deep: bool = False):
     out = {"status": "ok", "classes": _base_model().get("classes"), "wc_weight": _base_model().get("wc_weight")}
-    if deep:   # ?deep=1: can this box look up and reach the Google hosts sign-in and Earth Engine need?
+    if deep:   # ?deep=1: can this box look up and reach the Google hosts (sign-in, Earth Engine) and Tessera's tiles?
         import socket
         import requests
         reach = {}
-        for host in ("www.googleapis.com", "oauth2.googleapis.com", "earthengine.googleapis.com"):
+        for host in ("www.googleapis.com", "oauth2.googleapis.com", "earthengine.googleapis.com",
+                     "dl2.geotessera.org"):
             # the lookup on its own first: a hung DNS is the usual culprit and requests can't time it out
             try:
                 auth.with_deadline(socket.getaddrinfo, 5, host, 443)
@@ -2049,13 +2050,15 @@ def create_run(pid: str, body: RunIn, request: Request):
     proj = _state(request)["project"]
     out = _render_bbox(proj["bbox"], proj["year"])
     n = (proj["current_run"] or 0) + 1
+    name = (body.name or "").strip() or f"Run {n}"
+    # a run is a step too: without it the operations list skips straight past every map that was drawn.
+    # Logged before the snapshot so the run counts itself, else it would look out of date straight away
+    oplog.append("run", {"run": n, "name": name, "year": out.get("year", proj["year"])})
     meta = projects.snapshot_run(pid, n, {
-        "name": (body.name or "").strip() or f"Run {n}", "year": out.get("year", proj["year"]),
+        "name": name, "year": out.get("year", proj["year"]),
         "bbox": proj["bbox"], "base_scheme": proj["base_scheme"], "counts": out.get("counts"),
         "colors": out.get("colors"), "render": out.get("render"), "dag_run_id": body.dag_run_id,
         "op_seq": len(oplog.load())})
-    # a run is a step too: without it the operations list skips straight past every map that was drawn
-    oplog.append("run", {"run": n, "name": meta["name"], "year": meta["year"]})
     with db.Session() as s:
         p = s.get(db.Project, pid)
         p.current_run = n

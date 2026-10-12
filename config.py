@@ -184,6 +184,9 @@ STAC_ASSET_BASE = os.getenv("STAC_ASSET_BASE", "")
 AOI_TILE_CAP_KM2 = float(os.getenv("AOI_TILE_CAP_KM2", "40000"))     # ~200x200 km
 AOI_GEOTIFF_CAP_KM2 = float(os.getenv("AOI_GEOTIFF_CAP_KM2", "250"))  # ~16x16 km; measured: 256 km2 exports, 368 hits EE memory
 AOI_TESSERA_MAX_TILES = int(os.getenv("AOI_TESSERA_MAX_TILES", "6"))  # ~6 x 150 MB
+# Tessera tiles (~150 MB per 0.1 degree square a year) and geotessera's registry files. On the data mount
+# so a download survives a restart; geotessera's own default is whatever folder the process starts in.
+TESSERA_DIR = Path(os.getenv("TESSERA_DIR") or (DATA_DIR / "tessera"))
 
 # minimum polygon area (hectares) when vectorizing a class into segments (#4 wk10). Below this a
 # blob is treated as speckle and dropped, so mining "objects" come out clean, not as pixel confetti.
