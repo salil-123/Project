@@ -73,3 +73,12 @@ deploy/*
 Dockerfile
 .dockerignore
 docker-compose.yml
+
+# --- the image only copies deploy/requirements-docker.txt; none of this needs to reach the daemon ---
+data/
+models/
+week1*/
+week2*/
+front page ppt folder/
+global_0.1_degree_*/
+test_data/

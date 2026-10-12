@@ -57,7 +57,6 @@ floodMappingPipelines/
 .cph/
 entire_test.txt
 chahat_paper_flowchart.png
-tessera_fast.py
 *.ipynb
 3_store_embeddings_run_lulcv4*
 
@@ -93,3 +92,6 @@ deploy/stacd/build_plan.md
 deploy/zoo_seed_plan.md
 docs/deployment_guide.md
 docs/revision_question_bank.md
+
+# Tessera tiles (~150 MB each), fetched on demand
+data/tessera/

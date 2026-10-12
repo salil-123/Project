@@ -95,11 +95,11 @@ def sample_alpha(pts_gdf, year=YEAR):
 
 
 def sample_tessera(pts_gdf, year=YEAR):
-    """Tessera 128-d (dequantized float32) at each point. Downloads tiles on demand."""
-    from geotessera import GeoTessera
-    gt = GeoTessera()
+    """Tessera 128-d (dequantized float32) at each point. Fetches the tiles it needs first, once."""
+    import tessera_tiles
     pts = list(zip(pts_gdf.lon.values, pts_gdf.lat.values))
-    emb = np.asarray(gt.sample_embeddings_at_points(pts, year=year, include_metadata=False),
+    tessera_tiles.prefetch(pts, year)
+    emb = np.asarray(tessera_tiles.client().sample_embeddings_at_points(pts, year=year, include_metadata=False),
                      dtype=np.float32)
     cols = [f"te_{n:03d}" for n in range(128)]
     return pd.DataFrame(emb, columns=cols, index=pts_gdf.index)

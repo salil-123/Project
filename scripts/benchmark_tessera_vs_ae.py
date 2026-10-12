@@ -31,14 +31,14 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "src"))
 
 import infer
-import tessera_fast
+import tessera_tiles
 
 SITES = {
     "IIT Delhi + Sanjay Van (acacia)": [77.165, 28.520, 77.205, 28.560],
     "Asola Bhatti (mining/acacia)": [77.19, 28.42, 77.27, 28.48],
     "Assam tea belt (tea/non-tea)": [95.75, 27.55, 95.98, 27.73],
 }
-TILE_MB = 150.0        # ~size of one 0.1-degree Tessera embedding tile (tessera_fast docstring)
+TILE_MB = 150.0        # ~size of one 0.1-degree Tessera embedding tile (tessera_tiles docstring)
 
 
 def _timed(fn):
@@ -60,7 +60,7 @@ def main():
     r = {}
 
     # ---- Tessera ----
-    (tiles_fetched, r["te_download"]) = _timed(lambda: tessera_fast.prefetch_for_points(pts, args.year))
+    (tiles_fetched, r["te_download"]) = _timed(lambda: tessera_tiles.prefetch(pts, args.year))
     (Xte, r["te_sample"]) = _timed(lambda: infer._sample_tessera(pts, args.year))
     yte = np.random.default_rng(0).integers(0, 3, size=len(Xte))          # synthetic labels, fit-cost only
     ok = ~np.isnan(Xte).any(axis=1)

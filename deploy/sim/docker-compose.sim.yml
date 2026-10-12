@@ -8,7 +8,7 @@ name: lulcsim
 
 services:
   lulc:
-    image: salil2003/corestack-lulc:1.0.0          # the tower's image, not a local build
+    image: salil2003/corestack-lulc:1.0.1          # the tower's image, not a local build
     env_file: [../../.env]
     environment:
       EE_SERVICE_ACCOUNT_KEY: ""                    # EE through the mounted login below, not a key
