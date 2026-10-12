@@ -4,8 +4,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."           # repo root (build context)
 
-# pull docker_username / docker_pat from .env without echoing them
-set -a; source .env; set +a
+# pull docker_username / docker_pat from .env without echoing them. A .env saved on Windows ends each
+# line in a carriage return, which would ride along into every value, so strip those first
+set -a; source <(tr -d '\r' < .env); set +a
 : "${docker_username:?set docker_username in .env}"
 : "${docker_pat:?set docker_pat in .env}"
 
