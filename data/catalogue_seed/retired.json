@@ -1,0 +1,9 @@
+{
+  "why": "dropped from the zoo; seeding removes them from a box's live zoo too",
+  "models": [
+    "mc_water_fortnight_v1",
+    "mc_water_rule_v1",
+    "mc_greenery_prev1_v1",
+    "mc_farmshrub_ee_v1"
+  ]
+}

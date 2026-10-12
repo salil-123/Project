@@ -1428,6 +1428,9 @@ def apply_model(op: ApplyIn):
         if not chk["ok"]:
             raise HTTPException(409, {"message": chk["reason"], "needs_confirm": True})
 
+    if card.get("topology") == "rule_split":
+        return _apply_rule_card(op, card, tree, node)
+
     artifact = (card.get("artifact") or {}).get("path")
     art_path = Path(config.model_path(artifact)) if artifact else None
     if not art_path or not art_path.exists():
@@ -1469,6 +1472,33 @@ def apply_model(op: ApplyIn):
     _reload()
     oplog.append("apply", {"card_id": op.card_id, "node": node, "mapping": mapping or None})
     return {"applied": op.card_id, "node": node, "classes": yours, "mapping": mapping,
+            **_tree_payload()}
+
+
+def _apply_rule_card(op, card, tree, node):
+    """A rule card carries its rule, not a model, so using it is a rule split of the target class,
+    under the user's own class names if they gave any."""
+    rule = card.get("rule") or {}
+    if not rule.get("clauses"):
+        raise HTTPException(400, "this rule card has no rule stored on it")
+    name = lambda c: hierarchy.canonicalize((op.mapping or {}).get(c) or c)
+    rule = {"clauses": [{"when": c["when"], "class": name(c["class"])} for c in rule["clauses"]],
+            "default": name(rule["default"])}
+    for ch in list(tree[node].get("children", [])):
+        _drop_subtree(tree, ch)
+    tree[node]["children"] = []
+    tree[node].pop("ee_rf", None)
+    hierarchy.save(tree)
+    try:
+        classes = refine.rule_split_op(node, rule)
+    except (KeyError, ValueError) as e:
+        raise HTTPException(400, str(e))
+    tree = hierarchy.load()
+    tree[node]["from_model"] = {"card_id": op.card_id, "name": card.get("name") or op.card_id}
+    hierarchy.save(tree)
+    _reload()
+    oplog.append("apply", {"card_id": op.card_id, "node": node, "mapping": op.mapping or None})
+    return {"applied": op.card_id, "node": node, "classes": classes, "mapping": op.mapping or {},
             **_tree_payload()}
 
 
@@ -2024,6 +2054,8 @@ def create_run(pid: str, body: RunIn, request: Request):
         "bbox": proj["bbox"], "base_scheme": proj["base_scheme"], "counts": out.get("counts"),
         "colors": out.get("colors"), "render": out.get("render"), "dag_run_id": body.dag_run_id,
         "op_seq": len(oplog.load())})
+    # a run is a step too: without it the operations list skips straight past every map that was drawn
+    oplog.append("run", {"run": n, "name": meta["name"], "year": meta["year"]})
     with db.Session() as s:
         p = s.get(db.Project, pid)
         p.current_run = n
@@ -2299,7 +2331,8 @@ app.mount("/", StaticFiles(directory=_STATIC), name="static")
 # A fresh deploy shows the demo public projects on the front page: Sanjay Van acacia / non-acacia and
 # the Jharia coalfield mining split. Each is a "Download project" zip under samples/ (code, not data/, so
 # a relocated data mount still has them), imported once. The marker lists what's been seeded, so deleting
-# one on the box sticks; a public project already carrying the same name (added by hand) counts as seeded.
+# one on the box sticks. A zip the marker hasn't seen replaces the public project carrying its title
+# (an older copy of the same sample, seeded or added by hand), so a fixed sample reaches the box.
 SAMPLES_DIR = _ROOT / "samples"
 SAMPLE_OWNER = ("sample@local.dev", "CoRE stack sample")
 
@@ -2325,13 +2358,18 @@ def _seed_samples():
                 else:
                     u.name = owner                # older deploys named it "Core Stack sample"
                 s.commit()
-                taken = s.query(db.Project).filter_by(name=title, is_public=True).first()
-            if not taken:
-                p, _ = _import_zip(email, raw, z.stem)
-                with db.Session() as s:
-                    s.get(db.Project, p.id).is_public = True
-                    s.commit()
-                log.info("seeded the sample project %s from %s", p.id, z.name)
+                old = [r.id for r in s.query(db.Project).filter_by(name=title, is_public=True)]
+                for pid in old:
+                    s.delete(s.get(db.Project, pid))
+                s.commit()
+            for pid in old:
+                projects.delete_folder(pid)
+                log.info("replaced the older sample project %s", pid)
+            p, _ = _import_zip(email, raw, z.stem)
+            with db.Session() as s:
+                s.get(db.Project, p.id).is_public = True
+                s.commit()
+            log.info("seeded the sample project %s from %s", p.id, z.name)
             done.add(z.name)
             marker.write_text(" ".join(sorted(done)))
         except Exception:

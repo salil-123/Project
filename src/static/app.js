@@ -484,6 +484,9 @@ function opTargetNode(e) {
   return null;
 }
 
+// a class's display name if it's still in the tree, else its id tidied up
+const nameOf = (c) => (TREE[c] && TREE[c].name) || String(c).replace(/_/g, " ");
+
 // a short human line for one op, from its args/result
 function opSummary(e) {
   const a = e.args || {};
@@ -498,7 +501,10 @@ function opSummary(e) {
                                  + `${a.balance && a.balance !== "balanced" ? " · " + a.balance : ""}`;
     case "merge":         return `${(a.sources || []).join(" + ")} → ${a.name || a.target}`;
     case "merge_remove":  return `undo ${a.target}`;
-    case "apply":         return `${a.card_id}${a.node ? " → " + a.node : ""}`;
+    case "apply":         return a.mapping && a.node
+                                 ? `${nameOf(a.node)} → ${Object.values(a.mapping).map(nameOf).join(" / ")} (zoo model)`
+                                 : `${a.card_id}${a.node ? " → " + nameOf(a.node) : ""}`;
+    case "run":           return `${a.name || "Run " + a.run} · ${a.year}`;
     case "apply_eerf":    return `${a.card_id} → ${a.node}`;
     case "base_select":   return `scheme → ${a.scheme}`;
     case "reset":         return `to ${a.scheme}`;
@@ -1261,6 +1267,10 @@ async function useModel(cardId, target) {
 }
 
 // ---------------- model zoo (full-screen browser) ----------------
+// the zoo is shared: only a signed-in user annotates, publishes or deletes, and only in a project of
+// their own does "use for" make sense. A visitor just reads the cards (the server refuses the rest anyway)
+const canEditZoo = () => !!ME;
+
 let zooTab = "model";        // which tab the grid shows
 let zooCards = [];           // cached index rows
 const isZooOpen = () => !$("zoo-overlay").classList.contains("hidden");
@@ -1285,6 +1295,7 @@ function openZoo(pickFor = null) {
       `Open a card, then “Use for ${esc(TREE[zooPickFor].name)}”.`;
     $("zooAoi").checked = true;           // the models that know this area come first to mind
   }
+  ["zooPublishSel", "zooPublishAll"].forEach((id) => $(id).classList.toggle("hidden", !canEditZoo()));
   $("zoo-overlay").classList.remove("hidden");
   loadZooFull();
 }
@@ -1292,6 +1303,7 @@ function closeZoo() { $("zoo-overlay").classList.add("hidden"); zooPickFor = nul
 
 // the class a model would be used for: the one being picked for, else the selected class
 function targetForUse() {
+  if (!(PROJECT && PROJECT.mine)) return null;
   if (zooPickFor) return zooPickFor;
   return (PROJECT && PROJECT.mine && selected && selected !== "root" && TREE[selected]) ? selected : null;
 }
@@ -1335,6 +1347,7 @@ function renderGrid() {
 
 // a publish tick in a tile's corner (#25): stop it selecting the card, track it in pubSel
 function pubCheckbox(id) {
+  if (!canEditZoo()) return "";
   return `<input type="checkbox" class="pubchk" data-id="${id}"${pubSel.has(id) ? " checked" : ""} title="select for publish">`;
 }
 function wirePubCheckbox(div) {
@@ -1458,12 +1471,12 @@ function modelDetail(c) {
       <div id="cardRegions" class="prose"></div>
       <button id="showExtent">Show on map</button></div>
     <div class="blk"><span class="k">About</span>${aboutRows}
-      <button id="annotateToggle">Annotate / evidence / class mapping</button>
-      ${annotateForm(c)}</div>
+      ${canEditZoo() ? `<button id="annotateToggle">Annotate / evidence / class mapping</button>
+      ${annotateForm(c)}` : ""}</div>
     <div class="blk"><span class="k">Artifact</span><code>${(c.artifact || {}).path || "—"}</code></div>
     ${zooPickFor ? "" : useButtonHTML(c)}
-    <button id="pubBtn">${c.zoo && c.zoo.published ? "Re-publish" : "Publish to zoo"}</button>
-    ${(c.zoo && c.zoo.published) ? "" : `<button id="delBtn" class="danger">Delete from zoo</button>`}`;
+    ${canEditZoo() ? `<button id="pubBtn">${c.zoo && c.zoo.published ? "Re-publish" : "Publish to zoo"}</button>
+    ${(c.zoo && c.zoo.published) ? "" : `<button id="delBtn" class="danger">Delete from zoo</button>`}` : ""}`;
 }
 
 // what this card can do for the open project. Only offered when it makes sense (point 10): a split
@@ -1472,7 +1485,12 @@ function useButtonHTML(c) {
   if (c.topology === "merge_relabel") return `<div class="prose">A merge from someone's scheme. Merges are made in the tree, not applied.</div>`;
   if (c.topology === "base_pooled" || c.node === "root")
     return `<div class="prose">A base map. You choose the base when you start a project.</div>`;
+  // seasonal water runs on raw Sentinel bands for one fortnight, not on the yearly embeddings a class
+  // tree uses, so it can't sit under a class; say so instead of offering a button that can only fail
+  if (c.node === "water_fortnight")
+    return `<div class="prose">A per-fortnight water model on Sentinel-1/2. It maps water on a chosen date, so it isn't applied under a class in a project.</div>`;
   const t = targetForUse();
+  if (!ME) return `<div class="prose">To use it: sign in, open one of your projects, pick a class, then “Use a model from the zoo”.</div>`;
   if (!t) return `<div class="prose">To use it: open one of your projects, pick a class, then “Use a model from the zoo”.</div>`;
   const tn = esc(TREE[t].name);
   // the mapping, in place: what each model class will be called under the target, pre-filled with
@@ -1700,7 +1718,7 @@ async function fillCardRegions(id) {
 // dataset, instead of being prompted per-dataset at every publish. Blank clears it. Training
 // datasets only — a feature source (Alpha Earth) has its own provenance.
 function sourceLinkHTML(c) {
-  if (c.type !== "training") return "";
+  if (c.type !== "training" || !canEditZoo()) return "";
   return `<div class="blk"><span class="k">Public source link</span>
     <input id="dsLink" type="text" placeholder="https://… (leave blank to keep this data private)"
       value="${c.source_url || ""}">

@@ -27,6 +27,9 @@ from jsonschema import Draft7Validator, RefResolver
 
 import config
 import hierarchy
+import logging_setup
+
+log = logging_setup.get(__name__)
 
 ROOT = Path(__file__).resolve().parent.parent
 # anchored through config so a relocated CORESTACK_DATA_DIR (a mounted volume) is honoured here too,
@@ -211,6 +214,24 @@ def load_index():
 SEED_DIR = Path(config.project_path("data/catalogue_seed"))
 
 
+def retire_bundled():
+    """Cards the seed has dropped (duplicates, ones that never worked) also leave a box's live zoo.
+    catalogue_seed/retired.json lists their ids; each card goes with its artifact. Only ids listed
+    there, so a model someone trained and published on this box is never touched."""
+    path = SEED_DIR / "retired.json"
+    if not path.exists():
+        return []
+    gone = []
+    for cid in json.loads(path.read_text()).get("models", []):
+        for f in (MODELS_DIR / f"{cid}.json", CATALOGUE_DIR / "artifacts" / f"{cid}.joblib"):
+            if f.exists():
+                f.unlink()
+                gone.append(f.name)
+    if gone:
+        log.info("retired from the zoo: %s", ", ".join(gone))
+    return gone
+
+
 def seed_from_bundled():
     """Fill the live (gitignored) catalogue from the repo's catalogue_seed on startup, so a deploy
     shows the whole zoo instead of only what backfill can regenerate. Copies any card/artifact the
@@ -219,6 +240,7 @@ def seed_from_bundled():
     if not SEED_DIR.exists():
         return 0
     import shutil
+    retire_bundled()
     copied = 0
     for sub in ("models", "datasets", "artifacts"):
         src_dir = SEED_DIR / sub
@@ -861,13 +883,14 @@ def mint_ee_rf_card(card_id, name, node, parent_class, classes, training_asset, 
 
 
 def sync_ee_rf_cards():
-    """Ensure the two ported IndiaSAT EE-RF models are carded in the zoo (#13 wk10)."""
+    """Ensure the ported IndiaSAT EE-RF models are carded in the zoo (#13 wk10). Farm / plantation /
+    scrubland isn't among them for now: it trains across a whole agro-ecological zone on every run and
+    Earth Engine gives up at 5 minutes (276 s even at 500 points a class), so it waits until it's
+    trained once and stored instead."""
     import ee_rf
     specs = [
         ("mc_treecrop_ee_v1", "Tree vs crop (IndiaSAT SAR RF)", "treecrop", "greenery",
          ["cropland", "tree"], ee_rf.TREECROP_ASSET, "sar_ts"),
-        ("mc_farmshrub_ee_v1", "Farm / plantation / scrubland (IndiaSAT AEZ RF)", "farmshrub",
-         "greenery", list(ee_rf.FARMSHRUB_MAP.values()), ee_rf.FARMSHRUB_SAMPLES, "alphaearth"),
     ]
     for cid, name, node, parent, classes, asset, kind in specs:
         if get_card(cid):

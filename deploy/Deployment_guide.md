@@ -11,9 +11,18 @@ previous update went in. About 20 minutes, and every step ends with a check.
 
 - **The new name, Do It Yourself LULC**, on every page and in the STAC titles, and the CoRE stack
   description on the front page.
-- **Two demo public projects**: Sanjay Van acacia / non-acacia and the Jharia coalfield mining split.
-  Each is added once on start; one that's already there (Jharia on this box) isn't added twice, and
-  deleting one in the app keeps it deleted.
+- **Two demo public projects**: Sanjay Van acacia / non-acacia and the Jharia coalfield mining split,
+  each with its full list of steps (runs included). On the first start after this pull, each one
+  replaces the older public project of the same name, so Jharia drops to its one mining run and the
+  hand-added Sanjay Van is swapped for the bundled one. This happens once; deleting one in the app
+  afterwards keeps it deleted. Their links change, since they are new projects.
+- **Visitors only read.** Signed out, the model zoo shows no publish, annotate, delete or "use"
+  controls (the server already refused those writes).
+- **A tidier model zoo.** On start the zoo drops the duplicate water models (only the best seasonal
+  water one stays), the tea model comes back under a clean name, and the farm / plantation /
+  scrubland model is out until it's fast enough to run. Every model left was applied and run.
+- **Training survives long jobs.** Train runs in the background and the page checks on it, so a
+  training of any length no longer ends in a 504.
 - **File Browser with no login.** A second container shows every project's folder (runs, schemes,
   GeoTIFFs) read-only, at `/act4dws5/diy-lulc/files/`, and each project links to its own folder.
 - **Airflow off the public site, with a new admin password.** It stays reachable from inside the
@@ -186,7 +195,9 @@ campus machine, `http://<ws5 address>:8080/` asks for the login and takes the ne
 
 1. Open the site and hard refresh once (Ctrl+Shift+R). The header says **Do It Yourself LULC**, the
    CoRE stack description is at the bottom, and Public projects has **Sanjay Van acacia (sample)** and
-   **Jharia coalfield (sample)**; each opens with its two runs.
+   **Jharia coalfield (sample)**, once each. Jharia opens with one run, Sanjay Van with two, and
+   **By operations** lists every step, runs included. Still signed out, **Browse the Model Zoo** shows
+   no Publish, Annotate or Use buttons, and only one seasonal water model.
 2. **Sign in with Google.** You land on "What are you working on?" within a couple of seconds.
 3. Create a small project (the IIT Delhi preset is quick) and press **Run classification**. The run
    goes through Airflow as before (with the new password) and the map paints with a legend.
