@@ -1,12 +1,12 @@
 # Workstation deploy — PULL the deps image, MOUNT the code from the host.
-# Update the app with `git pull` + `docker compose ... restart` (no image rebuild).
+# Update the app with `git pull` + `docker compose ... up -d` (no image rebuild; `restart` skips .env changes).
 #
 #   1) git clone <repo> && cd it
 #   2) cp deploy/.env.example .env    # fill EE_PROJECT, EE_ASSET_ROOT, STAC_ASSET_BASE, EE key path
 #   3) docker compose -f docker-compose.hub.yml pull
 #   4) docker compose -f docker-compose.hub.yml up -d
 #   5) open http://<host>:8000/   |   health: curl http://<host>:8000/api/health
-#   later: git pull && docker compose -f docker-compose.hub.yml restart
+#   later: git pull && docker compose -f docker-compose.hub.yml up -d
 services:
   lulc:
     image: salil2003/corestack-lulc:1.0.0    # dependencies only; pinned to VERSION so a stray :latest push cant change the tower
@@ -21,7 +21,7 @@ services:
       #   CORESTACK_CODE_HOST=/srv/corestack-lulc/code
       #   CORESTACK_MODELS_HOST=/srv/corestack-lulc/models
       #   CORESTACK_DATA_HOST=/srv/corestack-lulc/data
-      - ${CORESTACK_CODE_HOST:-.}:/app                      # code: `git pull` + restart, no rebuild
+      - ${CORESTACK_CODE_HOST:-.}:/app                      # code: `git pull` + up -d, no rebuild
       - ${CORESTACK_MODELS_HOST:-./models}:/app/models      # trained weights
       - ${CORESTACK_DATA_HOST:-./data}:/app/data            # inputs, caches, outputs, logs
       # logs called out explicitly (checklist #5 wants ./data/logs/<app> mounted to the log path).
