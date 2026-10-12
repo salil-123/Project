@@ -28,6 +28,7 @@ KNOWN_OPS = {
     "import_hierarchy": [],
     "create":           ["name"],                 # week 18: a project's first step
     "upload":           ["node"],                 # week 18: a standard-format upload
+    "run":              ["run"],                  # a map was drawn and kept as run <n>; changes no scheme
 }
 
 

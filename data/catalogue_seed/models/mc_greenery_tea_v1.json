@@ -1,6 +1,6 @@
 {
-  "id": "mc_greenery_prev1_v1",
-  "name": "Greenery split (non_tea / tea) \u2014 superseded",
+  "id": "mc_greenery_tea_v1",
+  "name": "Greenery split (tea / non_tea)",
   "node": "greenery",
   "parent_class": "root",
   "topology": "per_node_split",
@@ -73,7 +73,7 @@
   "artifact": {
     "path": "data/refine/archive/greenery__1784043692.joblib",
     "format": "sklearn-joblib",
-    "published_path": "artifacts/mc_greenery_prev1_v1.joblib"
+    "published_path": "artifacts/mc_greenery_tea_v1.joblib"
   },
   "deployment": {
     "ee_asset": null,
@@ -82,12 +82,12 @@
   },
   "lineage": {
     "base_model": "mc_root_v1",
-    "derived_from": "mc_greenery_v1"
+    "derived_from": null
   },
   "about": {
-    "description": "A previous greenery split, kept after a newer model replaced it so it isn't lost.",
-    "intended_use": "Layered on the India base map.",
-    "limitations": "Archived reference model, not the live classifier for this node.",
+    "description": "Splits greenery into tea gardens and other greenery, from Alpha Earth embeddings.",
+    "intended_use": "Mapping tea plantations inside the greenery class.",
+    "limitations": "Trained on one site in the Assam tea belt, so check it before trusting it elsewhere.",
     "evidence": ""
   },
   "zoo": {
