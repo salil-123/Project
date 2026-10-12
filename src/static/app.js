@@ -20,7 +20,7 @@ let aoiLayer = null;              // the project's area, always outlined so the 
 let newBbox = null;               // a box drawn for a new project, overriding the preset
 let pickingArea = false;          // the start card is tucked away while a new area is drawn
 let viewMode = "hierarchy";       // left panel: "hierarchy" tree or "ops" operations view (#13)
-let TESSERA_SITES = {};           // bboxes where Tessera training is offered (#16)
+let TESSERA = { available: false, bounds: null, max_tiles: 6 };   // what this server can do with Tessera
 let currentOpSeq = 0;             // the op-log head the server last reported
 let dirty = false;                // the scheme changed since the run on the map
 
@@ -434,14 +434,28 @@ function tesseraYears() {
   if (te) $("trainYears").value = "";
 }
 
-// Tessera training is offered only when the area sits inside one of the prepared sites (#16)
+// how many 0.1 degree Tessera tiles an area touches (each ~150 MB); mirrors src/aoi.tessera_tiles
+function tesseraTiles([w, s, e, n]) {
+  return (Math.floor(e / 0.1) - Math.floor(w / 0.1) + 1) * (Math.floor(n / 0.1) - Math.floor(s / 0.1) + 1);
+}
+
+// Tessera is on offer for any area in India on a server that has it; past the tile cap it stays in the
+// list but greyed out, saying why, so it never just vanishes
 function updateTesseraAvailability() {
   const row = $("embeddingRow");
   if (!row) return;
   const bb = currentBbox();
-  const inSite = bb && Object.values(TESSERA_SITES).some((s) => bboxOverlap(s, bb));
-  row.classList.toggle("hidden", !inSite);
-  if (!inSite && $("embedding")) $("embedding").value = "ae";
+  const here = TESSERA.available && bb && bboxOverlap(TESSERA.bounds, bb);
+  row.classList.toggle("hidden", !here);
+  const opt = $("embedding") && [...$("embedding").options].find((o) => o.value === "tessera");
+  if (here && opt) {
+    const tiles = tesseraTiles(bb), over = tiles > TESSERA.max_tiles;
+    opt.disabled = over;
+    opt.textContent = over ? `Tessera (128-d): this area needs ${tiles} tiles, the limit is ${TESSERA.max_tiles}`
+                           : "Tessera (128-d)";
+    if (over) $("embedding").value = "ae";
+  }
+  if (!here && $("embedding")) $("embedding").value = "ae";
   tesseraYears();
   refreshModelFamilies();
 }
@@ -611,7 +625,7 @@ async function init() {
   for (const id of ["npYear", "projYear"]) $(id).innerHTML = years.map((y) => `<option>${y}</option>`).join("");
   $("npPreset").innerHTML = Object.keys(PRESETS).map((k) => `<option>${esc(k)}</option>`).join("");
   await refreshZooBadge();
-  try { TESSERA_SITES = (await getJSON(api("/api/tessera-sites"))).sites || {}; } catch { /* best-effort */ }
+  try { TESSERA = { ...TESSERA, ...(await getJSON(api("/api/tessera-sites"))) }; } catch { /* best-effort */ }
   try { STANDARDS = await getJSON(api("/api/standards")); } catch { /* best-effort */ }
   try { INFER_OPTS = await getJSON(api("/api/inference-options")); } catch { /* best-effort */ }
   await loadRuleRegistry();

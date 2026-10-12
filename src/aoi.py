@@ -63,7 +63,7 @@ def check(bbox, path="tiles"):
         cap = config.AOI_TESSERA_MAX_TILES
         ok = tiles <= cap
         reason = "" if ok else (f"This area needs {tiles} Tessera tiles (~{tiles*150} MB to "
-                                f"download); the limit is {cap}. Zoom in or use the Realistic tiles.")
+                                f"download); the limit is {cap}. Use a smaller area, or Alpha Earth.")
         return {"ok": ok, "area": round(area, 1), "cap": cap, "tiles": tiles, "reason": reason}
 
     cap = config.AOI_GEOTIFF_CAP_KM2 if path == "geotiff" else config.AOI_TILE_CAP_KM2
