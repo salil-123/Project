@@ -147,6 +147,7 @@ button.ghost:hover { background: #f1eee4; color: #3a4a37; }
 .toast.work { background: #f7efdc; border-left-color: #b4791f; }
 .toast.work::before { content: "⏳ "; }
 .toast.err  { background: #efd3cd; border-left-color: #a23b2f; }
+.toast.warn { background: #f7efdc; border-left-color: #b4791f; }
 .toast.hidden { display: none; }
 
 /* live data distribution + balance guideline, shown where the user adds data */

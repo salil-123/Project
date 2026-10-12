@@ -242,7 +242,7 @@ def seed_from_bundled():
     import shutil
     retire_bundled()
     copied = 0
-    for sub in ("models", "datasets", "artifacts"):
+    for sub in ("models", "datasets", "artifacts", "polygons"):
         src_dir = SEED_DIR / sub
         if not src_dir.exists():
             continue
@@ -402,15 +402,12 @@ def card_geometry(card_id, max_features=8):
         return {"drawable": False}
     paths = _polygon_paths_for(card)
     if not paths:
-        return {"drawable": False, "reason": "feature source — not polygon-based"}
+        return {"drawable": False, "reason": "feature source, not polygon-based"}
 
     import geopandas as gpd
     import pandas as pd
     frames = []
-    for p in paths:
-        fp = ROOT / p
-        if not fp.exists():
-            continue
+    for fp in paths:
         g = gpd.read_file(fp).to_crs(4326)
         if "role" in g.columns:                       # only the positives define the extent
             g = g[g["role"].fillna("positive") == "positive"]
@@ -441,10 +438,7 @@ def named_regions(card_id, max_points=400):
         return {"available": False}
     import geopandas as gpd
     cents = []
-    for p in paths:
-        fp = ROOT / p
-        if not fp.exists():
-            continue
+    for fp in paths:
         g = gpd.read_file(fp).to_crs(4326)
         if "role" in g.columns:
             g = g[g["role"].fillna("positive") == "positive"]
@@ -471,18 +465,27 @@ def named_regions(card_id, max_points=400):
     return {"available": True, "states": states, "districts": districts, "n_points": len(cents)}
 
 
+def _dataset_polygons(ds):
+    """The GeoJSON behind a polygon dataset card, or None: its own path when this box has it, else the
+    copy the zoo carries (catalogue/polygons/<id>.geojson, seeded from the repo). The working files a
+    card first pointed at (data/examples/...) get archived or never exist on a fresh deploy."""
+    if not ds or ds.get("kind") != "polygons":
+        return None
+    own = (ds.get("definition") or {}).get("path")
+    for fp in ([Path(config.project_path(own))] if own else []) + [CATALOGUE_DIR / "polygons" / f"{ds['id']}.geojson"]:
+        if fp.exists():
+            return fp
+    return None
+
+
 def _polygon_paths_for(card):
-    """On-disk polygon GeoJSONs backing a card: a polygon dataset's own path, or a model's
-    polygon training datasets (skipping its ee_asset / pixel-table sources)."""
+    """Polygon GeoJSON files backing a card: a polygon dataset's own, or a model's polygon training
+    datasets (skipping its ee_asset / pixel-table sources). Only files that exist."""
     if card["id"].startswith("ds_"):
-        d = card.get("definition") or {}
-        return [d["path"]] if card.get("kind") == "polygons" and d.get("path") else []
-    paths = []
-    for ds_id in (card.get("training") or {}).get("datasets") or []:
-        ds = get_card(ds_id)
-        if ds and ds.get("kind") == "polygons" and (ds.get("definition") or {}).get("path"):
-            paths.append(ds["definition"]["path"])
-    return paths
+        fp = _dataset_polygons(card)
+        return [fp] if fp else []
+    found = (_dataset_polygons(get_card(i)) for i in (card.get("training") or {}).get("datasets") or [])
+    return [fp for fp in found if fp]
 
 
 # ----------------------------- minting from live artifacts -----------------------------
@@ -782,7 +785,7 @@ def mint_rule_card(node, rule):
                      "balancing": {"method": "none"}},
         "inference": {"dataset": ae_id, "embedding": {"source": "sentinel2+srtm indices", "dim": len(used)}},
         "extent": {"spatial": {"type": "bbox", "value": INDIA_BBOX}, "temporal": {"year": 2024}},
-        "metrics": {"note": "rule-based split; no held-out metric — behaviour is the expression itself"},
+        "metrics": {"note": "rule-based split; no held-out metric, the expression itself is the behaviour"},
         "artifact": {"path": "data/hierarchy.json", "format": "rule-expression"},
         "deployment": {"ee_asset": None, "tile_url": None, "expressible_as_bandmath": True},
         "lineage": {"base_model": None, "derived_from": None},
@@ -1213,10 +1216,7 @@ def recompute_spread(card_id, cell=0.25, aoi=None):
     if not paths:
         return None
     frames = []
-    for p in paths:
-        fp = ROOT / p
-        if not fp.exists():
-            continue
+    for fp in paths:
         g = gpd.read_file(fp).to_crs(4326)
         if "role" in g.columns:                       # only the positives define the spread
             g = g[g["role"].fillna("positive") == "positive"]

@@ -107,7 +107,7 @@ function setStatus(text, kind = "info") {
   t.textContent = text;
   t.className = "toast " + kind;            // also clears "hidden" -> visible
   clearTimeout(_toastTimer);
-  if (kind !== "work") _toastTimer = setTimeout(() => t.classList.add("hidden"), kind === "err" ? 6000 : 3500);
+  if (kind !== "work") _toastTimer = setTimeout(() => t.classList.add("hidden"), kind === "err" || kind === "warn" ? 6000 : 3500);
 }
 
 let areaMode = "preset";          // new project: preset | coords | draw
@@ -141,7 +141,7 @@ function startWorkTimer(baseText, expectedS) {
   const tick = () => {
     const el = Math.round((Date.now() - t0) / 1000);
     const exp = expectedS ? ` / ~${Math.round(expectedS)}s expected` : "";
-    setStatus(`${baseText} — ${el}s elapsed${exp}…`, "work");
+    setStatus(`${baseText}: ${el}s elapsed${exp}…`, "work");
   };
   tick();
   const id = setInterval(tick, 1000);
@@ -665,7 +665,7 @@ function updateNewArea() {
     const over = km2 > AOI_TILE_CAP_KM2;
     const what = { preset: "Preset", coords: "Box", draw: "Drawn box" }[areaMode];
     $("npArea").textContent = `${what} · ≈ ${km2.toLocaleString(undefined, { maximumFractionDigits: 1 })} km²`
-      + (over ? ` — over the ${AOI_TILE_CAP_KM2.toLocaleString()} km² limit` : "");
+      + (over ? `, over the ${AOI_TILE_CAP_KM2.toLocaleString()} km² limit` : "");
     $("npArea").classList.toggle("warn", over);
     $("npCreate").disabled = over;
   } else {
@@ -842,7 +842,10 @@ async function runClassify() {
     dirty = false;
     updateStale();
     renderRuns();
-    setStatus(`${d.run.name} saved.${countsLine(d.counts)}`, "ok");
+    // a split nobody trained yet is drawn as its parent class; say so, or the map just looks unchanged
+    const skipped = (d.untrained || []).length
+      ? ` Not split yet (train it first): ${d.untrained.join(", ")}.` : "";
+    setStatus(`${d.run.name} saved.${countsLine(d.counts)}${skipped}`, skipped ? "warn" : "ok");
     if (dagRunId) watchExport(dagRunId, d.run.name);
   } catch (err) { clearInterval(ticker); setStatus("Error: " + err, "err"); }
   finally { clearInterval(ticker); $("run").disabled = false; }
@@ -1394,7 +1397,7 @@ function modelTile(m) {
   const pub = m.published ? `<span class="pill pub">published</span>` : `<span class="pill loc">local</span>`;
   // a perfect score on a few dozen test pixels isn't a perfect model; say how thin the test was
   const thin = m.min_test_px != null && m.min_test_px < THIN_TEST_PX ? ` <span class="thin" title="the rarest class had only ${m.min_test_px} held-out pixels">· thin test (${m.min_test_px} px)</span>` : "";
-  const acc = m.accuracy != null ? `accuracy ${m.accuracy.toFixed(2)}${thin}` : "—";
+  const acc = m.accuracy != null ? `accuracy ${m.accuracy.toFixed(2)}${thin}` : "no score";
   // cheap apply-after hint from the index row (full WorldCover hint shows in the detail pane)
   const after = (m.topology && m.topology !== "base_pooled" && m.node) ? ` · after ${m.node}` : "";
   const div = document.createElement("div");
@@ -1426,7 +1429,7 @@ function datasetTile(d) {
 function dsChips(ids) {
   const chips = (ids || []).map((id) =>
     `<span class="chip link" onclick="showCardFull('${id}')">${id}</span>`).join("");
-  return `<div class="chips-row">${chips || "—"}</div>`;
+  return `<div class="chips-row">${chips || "none"}</div>`;
 }
 
 async function showCardFull(id) {
@@ -1450,7 +1453,7 @@ function modelDetail(c) {
                     ["Limitations", a.limitations], ["Evidence", a.evidence],
                     ["Contributor", (c.zoo || {}).contributor]]
     .filter(([, v]) => v).map(([k, v]) => `<div class="prose">${k ? "<b>" + k + ":</b> " : ""}${v}</div>`).join("")
-    || `<div class="prose">— not described yet —</div>`;
+    || `<div class="prose">Not described yet.</div>`;
   return `
     <h3>${c.name}</h3>
     <div class="sub2">node <code>${c.node}</code> · ${c.topology}
@@ -1458,7 +1461,7 @@ function modelDetail(c) {
     ${zooPickFor ? `<div class="use-top">${useButtonHTML(c)}</div>` : ""}
     ${placementHTML(c)}
     <div class="blk"><span class="k">Produces</span><div class="chips-row">${produceChips(c.produces)}</div></div>
-    ${m.accuracy != null ? `<div class="blk"><span class="k">Metrics — acc ${m.accuracy} (${m.eval || ""})</span>${thinNote(m)}
+    ${m.accuracy != null ? `<div class="blk"><span class="k">Metrics: accuracy ${m.accuracy}${m.eval ? ` (${m.eval})` : ""}</span>${thinNote(m)}
       <table>${perRows}</table></div>` : ""}
     ${balanceFeedback(c)}
     <div class="blk"><span class="k">Training data</span>${dsChips(c.training && c.training.datasets)}</div>
@@ -1469,7 +1472,7 @@ function modelDetail(c) {
     <div class="blk"><span class="k">About</span>${aboutRows}
       ${canEditZoo() ? `<button id="annotateToggle">Annotate / evidence / class mapping</button>
       ${annotateForm(c)}` : ""}</div>
-    <div class="blk"><span class="k">Artifact</span><code>${(c.artifact || {}).path || "—"}</code></div>
+    <div class="blk"><span class="k">Artifact</span><code>${(c.artifact || {}).path || "none"}</code></div>
     ${zooPickFor ? "" : useButtonHTML(c)}
     ${canEditZoo() ? `<button id="pubBtn">${c.zoo && c.zoo.published ? "Re-publish" : "Publish to zoo"}</button>
     ${(c.zoo && c.zoo.published) ? "" : `<button id="delBtn" class="danger">Delete from zoo</button>`}` : ""}`;
@@ -1545,9 +1548,9 @@ function balanceFeedback(c) {
   const ratio = Math.max(...sup) / Math.max(1, Math.min(...sup));
   const [label, col] = ratio <= 3 ? ["balanced", "#2f6b3f"]
                      : ratio <= 5 ? ["mild imbalance", "#b4791f"]
-                     :              ["imbalanced — consider under/oversampling", "#a23b2f"];
+                     :              ["imbalanced, consider under/oversampling", "#a23b2f"];
   return `<div class="blk"><span class="k">Class balance</span>
-    <div><b style="color:${col}">${ratio.toFixed(1)}:1</b> — ${label}</div>
+    <div><b style="color:${col}">${ratio.toFixed(1)}:1</b>: ${label}</div>
     ${method ? `<div class="prose">${method}</div>` : ""}</div>`;
 }
 
@@ -1575,7 +1578,7 @@ function annotateForm(c) {
     <label>Description<textarea id="an_desc">${a.description || ""}</textarea></label>
     <label>Intended use<textarea id="an_use">${a.intended_use || ""}</textarea></label>
     <label>Limitations<textarea id="an_lim">${a.limitations || ""}</textarea></label>
-    <label>Evidence (how annotated — drone, field photos, …)<textarea id="an_ev">${a.evidence || ""}</textarea></label>
+    <label>Evidence (how it was annotated: drone, field photos, …)<textarea id="an_ev">${a.evidence || ""}</textarea></label>
     <label>Contributor<input id="an_contrib" type="text" value="${contrib}"></label>
     <span class="k" style="margin-top:8px">Map classes to a standard scheme (optional)</span>${stdRows}
     <button id="annotateSave" class="primary">Save annotation</button>
@@ -1616,7 +1619,7 @@ function spreadValueHTML(d, occ, n, cell, coverage, missing) {
   if (d == null) return `<div class="prose">no spread (need ≥2 polygons)</div>`;
   const [label, col] = d >= 0.75 ? ["well spread", "#2f6b3f"]
                      : d >= 0.5  ? ["moderately spread", "#b4791f"]
-                     :             ["clustered — risks skewing the model", "#a23b2f"];
+                     :             ["clustered, which risks skewing the model", "#a23b2f"];
   const cells = occ != null ? ` across ${occ} grid cells` : "";
   const tail = n != null ? `${n} polygons${cells} (${cell}° grid)` : "";
   // coverage judges the count against the size of the area you're about to classify (#4):
@@ -1624,7 +1627,7 @@ function spreadValueHTML(d, occ, n, cell, coverage, missing) {
   const cov = coverage != null
     ? `<div class="prose">covers <b>${(coverage * 100).toFixed(coverage < 0.01 ? 2 : 1)}%</b> of the current AOI (labelled area ÷ area to classify)</div>`
     : "";
-  return `<div><b style="color:${col}">${d.toFixed(2)}</b> — ${label}</div>
+  return `<div><b style="color:${col}">${d.toFixed(2)}</b>: ${label}</div>
     ${tail ? `<div class="prose">${tail}</div>` : ""}${cov}`;
 }
 
@@ -1642,7 +1645,7 @@ function spreadFeedback(c) {
     <label class="spread-grid">grid cell
       <select id="spreadCell">${opts}</select></label>
     <div id="spreadOut">${initial}</div>
-    <div class="prose">Shannon entropy of where the polygons fall, normalized to [0,1] —
+    <div class="prose">Shannon entropy of where the polygons fall, normalized to [0,1]. It
     flags data that's all from one area before it skews a model.</div></div>`;
 }
 
@@ -1683,7 +1686,7 @@ function datasetDetail(c) {
     <div class="blk"><span class="k">Definition</span><code>${JSON.stringify(c.definition)}</code></div>
     ${e.source ? `<div class="blk"><span class="k">Embedding</span>${e.source} ${e.dim}-d (${e.year || ""})</div>` : ""}
     ${spreadFeedback(c)}
-    <div class="blk"><span class="k">Provenance</span><div class="prose">${p.annotator || "—"} · ${p.method || ""}
+    <div class="blk"><span class="k">Provenance</span><div class="prose">${p.annotator || "unknown"} · ${p.method || ""}
       ${p.license ? "· " + p.license : ""}</div></div>
     ${inferenceYearHTML(c)}
     ${sourceLinkHTML(c)}
@@ -1705,7 +1708,7 @@ async function fillCardRegions(id) {
     const districts = (r.districts || []).slice(0, 8).join(", ");
     const more = (r.districts || []).length > 8 ? ` +${r.districts.length - 8} more` : "";
     out.innerHTML = states
-      ? `<b>${states}</b>${districts ? ` — ${districts}${more}` : ""}`
+      ? `<b>${states}</b>${districts ? `: ${districts}${more}` : ""}`
       : "";
   } catch { out.textContent = ""; }
 }
@@ -1750,9 +1753,9 @@ function extentLineForCard(c) {
   // a model's strength is where its training data falls, not a country box (#7). Point at that.
   if (String(c.id || "").startsWith("mc_")) {
     const ds = (c.training && c.training.datasets) || [];
-    if (ds.length) return `<span class="prose">strongest where its training data falls — see map ` +
+    if (ds.length) return `<span class="prose">strongest where its training data falls, see the map ` +
       `(${ds.length} training set${ds.length > 1 ? "s" : ""})</span>`;
-    return `<span class="prose">no localized training data — a general feature-source model</span>`;
+    return `<span class="prose">no localized training data: a general feature-source model</span>`;
   }
   return extentLine(c.extent);
 }
@@ -1818,7 +1821,7 @@ function drawExtent(extent) {
   const [w, s, e, n] = sp.value;
   if (isNational(sp.value)) {
     map.fitBounds([[s, w], [n, e]]);
-    setStatus("Feature source valid India-wide — no box drawn (it'd cover the whole country).", "info");
+    setStatus("Feature source valid India-wide, so no box is drawn (it would cover the whole country).", "info");
     return;
   }
   extentLayer = L.rectangle([[s, w], [n, e]],
@@ -1840,7 +1843,7 @@ async function publishCard(id) {
   try {                                            // a push can fail on the network; don't strand the toast (#10)
     const r = await postJSON(api("/api/publish"), { card_ids: [id], contributor: contributor() });
     const d = await r.json();
-    setStatus(d.pushed ? `Published "${id}" — pushed to the zoo.`
+    setStatus(d.pushed ? `Published "${id}" to the zoo.`
               : (d.committed ? `Committed "${id}" locally (${d.note}).` : d.note || "Nothing to publish."),
               r.ok ? "ok" : "err");
     await loadZooFull();

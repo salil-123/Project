@@ -177,7 +177,7 @@ def _farmshrub_classified(ee, region, year):
     regcode = _aez_for(ee, region)
     aez = ee.FeatureCollection(FARMSHRUB_SAMPLES).filter(ee.Filter.eq("aez_no", regcode))
     if aez.size().getInfo() < 100:
-        raise ValueError("no farm/shrub ground truth in this agro-ecological zone — it's a rural/"
+        raise ValueError("no farm/shrub ground truth in this agro-ecological zone. It's a rural/"
                          "agricultural model; try a farmland box (e.g. Punjab, Assam tea belt).")
     # balanced per-class cap across the whole AEZ (deterministic seed), then merge back
     parts = [aez.filter(ee.Filter.eq("label", code)).randomColumn("r", 42).sort("r")
