@@ -2318,8 +2318,7 @@ def frontend_config():
     this route wins over any file of the same name."""
     cfg = json.dumps({"apiBase": config.API_BASE_URL, "airflow": airflow_client.configured(),
                       "googleClientId": config.GOOGLE_CLIENT_ID or None,
-                      "devLogin": auth.dev_login_allowed(), "introVideo": config.INTRO_VIDEO_URL or None,
-                      "filesUrl": config.FILEBROWSER_URL or None})
+                      "devLogin": auth.dev_login_allowed(), "introVideo": config.INTRO_VIDEO_URL or None})
     return Response(f"window.CORESTACK_CFG = {cfg};\n", media_type="application/javascript",
                     headers={"Cache-Control": "no-store"})   # no-store: it changes with the .env
 

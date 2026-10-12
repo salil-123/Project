@@ -768,10 +768,6 @@ function renderProjectHead() {
   ["projYear", "projPublic"].forEach((id) => ($(id).disabled = ro));
   ["run", "startFresh", "dlProject"].forEach((id) => $(id).classList.toggle("hidden", ro));
   $("eyeToggle").classList.toggle("hidden", false);
-  // File Browser over data/projects, when the deploy runs one: straight into this project's folder
-  const files = window.CORESTACK_CFG?.filesUrl;
-  $("runFiles").classList.toggle("hidden", !files);
-  if (files) $("runFiles").href = `${files}/files/${p.id}/`;
 }
 
 $("switchProject").onclick = showStart;
