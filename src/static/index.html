@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <link rel="stylesheet" href="vendor/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="style.css?v=44" />
+  <link rel="stylesheet" href="style.css?v=45" />
 </head>
 <body>
   <aside id="sidebar">
@@ -167,7 +167,7 @@
           <a href="api/upload-format/example.geojson" download>Example file</a> ·
           <a href="#" id="fmtToggle">format</a></p>
         <div id="fmtHelp" class="fmt hidden">
-          <b>Standard format</b> — a GeoJSON <i>FeatureCollection</i> in lon/lat (EPSG:4326).
+          <b>Standard format</b>: a GeoJSON <i>FeatureCollection</i> in lon/lat (EPSG:4326).
           Every feature is a <i>Polygon</i> or <i>MultiPolygon</i> with
           <code>"class": "&lt;name&gt;"</code>. Optional: <code>"role": "negative"</code> for
           "this is <i>not</i> that class", and a free-text <code>"note"</code>. Everything else is ignored.
@@ -202,7 +202,7 @@
           <option value="linearsvc">LinearSVC (default)</option>
           <option value="logreg">Logistic Regression</option>
           <option value="ridge">Ridge</option>
-          <option value="auto">Auto — best model</option>
+          <option value="auto">Auto (best model)</option>
         </select>
         <div id="embeddingRow" class="hidden">
           <label>Feature embedding</label>
@@ -213,7 +213,7 @@
         </div>
         <label>Class balance (if a split is skewed)</label>
         <select id="balance">
-          <option value="balanced">balanced — class weights (default)</option>
+          <option value="balanced">balanced: class weights (default)</option>
           <option value="undersample">undersample the majority</option>
           <option value="oversample">oversample the minority</option>
         </select>
@@ -381,6 +381,6 @@
   <!-- runtime config from the server (API base, sign-in, Airflow). Served, not baked, so retargeting
        the UI at another backend is an .env change rather than a code edit. Must load before app.js. -->
   <script src="config.js"></script>
-  <script src="app.js?v=57"></script>
+  <script src="app.js?v=58"></script>
 </body>
 </html>

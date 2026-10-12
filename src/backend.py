@@ -827,7 +827,7 @@ def classify_water(west: float, south: float, east: float, north: float, date: s
     if not guard["ok"]:
         raise HTTPException(400, guard["reason"])
     if not (_ROOT / infer.WATER_FORTNIGHT_PATH).exists():
-        raise HTTPException(400, "water model not trained yet — run scripts/train_water_fortnight.py")
+        raise HTTPException(400, "water model not trained yet; run scripts/train_water_fortnight.py")
     try:
         tile_url, counts = infer.classify_water_tiles(bbox, date)
     except Exception as e:
@@ -929,7 +929,7 @@ def water_frequency(west: float, south: float, east: float, north: float,
     if not guard["ok"]:
         raise HTTPException(400, guard["reason"])
     if not (_ROOT / infer.WATER_FORTNIGHT_PATH).exists():
-        raise HTTPException(400, "water model not trained yet — run scripts/train_water_fortnight.py")
+        raise HTTPException(400, "water model not trained yet; run scripts/train_water_fortnight.py")
     n = max(6, min(n, 26))
     try:
         tile_url, stats = infer.water_frequency_tiles(bbox, year=year, n=n)
@@ -956,7 +956,7 @@ def estimate_training(west: float, south: float, east: float, north: float,
     import json, math
     prof_path = _ROOT / "data" / "benchmark_profile.json"
     if not prof_path.exists():
-        raise HTTPException(404, "no benchmark profile — run scripts/benchmark_training.py first")
+        raise HTTPException(404, "no benchmark profile; run scripts/benchmark_training.py first")
     p = json.load(open(prof_path))
     area = aoi.area_km2((west, south, east, north))
     n = int(area * 10000 * max(0.0, min(fraction, 1.0)))     # 10,000 px/km^2 at 10 m
@@ -1532,7 +1532,7 @@ def apply_eerf(op: ApplyEeRfIn):
     which = "treecrop" if "treecrop" in card["node"] else "farmshrub"
     tree = hierarchy.load()
     if op.parent not in tree:
-        raise HTTPException(400, f"the {op.parent!r} class isn't in the current base scheme — switch "
+        raise HTTPException(400, f"the {op.parent!r} class isn't in the current base scheme; switch "
                                  "to the IndiaSAT base first")
     classes = [p["class"] for p in card.get("produces", [])]
     colmap = ee_rf.model_colors(which)
@@ -2042,6 +2042,15 @@ def _render_bbox(bbox, year):
     return classify(west=w, south=s_, east=e, north=n, mode="realistic", year=year)
 
 
+def _unresolved_splits():
+    """Classes split into children that nothing can resolve yet (no trained weights, rule or IndiaSAT
+    model), by display name. A run draws them as the parent class, so the page should say why."""
+    tree = hierarchy.load()
+    return [n.get("name") or c for c, n in tree.items()
+            if c != hierarchy.ROOT and n.get("children") and not n.get("rule") and not n.get("ee_rf")
+            and not (n.get("classifier") and Path(config.weights_path(n["classifier"])).exists())]
+
+
 @app.post("/api/projects/{pid}/runs")
 def create_run(pid: str, body: RunIn, request: Request):
     """Run classification for the project and keep it as run_<n>: the map it drew, plus a frozen copy
@@ -2064,7 +2073,7 @@ def create_run(pid: str, body: RunIn, request: Request):
         p.current_run = n
         p.runs = [*(p.runs or []), {k: meta[k] for k in ("run", "name", "created_at", "year")}]
         s.commit()
-    return {"run": meta, **out}
+    return {"run": meta, "untrained": _unresolved_splits(), **out}
 
 
 @app.get("/api/projects/{pid}/runs/{n}")

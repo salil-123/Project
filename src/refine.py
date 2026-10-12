@@ -89,7 +89,7 @@ def model_families(source="alphaearth"):
             {"id": "xgboost", "label": "XGBoost", "kind": "pixel", "available": _has_xgb(),
              "note": None if _has_xgb() else "install xgboost to enable"},
             {"id": "objectdetection", "label": "Object detection (crowns)", "kind": "object",
-             "available": False, "note": "planned — for discrete objects like tree crowns"},
+             "available": False, "note": "planned, for discrete objects like tree crowns"},
         ]
     # Alpha Earth / EE: linear models replay as band math (crisp tiles). Random Forest is offered
     # too since sir asked for it (#7, wk10) — it just renders on the point grid instead of tiles.
@@ -275,7 +275,7 @@ def build_split_dataset(parent="greenery", n_pix=50, resample=False, years=None,
 
     tree = hierarchy.load()
     if not tree.get(parent, {}).get("children"):
-        raise ValueError(f"'{parent}' has no sub-classes to train — split it or add classes first.")
+        raise ValueError(f"'{parent}' has no sub-classes to train; split it or add classes first.")
     frames = []
     for y in years:
         if len(years) > 1:
@@ -438,7 +438,8 @@ def add_class_op(parent, new_name, examples_src=None, new_color=None, new_canoni
     else:                                             # leaf -> parent: residual + new
         residual_id = f"{parent}_other"
         hierarchy.split_class(tree, parent, [
-            {"name": tree[parent]["name"], "canonical": residual_id, "color": tree[parent]["color"]},
+            # "(rest)", as the panel promises: two classes both called "Built-up" read as a mistake
+            {"name": f"{tree[parent]['name']} (rest)", "canonical": residual_id, "color": tree[parent]["color"]},
             {"name": new_name, "canonical": new_id, "color": new_color},
         ])
         tree[residual_id]["source"] = {"type": "residual", "of": parent}
@@ -582,7 +583,7 @@ def train_worldcover_base(out_path=WORLDCOVER_BASE_PATH, min_support=50):
     model.fit(df[AE_COLS].values, df.y.values)
     bundle = {"model": model, "features": AE_COLS, "classes": sorted(df.y.unique()),
               "scheme": "worldcover",
-              "note": "effective WorldCover base — well-supported India classes only"}
+              "note": "effective WorldCover base: well-supported India classes only"}
     joblib.dump(bundle, out_path)
     log.info(f"saved WorldCover base -> {out_path} (classes={bundle['classes']}, n={len(df)})")
     return bundle
