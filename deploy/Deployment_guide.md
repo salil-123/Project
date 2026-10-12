@@ -17,7 +17,6 @@ and the DAG stay as they are. Every step is safe to repeat and ends with a check
 - **Model zoo cleaned up**: one water model instead of three; the farm / plantation / scrubland model
   is out until it runs within Earth Engine's time limit. Every remaining model was tested.
 - **Training runs in the background**, so long trainings no longer end in a 504.
-- **Airflow off the public site**, with a new admin password (step 6).
 
 ## 1. Note where you are
 
@@ -95,31 +94,11 @@ proxy_set_header X-Forwarded-Proto $scheme;   # sign-in cookie marked Secure und
 client_max_body_size 50m;                     # polygon uploads and project zips
 ```
 
-## 6. Airflow: new password, off the public site
+## 6. Airflow
 
-**a.** Check how the apps reach Airflow:
-
-```bash
-grep AIRFLOW_API_BASE .env     # http://<ws5 address>:8080/api/v1 is fine; .../act4dws5/airflow/... is not
-```
-
-If it's the public URL, change it to `http://<ws5 address>:8080/api/v1` here and in the drone app's
-`.env`, and `up -d` both, before going on.
-
-**b.** New admin password, inside the Airflow webserver container:
-
-```bash
-airflow users reset-password -u admin -p '<new password>'
-```
-
-Put the same value in `.env` as `AIRFLOW_PASSWORD=` (and in the drone app's), then `up -d` both.
-
-**c.** Delete the `location /act4dws5/airflow/` block from nginx, then `nginx -t && nginx -s reload`.
-An allow/deny list won't work here: visitors arrive through the CSE front proxy, which has a campus
-address.
-
-Check: on mobile data, `https://www.cse.iitd.ernet.in/act4dws5/airflow/` is a 404; on campus,
-`http://<ws5 address>:8080/` takes the new password.
+Nothing to change on Airflow for this update. If its admin password changes, put the new one in `.env`
+as `AIRFLOW_PASSWORD=` and `up -d`. `AIRFLOW_API_BASE` should be the box's own address
+(`http://<ws5 address>:8080/api/v1`), so the app keeps working if the public Airflow path goes away.
 
 ## 7. Check it end to end
 
@@ -141,8 +120,8 @@ Logs: `data/logs/corestack-lulc/app.log`, or `docker compose -f docker-compose.h
 | `disk I/O error` in the logs | keep `data/` on the tower's own disk, not a network share |
 | `git pull` refuses: local changes | step 1, then pull |
 | Run stays queued | `airflow dags unpause corestack_lulc` |
-| Run fails with 401 from Airflow | step 6b: `.env` has the old password |
-| Run can't reach Airflow | step 6a: `AIRFLOW_API_BASE` was the public URL |
+| Run fails with 401 from Airflow | step 6: `.env` has an old Airflow password |
+| Run can't reach Airflow | step 6: `AIRFLOW_API_BASE` should be the box's own address |
 | 502 from nginx | gunicorn without `-b 0.0.0.0:8000` (step 4) |
 | Tessera option missing for a prepared site | image still `1.0.0`: step 4 |
 | `.env` edits have no effect | `up -d`, not `restart` |
