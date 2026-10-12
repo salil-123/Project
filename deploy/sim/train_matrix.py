@@ -15,7 +15,7 @@ import requests
 
 from journey_test import ROOT, IIT, check, fails, session, train
 
-JHARIA = [86.38, 23.72, 86.44, 23.78]      # not a Tessera site
+BIG = [86.2, 23.6, 86.6, 23.9]             # 12 Tessera tiles, past the cap of 6
 
 
 def crowns():
@@ -61,7 +61,7 @@ def main():
     base = a.base
     u = session(base, "Matrix Tester")
     p = u.post(f"{base}/api/projects", json={"name": "train matrix", "bbox": IIT, "year": 2024}).json()
-    q = u.post(f"{base}/api/projects", json={"name": "train matrix jharia", "bbox": JHARIA, "year": 2024}).json()
+    q = u.post(f"{base}/api/projects", json={"name": "train matrix big", "bbox": BIG, "year": 2024}).json()
     h, hq = {"X-Project-Id": p["id"]}, {"X-Project-Id": q["id"]}
     try:
         print("upload: greenery -> aa / bb from the whole crown file")
@@ -90,7 +90,7 @@ def quick(u, base, h, hq):
     refused(u, base, h, "2025 on Alpha Earth", years=[2023, 2025])
     refused(u, base, h, "2016 on Alpha Earth", years=[2016])
     refused(u, base, h, "Tessera for 2023", embedding="tessera", years=[2023])
-    refused(u, base, hq, "Tessera outside the prepared sites", embedding="tessera")
+    refused(u, base, hq, "Tessera on an area past the tile cap", embedding="tessera")
     refused(u, base, h, "XGBoost on Alpha Earth", algo="xgboost")
     refused(u, base, h, "an unknown algorithm", algo="magic")
     refused(u, base, h, "an unknown balance", balance="smote")

@@ -201,14 +201,10 @@ def presets():
     return {"presets": PRESETS, "colors": infer.load_colors()}
 
 
-# Tessera training is scoped to the sites we requested bboxes for from the GeoTessera (UCam) team —
-# those are the areas with prepared coverage. The UI only offers the Tessera embedding for these (#16).
-TESSERA_SITES = {
-    "IIT Delhi + Sanjay Van (acacia)": [77.165, 28.520, 77.205, 28.560],
-    "Asola Bhatti (mining/acacia)":    [77.19, 28.42, 77.27, 28.48],
-    "Jalpaiguri (base-scheme demo)":   [88.68, 26.48, 88.78, 26.56],
-    "Assam tea belt (tea/non-tea)":    [95.75, 27.55, 95.98, 27.73],
-}
+# Tessera covers all of India for 2024 (tessera_index/ carries that slice of its tile index). What limits
+# an area is download size: each 0.1 degree tile it touches is ~150 MB, capped by AOI_TESSERA_MAX_TILES.
+# It used to be offered only at four sites we'd asked the Tessera team for, before tiles came on demand.
+TESSERA_BOUNDS = [68.0, 6.5, 97.5, 37.5]
 
 
 def _has_tessera():
@@ -219,10 +215,10 @@ def _has_tessera():
 
 @app.get("/api/tessera-sites")
 def tessera_sites():
-    """The bboxes Tessera training is available for (#16) — the 4 sites we requested GeoTessera
-    coverage for. The UI shows the Tessera embedding option only when the AOI sits in one of these,
-    and not at all when this server has no geotessera installed."""
-    return {"sites": TESSERA_SITES if _has_tessera() else {}, "available": _has_tessera()}
+    """Whether this server can train on Tessera, where (India) and how big an area may be, in tiles.
+    The page offers Tessera for any project inside the bounds and greys it out past the tile cap."""
+    return {"available": _has_tessera(), "bounds": TESSERA_BOUNDS,
+            "max_tiles": config.AOI_TESSERA_MAX_TILES}
 
 
 @app.get("/api/tree")
@@ -1208,8 +1204,10 @@ def _check_train_options(op: RetrainIn, project=None):
             raise HTTPException(400, "Tessera only exists for 2024; leave the years empty or put 2024, "
                                      "or switch to Alpha Earth to train across years")
         bbox = (project or {}).get("bbox")
-        if bbox and not any(_overlaps(s, bbox) for s in TESSERA_SITES.values()):
-            raise HTTPException(400, "Tessera isn't prepared for this area; use Alpha Earth")
+        if bbox and not _overlaps(TESSERA_BOUNDS, bbox):
+            raise HTTPException(400, "Tessera here covers India only; use Alpha Earth")
+        if bbox and not (g := aoi.check(bbox, "tessera"))["ok"]:
+            raise HTTPException(400, g["reason"])
 
 
 def _overlaps(a, b):

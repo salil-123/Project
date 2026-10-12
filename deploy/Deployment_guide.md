@@ -9,7 +9,8 @@ and the DAG stay as they are. Every step is safe to repeat and ends with a check
 ## What changes
 
 - **New image `1.0.1`** (adds Tessera embeddings), so this update needs an image `pull`, not just
-  `git pull`. Tessera tiles download on first use into `data/tessera/` (~150 MB each) and stay there.
+  `git pull`. Tessera can be picked for any project in India up to 6 tiles in size; its tiles download
+  on first use into `data/tessera/` (~150 MB each) and stay there.
 - **New name**, Do It Yourself LULC, and the CoRE stack description on the front page.
 - **Two demo public projects**, Sanjay Van acacia and Jharia mining. On the first start they replace
   the existing public projects of the same names, so their links change. This happens once.
