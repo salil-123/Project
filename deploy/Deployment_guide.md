@@ -16,7 +16,14 @@ and the DAG stay as they are. Every step is safe to repeat and ends with a check
 - **Visitors only read**: signed out, the model zoo shows no publish, annotate, delete or use buttons.
 - **Model zoo cleaned up**: one water model instead of three; the farm / plantation / scrubland model
   is out until it runs within Earth Engine's time limit. Every remaining model was tested.
-- **Training runs in the background**, so long trainings no longer end in a 504.
+- **Training runs in the background**, so long trainings no longer end in a 504, and impossible
+  options (a year with no data, Tessera off its sites) are refused straight away with the reason.
+- **Training fixes**: counter examples no longer train as the class they deny, and a class with one
+  polygon trains instead of failing.
+- **Zoo cards** draw their training polygons again (Show on map, Strong regions, Spread), and a run
+  says when a split it skipped hasn't been trained yet.
+- **Front-page video** is the acacia walkthrough under a new file name, so browsers don't show the
+  old cached one.
 
 ## 1. Note where you are
 
