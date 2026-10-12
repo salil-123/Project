@@ -23,8 +23,6 @@ previous update went in. About 20 minutes, and every step ends with a check.
   scrubland model is out until it's fast enough to run. Every model left was applied and run.
 - **Training survives long jobs.** Train runs in the background and the page checks on it, so a
   training of any length no longer ends in a 504.
-- **File Browser with no login.** A second container shows every project's folder (runs, schemes,
-  GeoTIFFs) read-only, at `/act4dws5/diy-lulc/files/`, and each project links to its own folder.
 - **Airflow off the public site, with a new admin password.** It stays reachable from inside the
   IITD network.
 - No image change: the code is mounted, so `git pull` plus `up -d` is the whole update.
@@ -55,12 +53,6 @@ Check: `git log --oneline -1` matches the latest commit on GitHub, and
 
 ## 3. `.env`
 
-Add this line, so each project links to its files:
-
-```bash
-FILEBROWSER_URL=files
-```
-
 If there's no `SESSION_SECRET` line yet (it came with the last update), make one:
 
 ```bash
@@ -79,8 +71,7 @@ docker compose -f docker-compose.hub.yml up -d
 ```
 
 (Use `docker-compose` if that's what this box has been using.) `up -d` recreates the container, which
-picks up the image and any `.env` change. A plain `restart` picks up neither. It also starts the new
-`files` container (File Browser) on port 8081.
+picks up the image and any `.env` change. A plain `restart` picks up neither.
 
 Check, on the tower:
 
@@ -88,8 +79,6 @@ Check, on the tower:
 curl -s localhost:8000/api/health                  # "status": "ok"
 curl -s localhost:8000/api/auth/me                 # google_client_id filled in, dev_login false
 curl -s 'localhost:8000/api/health?deep=1'         # every host under "reach" says ok
-curl -s -o /dev/null -w '%{http_code}
-' localhost:8081/act4dws5/diy-lulc/files/health   # 200
 docker compose -f docker-compose.hub.yml exec lulc python config.py    # EE init OK
 ```
 
@@ -132,7 +121,7 @@ docker compose -f docker-compose.hub.yml up -d
 
 Either way, finish with `curl -s 'localhost:8000/api/health?deep=1'`: every host should now say `ok`.
 
-## 5. nginx: File Browser
+## 5. nginx
 
 The existing block keeps working. Check it has these two lines, and add them if not:
 
@@ -141,20 +130,7 @@ proxy_set_header X-Forwarded-Proto $scheme;   # marks the sign-in cookie Secure 
 client_max_body_size 50m;                     # uploaded polygons and project zips; the default is 1 MB
 ```
 
-Then add File Browser next to it. The path has to stay exactly this, since File Browser is set up for it:
-
-```nginx
-location /act4dws5/diy-lulc/files/ {
-    proxy_pass http://127.0.0.1:8081;          # no trailing slash: File Browser wants the full path
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-```
-
-`nginx -t && nginx -s reload`.
-
-Check: `https://www.cse.iitd.ernet.in/act4dws5/diy-lulc/files/` opens a file list with no login. It is
-read-only for everyone: no upload, rename or delete.
+If you added either, `nginx -t && nginx -s reload`.
 
 ## 6. Airflow: new password, off the public site
 
@@ -201,7 +177,6 @@ campus machine, `http://<ws5 address>:8080/` asks for the login and takes the ne
 2. **Sign in with Google.** You land on "What are you working on?" within a couple of seconds.
 3. Create a small project (the IIT Delhi preset is quick) and press **Run classification**. The run
    goes through Airflow as before (with the new password) and the map paints with a legend.
-4. Under the runs, **Browse this project's files** opens its folder in File Browser.
 
 Logs are in `data/logs/corestack-lulc/app.log`.
 
@@ -218,7 +193,6 @@ Logs are in `data/logs/corestack-lulc/app.log`.
 | Run stays `queued` forever | the DAG is paused, or the scheduler is down | `airflow dags unpause corestack_lulc` |
 | Run fails with 401 from Airflow | `.env` still has the old Airflow password | step 6b, then `up -d` |
 | Run can't reach Airflow at all | `AIRFLOW_API_BASE` was the public URL that's now gone | step 6a |
-| `files/` page is blank or 404 | nginx path differs from `/act4dws5/diy-lulc/files/` | step 5, exactly that path |
 | Google says the origin isn't allowed | the site moved to another host | send me the URL and I'll add it on our side |
 | `.env` edits have no effect | the container wasn't recreated | `up -d`, not `restart` |
 | Page looks like the old version | browser cache | Ctrl+Shift+R |
