@@ -78,7 +78,7 @@ curl -s localhost:8000/api/tessera-sites | grep -o '"available":[a-z]*' # "avail
 docker compose -f docker-compose.hub.yml exec lulc python config.py    # EE init OK
 ```
 
-`dl2.geotessera.org` unreachable only stops Tessera training; everything else works. For the Google
+`data.source.coop` (where Tessera tiles come from) unreachable only stops Tessera training; everything else works. For the Google
 hosts it stops sign-in and maps. The message says which fix applies:
 
 - **`DNS lookup failed`**: Docker gives the container a DNS server the campus network blocks. Put the

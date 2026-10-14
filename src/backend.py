@@ -104,6 +104,8 @@ if not catalogue.INDEX_PATH.exists():
 catalogue.sync_merge_cards()        # any active merge gets a local model card, even older ones (#9)
 catalogue.sync_node_model_cards()   # every live split node gets a card so nothing trained is hidden (#9)
 catalogue.sync_ee_rf_cards()        # the two ported IndiaSAT EE-RF models get cards (#13 wk10)
+# ask EE for Alpha Earth's years off the request path, so the first user doesn't wait on it
+threading.Thread(target=config.ae_years, daemon=True).start()
 
 # The IIT Delhi strip is our home turf and the default area: IIT built-up, Sanjay Van trees + a
 # small water body, and the acacia/non-acacia crowns all sit inside this box. Order matters — the
@@ -179,7 +181,7 @@ def health(deep: bool = False):
         import requests
         reach = {}
         for host in ("www.googleapis.com", "oauth2.googleapis.com", "earthengine.googleapis.com",
-                     "dl2.geotessera.org"):
+                     "data.source.coop"):
             # the lookup on its own first: a hung DNS is the usual culprit and requests can't time it out
             try:
                 auth.with_deadline(socket.getaddrinfo, 5, host, 443)
@@ -303,10 +305,16 @@ def reset_session():
     return {"reset": True, "scheme": scheme, "cleared_examples": cleared, **_tree_payload()}
 
 
-# the inference feature source's coverage, exposed to the UI as a pick-list (#7). Alpha Earth
-# has annual mosaics; Tessera only has usable India coverage in 2024, so Detailed is locked to it.
-AE_YEARS = list(range(2017, 2025))
+# the inference feature source's coverage, exposed to the UI as a pick-list (#7). Alpha Earth's
+# years come from Earth Engine itself (config.ae_years), so a new annual release needs no code
+# change; Tessera only has usable India coverage in 2024, so Detailed is locked to it.
 TESSERA_YEARS = [2024]
+
+
+def _ae_clamp(year):
+    """A requested year pulled inside Alpha Earth's coverage."""
+    years = config.ae_years()
+    return min(max(int(year), years[0]), years[-1])
 
 
 @app.get("/api/model-families")
@@ -326,8 +334,9 @@ def inference_options():
     fit on 2024 still classifies an earlier year's features — we just sample the chosen year.
     The notes tell the user how far a ground truth is trusted across years (#3) and that Tessera
     is 2024-only but other years can be requested (#6)."""
-    return {"realistic": {"source": "alphaearth", "years": AE_YEARS, "default": 2024,
-                          "note": "Alpha Earth has annual mosaics 2017-2024. A model trained on one "
+    years = config.ae_years()
+    return {"realistic": {"source": "alphaearth", "years": years, "default": 2024,
+                          "note": f"Alpha Earth has annual mosaics {years[0]}-{years[-1]}. A model trained on one "
                                   "year still classifies nearby years; run temporal_eval.py to see "
                                   "how many years a given ground truth stays reliable."},
             "detailed": {"source": "alphaearth + tessera", "years": TESSERA_YEARS, "default": 2024,
@@ -370,7 +379,7 @@ def classify(west: float, south: float, east: float, north: float,
                                                       refinements=_refs())
         else:
             # a Tessera split is 2024-only; a non-linear AE split can use any Alpha Earth year
-            year = 2024 if tessera_live else min(max(year, AE_YEARS[0]), AE_YEARS[-1])
+            year = 2024 if tessera_live else _ae_clamp(year)
             df, cw, ch = infer.classify_bbox(bbox, n=n, year=year, model_bundle=_base_model(),
                                              refinements=_refs())
         cells = [{"lat": float(r.lat), "lon": float(r.lon), "pred": r.pred}
@@ -383,7 +392,7 @@ def classify(west: float, south: float, east: float, north: float,
                 "mode": mode, "year": year, "counts": df.pred.value_counts().to_dict(),
                 "note": note, "colors": infer.load_colors()}
 
-    year = min(max(year, AE_YEARS[0]), AE_YEARS[-1])  # clamp to Alpha Earth's coverage
+    year = _ae_clamp(year)  # clamp to Alpha Earth's coverage
     tile_url, counts = infer.classify_bbox_tiles(bbox, year=year, model_bundle=_base_model(),
                                                  refinements=_refs())
     return {"render": "tiles", "tile_url": tile_url, "bounds": [west, south, east, north],
@@ -395,7 +404,7 @@ def classify_geotiff(west: float, south: float, east: float, north: float, year:
     """A downloadable GeoTIFF of the classified bbox (#24): one band of integer class codes at 10 m,
     with the code->class legend. EE builds it server-side; we return the short-lived download URL.
     Bounded to the on-screen box (getDownloadURL is size-capped)."""
-    year = min(max(year, AE_YEARS[0]), AE_YEARS[-1])
+    year = _ae_clamp(year)
     guard = aoi.check((west, south, east, north), "geotiff")   # #3: getDownloadURL is size-capped
     if not guard["ok"]:
         raise HTTPException(400, guard["reason"])
@@ -503,7 +512,7 @@ def _run_export_ws(west=None, south=None, east=None, north=None, roi_asset=None,
         yr = int(str(end_year or start_year or year).strip().strip('"').strip("'"))
     except Exception:
         yr = 2024
-    yr = min(max(yr, AE_YEARS[0]), AE_YEARS[-1])
+    yr = _ae_clamp(yr)
     if isinstance(base_scheme, str):
         base_scheme = base_scheme.strip().strip('"').strip("'") or None
 
@@ -873,7 +882,7 @@ def classify_farmshrub(west: float, south: float, east: float, north: float, yea
     guard = aoi.check(bbox, "tiles")
     if not guard["ok"]:
         raise HTTPException(400, guard["reason"])
-    year = min(max(year, AE_YEARS[0]), AE_YEARS[-1])
+    year = _ae_clamp(year)
     try:
         if composite:
             tile_url, counts, classes = ee_rf.classify_composited(bbox, "farmshrub", year=year)
@@ -901,7 +910,7 @@ def segment(west: float, south: float, east: float, north: float,
     guard = aoi.check(bbox, "tiles")
     if not guard["ok"]:
         raise HTTPException(400, guard["reason"])
-    year = min(max(year, AE_YEARS[0]), AE_YEARS[-1])
+    year = _ae_clamp(year)
     min_area = config.SEGMENT_MIN_AREA_HA if min_area_ha is None else max(0.0, min_area_ha)
     try:
         fc, summary = infer.segment_class(bbox, year=year, cls=cls, min_area_ha=min_area,
@@ -1193,10 +1202,11 @@ def _check_train_options(op: RetrainIn, project=None):
         raise HTTPException(400, f"{op.algo} runs on Tessera features only; pick a linear model or "
                                  "Random Forest for Alpha Earth")
     years = op.years or []
-    bad = [y for y in years if y not in AE_YEARS]
+    ae = config.ae_years()
+    bad = [y for y in years if y not in ae]
     if bad:
         raise HTTPException(400, f"no embeddings for {', '.join(map(str, bad))}: Alpha Earth covers "
-                                 f"{AE_YEARS[0]} to {AE_YEARS[-1]}")
+                                 f"{ae[0]} to {ae[-1]}")
     if op.embedding == "tessera":
         if not _has_tessera():
             raise HTTPException(400, "Tessera isn't installed on this server; use Alpha Earth")
@@ -1822,7 +1832,7 @@ def create_project(body: ProjectIn, request: Request):
     _check_bbox(body.bbox)
     if body.base_scheme not in ("indiasat", "worldcover"):
         raise HTTPException(400, "base must be indiasat or worldcover")
-    year = min(max(int(body.year), AE_YEARS[0]), AE_YEARS[-1])
+    year = _ae_clamp(int(body.year))
     name = body.name.strip() or "Untitled project"
     with db.Session() as s:
         p = db.Project(owner=user, name=name, bbox=list(body.bbox), year=year,
@@ -1864,7 +1874,7 @@ def patch_project(pid: str, body: ProjectPatch, request: Request):
         if body.is_public is not None:
             p.is_public = body.is_public
         if body.year is not None:
-            p.year = min(max(int(body.year), AE_YEARS[0]), AE_YEARS[-1])
+            p.year = _ae_clamp(int(body.year))
         if body.bbox is not None:
             # Susmit's dataset lock: once a project has run, its area is part of what the runs mean;
             # a different area is a different project
@@ -1909,7 +1919,7 @@ def _new_project_row(user, name, bbox, year, base):
         raise HTTPException(400, f"unknown base scheme {base!r}")
     with db.Session() as s:
         p = db.Project(owner=user, name=(name or "Imported project")[:120], bbox=list(bbox),
-                       year=min(max(int(year or 2024), AE_YEARS[0]), AE_YEARS[-1]), base_scheme=base)
+                       year=_ae_clamp(int(year or 2024)), base_scheme=base)
         s.add(p)
         s.commit()
     projects.create_folder(p.id)
