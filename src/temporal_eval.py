@@ -38,7 +38,6 @@ import hierarchy
 import sampling
 
 AE_COLS = [f"ae_{i:03d}" for i in range(64)]
-AE_YEARS = list(range(2017, 2025))            # Alpha Earth annual coverage
 REFINE_DIR = config.project_path("data/refine")
 
 
@@ -106,8 +105,10 @@ def multiyear_eval(sample_fn, train_years, eval_years, test_size=0.25, seed=0, s
     return rows
 
 
-def temporal_matrix(sample_fn, years=AE_YEARS, test_size=0.25, seed=0):
-    """Finer view: accuracy[a][b] for a model trained at single year a, tested at single year b."""
+def temporal_matrix(sample_fn, years=None, test_size=0.25, seed=0):
+    """Finer view: accuracy[a][b] for a model trained at single year a, tested at single year b.
+    Every Alpha Earth year by default, as Earth Engine reports them."""
+    years = years or config.ae_years()
     frames = {y: sample_fn(y) for y in years}
     train_polys, test_polys = _partition(frames[years[0]], test_size, seed)
     acc = {a: {} for a in years}

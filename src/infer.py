@@ -688,8 +688,7 @@ def _sample_tessera(pts, year):
     g = aoi.check(box, "tessera")
     if not g["ok"]:
         raise ValueError(g["reason"])
-    tessera_tiles.prefetch(pts, year)
-    emb = np.asarray(tessera_tiles.client().sample_embeddings_at_points(pts, year=year), dtype=np.float32)
+    emb = np.asarray(tessera_tiles.sample(pts, year), dtype=np.float32)
     return emb
 
 
