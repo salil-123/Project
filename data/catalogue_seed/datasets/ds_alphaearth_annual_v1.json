@@ -1,7 +1,7 @@
 {
   "id": "ds_alphaearth_annual_v1",
-  "name": "Alpha Earth annual embeddings (64-d) \u2014 model input features",
-  "description": "The feature space LULC models run on: Google Satellite Embedding V1 annual, sampled server-side at 10 m. No labels \u2014 this is the inference input.",
+  "name": "Alpha Earth annual embeddings (64-d): model input features",
+  "description": "The feature space LULC models run on: Google Satellite Embedding V1 annual, sampled server-side at 10 m. No labels: this is the inference input.",
   "type": "inference",
   "kind": "ee_asset",
   "definition": {

@@ -99,6 +99,8 @@ zoo_git.init_local()
 # a fresh clone/deploy has no cards (data/catalogue is gitignored) — pull them in from the repo's
 # shipped seed so the zoo shows the full set, not just what backfill can regenerate locally.
 catalogue.seed_from_bundled()
+# cards written before the no-em-dash rule keep their old text on a box; tidy them once, as housekeeping
+zoo_git.commit_housekeeping(catalogue.tidy_dashes(), "card text: no em dashes")
 if not catalogue.INDEX_PATH.exists():
     catalogue.backfill()
 catalogue.sync_merge_cards()        # any active merge gets a local model card, even older ones (#9)

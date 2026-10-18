@@ -41,7 +41,7 @@
     }
   },
   "metrics": {
-    "note": "rule-based split; no held-out metric \u2014 behaviour is the expression itself"
+    "note": "rule-based split; no held-out metric: behaviour is the expression itself"
   },
   "artifact": {
     "path": "data/hierarchy.json",
@@ -71,7 +71,7 @@
     "expression": "if ndvi_annual > 0.3 \u2192 dense_veg ; else \u2192 sparse_veg"
   },
   "about": {
-    "description": "Splits greenery by rule \u2014 if ndvi_annual > 0.3 \u2192 dense_veg ; else \u2192 sparse_veg.",
+    "description": "Splits greenery by rule: if ndvi_annual > 0.3 \u2192 dense_veg ; else \u2192 sparse_veg.",
     "intended_use": "An interpretable, training-free split over vegetation/water/terrain indices, evaluated live in Earth Engine.",
     "limitations": "Only as good as the chosen thresholds; no learned calibration.",
     "evidence": ""

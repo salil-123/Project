@@ -1413,7 +1413,7 @@ function modelTile(m) {
   const thin = m.min_test_px != null && m.min_test_px < THIN_TEST_PX ? ` <span class="thin" title="the rarest class had only ${m.min_test_px} held-out pixels">· thin test (${m.min_test_px} px)</span>` : "";
   const acc = m.accuracy != null ? `accuracy ${m.accuracy.toFixed(2)}${thin}` : "no score";
   // cheap apply-after hint from the index row (full WorldCover hint shows in the detail pane)
-  const after = (m.topology && m.topology !== "base_pooled" && m.node) ? ` · after ${m.node}` : "";
+  const after = (m.topology && m.topology !== "base_pooled" && m.apply_after) ? ` · after ${m.apply_after}` : "";
   const div = document.createElement("div");
   div.className = "zoo-card" + (m.id === zooSelected ? " sel" : "");
   div.innerHTML = `<div class="zc-top"><h4>${pubCheckbox(m.id)}${m.name || m.id}</h4>${made}${arch}${pub}</div>
@@ -1858,7 +1858,7 @@ async function publishCard(id) {
     const r = await postJSON(api("/api/publish"), { card_ids: [id], contributor: contributor() });
     const d = await r.json();
     setStatus(d.pushed ? `Published "${id}" to the zoo.`
-              : (d.committed ? `Committed "${id}" locally (${d.note}).` : d.note || "Nothing to publish."),
+              : (d.committed ? `Published "${id}" (${d.note}).` : d.note || "Nothing to publish."),
               r.ok ? "ok" : "err");
     await loadZooFull();
     await showCardFull(id);

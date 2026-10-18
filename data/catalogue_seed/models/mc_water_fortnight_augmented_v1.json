@@ -91,7 +91,7 @@
   },
   "about": {
     "description": "Water vs non-water for a single fortnight, from raw Sentinel-1 SAR + Sentinel-2 optical composited around a target date.",
-    "intended_use": "Which pixels held water on a given fortnight (e.g. 14 Jul) \u2014 the intra-annual water-seasonality signal the annual embedding can't give.",
+    "intended_use": "Which pixels held water on a given fortnight (e.g. 14 Jul): the intra-annual water-seasonality signal the annual embedding can't give.",
     "limitations": "One fortnight at a time; needs a cloud-lite S2 scene in the window; linear model, so it trades some accuracy for band-math serving.",
     "evidence": "Small vs large water bodies (deployed S1+S2 model, week11/water_eval.py, threshold 1.4 ha): small water P 0.85/R 0.67/F1 0.75, large P 1.00/R 0.97/F1 0.99; dryland false-positive (spurious water) rate 0.02. | EE GT (week11/water_gt_eval.py, 2024): with a 2-fortnight persistence filter, GT_BINARY water P 0.96/R 0.41/F1 0.58, spurious (non-water called water) 0.02; small-water recall 0.11 vs large 0.77. Raising the threshold cuts spurious detections at some cost to small/seasonal recall."
   },
