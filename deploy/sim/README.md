@@ -1,13 +1,13 @@
 # The tower, simulated on one laptop
 
 Before an update goes to the tower, run it here first. It's the same image the tower runs
-(`salil2003/corestack-lulc:1.0.0`) with this checkout mounted, nginx in front at the same sub-path, and
+(`salil2003/corestack-lulc:1.0.1`) with this checkout mounted, nginx in front at the same sub-path, and
 Airflow driving a DAG that calls the app the way the tower's STACD DAG does. No domain or paid service
 is needed.
 
 | Piece | Here | On the tower |
 |---|---|---|
-| App | image `1.0.0`, code mounted, `.env` from the repo root | the same |
+| App | image `1.0.1`, code mounted, `.env` from the repo root | the same |
 | Front proxy | nginx at `/act4dws5/diy-lulc/`, 60 s timeout | nginx behind the CSE proxy |
 | Airflow | Airflow 2.10 with `dags/corestack_lulc_stacd.py`, which forwards the run conf to `/api/export-asset` | the STACD DAG, same call |
 | Earth Engine | your own login (`~/.config/earthengine`), exports go to `corestack_lulc_sim` | Kapil sir's key |

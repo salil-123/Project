@@ -103,8 +103,8 @@ docker compose -f docker-compose.hub.yml up -d
 docker compose -f docker-compose.hub.yml logs --tail 40 lulc
 ```
 
-The compose file pins `salil2003/corestack-lulc:1.0.0`, the build that has the sign-in and Postgres
-drivers and scikit-learn 1.8.0.
+The compose file pins `salil2003/corestack-lulc:1.0.1`, the build with the sign-in and Postgres
+drivers, scikit-learn 1.8.0 and Tessera (geotessera). `1.0.0` now points at the same build.
 
 **Check** (on the tower):
 

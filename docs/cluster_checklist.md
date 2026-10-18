@@ -7,7 +7,7 @@ Service: **corestack-lulc** · against
 |---|------|--------|-------|
 | 1 | Mount `code/`, `models/`, `data/`; output in `data/` | **done** | `docker-compose*.yml`, `models/README.md`, `config.MODELS_DIR` |
 | 2 | `AIRFLOW_API_BASE` set → Airflow, empty → local | **done** (was already) | `config.py`, `src/airflow_client.py`, `/api/dag/*` |
-| 3 | Image pushed to GHCR or Docker Hub, version-tagged | **done** | `salil2003/corestack-lulc:1.0.0` (+ `:latest`) on Docker Hub, `VERSION` |
+| 3 | Image pushed to GHCR or Docker Hub, version-tagged | **done** | `salil2003/corestack-lulc:1.0.1` (+ `:latest`) on Docker Hub, `VERSION` |
 | 4 | Google SSO | **built** (week 18); our own OAuth client made 3 Oct, needs its id on the tower | `src/auth.py`, the `Gate` middleware in `src/backend.py`, `GOOGLE_CLIENT_ID` |
 | 5 | Logs under `data/logs/<app>/`; `LOG_LEVEL` | **done** | `src/logging_setup.py` |
 | 6 | Frontend + backend in one Docker | **done** (was already) | one compose service, backend serves `src/static/` |
