@@ -8,7 +8,7 @@ Registers in STACD as the algorithm **`CoreStack_LULC`** (separate from CoreStac
 ## 1. Get the code + the image
 ```bash
 git clone https://github.com/salil-123/Project.git corestack-lulc && cd corestack-lulc
-docker pull salil2003/corestack-lulc:latest      # deps only; the code is what you just cloned
+docker pull salil2003/corestack-lulc:1.0.1      # deps only; the code is what you just cloned
 cp deploy/.env.example .env                       # then fill EE_PROJECT / EE_ASSET_ROOT / STAC_ASSET_BASE
 ```
 The code is bind-mounted into the container, so later updates are just `git pull` + `docker restart`.
@@ -40,7 +40,7 @@ docker run -d --name custom_lulc -p 8000:8000 \
   -e EE_ASSET_ROOT=projects/modern-mystery-398416/assets/custom_lulc \
   -e EE_SERVICE_ACCOUNT_KEY=/app/deploy/ee-key.json \
   -v /path/to/ee-key.json:/app/deploy/ee-key.json:ro \
-  salil2003/corestack-lulc:latest
+  salil2003/corestack-lulc:1.0.1
 ```
 
 **Option B — your own project + token:**
@@ -50,7 +50,7 @@ docker run -d --name custom_lulc -p 8000:8000 \
   -e EE_PROJECT=<your-gee-project> \
   -e EE_ASSET_ROOT=projects/<your-gee-project>/assets/custom_lulc \
   -v ~/.config/earthengine:/root/.config/earthengine:ro \
-  salil2003/corestack-lulc:latest
+  salil2003/corestack-lulc:1.0.1
 ```
 First time only: make sure the asset folder exists (Code Editor -> Assets, or the app auto-creates it
 under an existing project root). **Update the app later:** `git pull && docker restart custom_lulc`.

@@ -215,7 +215,7 @@ Dependencies changed (`deploy/requirements-docker.txt` touched). On the build bo
 
 ```bash
 # bump VERSION first, then
-deploy/build_and_push.sh          # pushes :latest AND :$(cat VERSION)
+deploy/build_and_push.sh          # pushes :$(cat VERSION), the only tag
 ```
 
 Then on the tower, change the tag in `docker-compose.hub.yml` to the new version, commit it, and

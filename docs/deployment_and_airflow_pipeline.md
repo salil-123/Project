@@ -5,7 +5,7 @@ Airflow REST API is invoked, and the exact end-to-end pipeline from a click in t
 exported by the DAG. Written so another team can copy the same pattern for their own algorithm.
 
 Concrete coordinates for this project:
-- Repo: `github.com/salil-123/Project` · image: `salil2003/corestack-lulc:latest` · port `8000`
+- Repo: `github.com/salil-123/Project` · image: `salil2003/corestack-lulc:1.0.1` · port `8000`
 - Backend: FastAPI in `src/backend.py` (served by `uvicorn`), frontend in `src/static/`
 - Airflow DAG id: `corestack_lulc` · backend↔Airflow glue: `src/airflow_client.py`
 - The one endpoint the DAG calls back into: `POST /api/export-asset`
@@ -20,7 +20,7 @@ application code and no data.** Code and data are **bind-mounted from the host c
 ### The three layers
 | Layer | Where it lives | How it gets there |
 |-------|----------------|-------------------|
-| **Dependencies** | the image `salil2003/corestack-lulc:latest` | `docker pull` (built from `deploy/requirements-docker.txt`) |
+| **Dependencies** | the image `salil2003/corestack-lulc:1.0.1` | `docker pull` (built from `deploy/requirements-docker.txt`) |
 | **Code** | `src/`, `config.py` on the host checkout | `git clone` / `git pull`, mounted at `/app` |
 | **Data** | `data/` on the host checkout (models `.joblib`, `hierarchy.json`, op-log, examples) | ships in the repo + written back at runtime, mounted at `/app/data` |
 
@@ -42,7 +42,7 @@ has no code to serve — that's intentional.
 ```yaml
 services:
   lulc:
-    image: salil2003/corestack-lulc:latest   # deps only, pulled from Docker Hub
+    image: salil2003/corestack-lulc:1.0.1   # deps only, pulled from Docker Hub
     pull_policy: always
     ports: ["8000:8000"]
     env_file: [.env]                          # all host-specific config (see §2)

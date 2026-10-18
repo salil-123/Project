@@ -4,7 +4,7 @@ Everything Saharsh needs to deploy our model into the STACD / CoreStack Airflow 
 one open integration decision.
 
 ## Links (both ready + public)
-- **Docker image:** `docker pull salil2003/corestack-lulc:latest` — public, 1.52 GB, boots healthy
+- **Docker image:** `docker pull salil2003/corestack-lulc:1.0.1` — public, 1.52 GB, boots healthy
   (`/api/health` → `{"ok": true}`).
 - **Source (Dockerfile + deploy + code):** https://github.com/salil-123/Project (branch `week10-lulc-models`).
 - **STACD provenance:** the app already emits a STAC 1.1.0 Item + DAG at `GET /api/stacd` (cross-checked

@@ -3,7 +3,7 @@
 #   docker compose restart            # after a `git pull` / code edit — no rebuild needed
 services:
   lulc:
-    image: salil2003/corestack-lulc:latest
+    image: salil2003/corestack-lulc:1.0.1
     build: .                          # builds the DEPENDENCIES-only image (see Dockerfile)
     ports:
       - "8000:8000"
