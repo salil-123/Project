@@ -37,7 +37,7 @@ Consequences:
 
 - **Code:** a git clone of `https://github.com/salil-123/Project.git`, **or** the `corestack-lulc-deploy.zip`
   package (no GitHub needed).
-- **Image:** `salil2003/corestack-lulc:1.0.0`, also tagged `:latest` (public on Docker Hub, dependencies-only, ~1.5 GB). 1.0.0 is the first build with sign-in and the database drivers.
+- **Image:** `salil2003/corestack-lulc:1.0.1`, also tagged `:latest` (public on Docker Hub, dependencies-only). 1.0.1 adds Tessera to the sign-in and database drivers 1.0.0 brought. Since 18 Oct `1.0.0` points at this same build too, so an older compose file pulls it as well.
 - **Port:** `8000`
 
 ---
