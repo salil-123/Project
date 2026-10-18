@@ -177,6 +177,7 @@ def rebuild_index():
             "kind": "model" if is_model else "dataset",
             "type": card.get("type"),                          # dataset: training|inference
             "node": card.get("node"),
+            "apply_after": split_class(card) if is_model else None,
             "topology": card.get("topology"),
             "classes": ([p["class"] for p in card.get("produces", [])] if is_model
                         else [c["class"] for c in card.get("classes", [])]),
@@ -259,6 +260,24 @@ def seed_from_bundled():
     return copied
 
 
+def tidy_dashes():
+    """No em dashes in what a visitor reads. Cards written before that rule keep them on a box (the
+    seed never overwrites a card), so swap them here: ': ' mid-text, nothing else changes. Returns
+    the files it rewrote, so the zoo can commit them as housekeeping rather than show them unpublished."""
+    fixed = []
+    for d in (MODELS_DIR, DATASETS_DIR):
+        for f in d.glob("*.json") if d.exists() else []:
+            card = json.loads(f.read_text(encoding="utf-8"))
+            text = json.dumps(card, ensure_ascii=False)
+            clean = json.loads(text.replace(" \u2014 ", ": ").replace("\u2014", ","))
+            if clean != card:
+                json.dump(clean, open(f, "w"), indent=2)
+                fixed.append(f)
+    if fixed:
+        rebuild_index()
+    return fixed
+
+
 def std_classes_for_card(card):
     """Each produced class resolved to its standard-LULC name, if the uploader mapped it (#14).
 
@@ -331,17 +350,25 @@ def recommend_placement(card):
     # hint off its suggested parent_class instead. It's a *suggestion* only — the user can attach it to
     # any node (#5 wk11); we just say where it normally goes.
     if card.get("topology") == "ee_rf":
-        parent = card.get("parent_class") or "greenery"
+        parent = split_class(card)
         tree = hierarchy.load()
         pname = tree[parent]["name"] if parent in tree else parent
         return {"apply_after": parent, "apply_after_name": pname,
                 "worldcover": _worldcover_for_class(parent),
                 "note": f"Normally refines {pname}, but you can apply it to any node."}
-    node = card.get("node")
+    node = split_class(card)
     tree = hierarchy.load()
     node_name = tree[node]["name"] if node in tree else node
     return {"apply_after": node, "apply_after_name": node_name,
             "worldcover": _worldcover_for_class(node)}
+
+
+def split_class(card):
+    """The class a model splits: its node, except the models whose node is their own id (the IndiaSAT
+    EE-RF ones, the per-fortnight water model), which name the class in parent_class instead."""
+    if card.get("topology") in ("ee_rf", "flat_multiclass"):
+        return card.get("parent_class") or "greenery"
+    return card.get("node")
 
 
 def check_apply_compatible(card, target_node, tree):
@@ -501,9 +528,9 @@ def ensure_inference_dataset_card(source="alphaearth", dim=64, year=2024):
         return AE_INFERENCE_ID
     write_card({
         "id": AE_INFERENCE_ID,
-        "name": "Alpha Earth annual embeddings (64-d) — model input features",
+        "name": "Alpha Earth annual embeddings (64-d): model input features",
         "description": "The feature space LULC models run on: Google Satellite Embedding V1 "
-                       "annual, sampled server-side at 10 m. No labels — this is the inference input.",
+                       "annual, sampled server-side at 10 m. No labels; this is the inference input.",
         "type": "inference",
         "kind": "ee_asset",
         "definition": {"type": "ee_asset", "asset": "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL",
@@ -525,10 +552,10 @@ def _ensure_tessera_inference_card(year=2024):
         return TE_INFERENCE_ID
     write_card({
         "id": TE_INFERENCE_ID,
-        "name": "Tessera annual embeddings (128-d) — model input features",
+        "name": "Tessera annual embeddings (128-d): model input features",
         "description": "The 128-d Tessera embedding, downloaded as 0.1 degree tiles and sampled at "
                        "10 m. Usable for 2024 over India; a local feature source, not served in EE. "
-                       "No labels — this is an inference input.",
+                       "No labels; this is an inference input.",
         "type": "inference",
         "kind": "embedding_table",
         "definition": {"type": "embedding_table", "source": "geotessera",
@@ -617,7 +644,7 @@ def mint_model_card(node, bundle, training_ds_ids, extent_bbox=None, metrics=Non
     is_root = node == hierarchy.ROOT
     classes = bundle.get("classes") or []
     years = bundle.get("years") or []
-    name = ("Core Stack base map — 4-class LULC (India)" if is_root
+    name = ("Core Stack base map: 4-class LULC (India)" if is_root
             else f"{tree[node]['name']} split ({' / '.join(classes)})")
     # a multi-year split (#3) gets its training years in the name so it's distinct from the
     # single-year model at the same node (both produce the same classes)
@@ -684,7 +711,7 @@ def mint_worldcover_base_card():
     ae_id = ensure_inference_dataset_card()
     write_card({
         "id": "mc_worldcover_base_v1",
-        "name": "WorldCover base — 7-class LULC (India)",
+        "name": "WorldCover base: 7-class LULC (India)",
         "node": hierarchy.ROOT,
         "parent_class": None,
         "topology": "base_pooled",
@@ -791,7 +818,7 @@ def mint_rule_card(node, rule):
         "lineage": {"base_model": None, "derived_from": None},
         "rule": {"clauses": rule.get("clauses"), "default": rule.get("default"),
                  "variables": used, "expression": human},
-        "about": {"description": f"Splits {node} by rule — {human}.",
+        "about": {"description": f"Splits {node} by rule: {human}.",
                   "intended_use": "An interpretable, training-free split over vegetation/water/"
                                   "terrain indices, evaluated live in Earth Engine.",
                   "limitations": "Only as good as the chosen thresholds; no learned calibration.",
@@ -834,7 +861,7 @@ def mint_water_card(bundle, extent_bbox=None, metrics=None, card_id="mc_water_fo
         "lineage": {"base_model": None, "derived_from": ds if get_card(ds) else None},
         "about": {"description": "Water vs non-water for a single fortnight, from raw Sentinel-1 SAR "
                                  "+ Sentinel-2 optical composited around a target date.",
-                  "intended_use": "Which pixels held water on a given fortnight (e.g. 14 Jul) — the "
+                  "intended_use": "Which pixels held water on a given fortnight (e.g. 14 Jul): the "
                                   "intra-annual water-seasonality signal the annual embedding can't give.",
                   "limitations": "One fortnight at a time; needs a cloud-lite S2 scene in the window; "
                                  "linear model, so it trades some accuracy for band-math serving.",
@@ -975,7 +1002,7 @@ def archive_prev_card(node, prev_card, archived_path):
     base_name = (prev_card.get("name") or f"{node} split").split(" split")[0]
     card = copy.deepcopy(prev_card)
     card["id"] = f"mc_{node}_prev{k}_v1"
-    card["name"] = f"{base_name} split ({' / '.join(old_classes)}) — superseded"
+    card["name"] = f"{base_name} split ({' / '.join(old_classes)}), superseded"
     card["artifact"] = {"path": archived_path, "format": "sklearn-joblib"}
     card["about"] = {**(prev_card.get("about") or {}),
                      "description": f"A previous {node} split, kept after a newer model replaced it so it isn't lost.",

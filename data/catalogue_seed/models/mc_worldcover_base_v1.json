@@ -1,6 +1,6 @@
 {
   "id": "mc_worldcover_base_v1",
-  "name": "WorldCover base \u2014 7-class LULC (India)",
+  "name": "WorldCover base: 7-class LULC (India)",
   "node": "root",
   "parent_class": null,
   "topology": "base_pooled",

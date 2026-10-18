@@ -1,7 +1,7 @@
 {
   "id": "ds_tessera_annual_v1",
-  "name": "Tessera annual embeddings (128-d) \u2014 model input features",
-  "description": "The 128-d Tessera embedding, downloaded as 0.1 degree tiles and sampled at 10 m. Usable for 2024 over India; a local feature source, not served in EE. No labels \u2014 this is an inference input.",
+  "name": "Tessera annual embeddings (128-d): model input features",
+  "description": "The 128-d Tessera embedding, downloaded as 0.1 degree tiles and sampled at 10 m. Usable for 2024 over India; a local feature source, not served in EE. No labels: this is an inference input.",
   "type": "inference",
   "kind": "embedding_table",
   "definition": {

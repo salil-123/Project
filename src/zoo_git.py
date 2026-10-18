@@ -40,7 +40,10 @@ def _git(*args, check=False):
 
 
 def remote_url():
-    return os.getenv("ZOO_REMOTE")
+    # unset, or still the example's `<you>` placeholder, means the zoo lives only on this server's data
+    # mount: publish commits there and pushes nowhere
+    url = (os.getenv("ZOO_REMOTE") or "").strip()
+    return url if url and "<" not in url else None
 
 
 def is_repo():
@@ -61,9 +64,11 @@ def init_local():
         _git("config", "user.name", "corestack-zoo")
     (REPO / ".gitignore").write_text(GITIGNORE)
     url = remote_url()
+    code, origin = _git("remote", "get-url", "origin")
     if url:                                      # point 'origin' at the zoo (reset if changed)
-        code, _ = _git("remote", "get-url", "origin")
         _git("remote", "set-url", "origin", url) if code == 0 else _git("remote", "add", "origin", url)
+    elif code == 0 and "<" in origin:            # an earlier start wired up the placeholder; drop it
+        _git("remote", "remove", "origin")
     return {"repo": str(REPO), "remote": url, "initialized": True}
 
 
@@ -102,10 +107,20 @@ def publish(card_ids=None, message=None, contributor=None, dataset_links=None):
 
     if not remote_url():
         return {"committed": True, "pushed": False, "published_ids": published,
-                "note": "committed locally (no ZOO_REMOTE configured)"}
+                "note": "saved in this server's zoo"}
     code, out = _git("push", "-u", "origin", "main")
     return {"committed": True, "pushed": code == 0, "published_ids": published,
             "note": out if code else "pushed to origin/main"}
+
+
+def commit_housekeeping(paths, message):
+    """Commit a tidy-up the server made itself (no publish, no push), so the zoo doesn't list those
+    cards as unpublished changes. Paths outside the repo, or no repo yet, and it does nothing."""
+    rel = [str(Path(p).relative_to(REPO)) for p in paths if Path(p).is_relative_to(REPO)]
+    if not rel or not is_repo():
+        return False
+    _git("add", "index.json", *rel)
+    return _git("commit", "-m", message)[0] == 0
 
 
 # GitHub hard-rejects any file over 100 MB, and one 553 MB biomass joblib once jammed every publish for

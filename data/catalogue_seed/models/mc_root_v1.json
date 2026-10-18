@@ -1,6 +1,6 @@
 {
   "id": "mc_root_v1",
-  "name": "Core Stack base map \u2014 4-class LULC (India)",
+  "name": "Core Stack base map: 4-class LULC (India)",
   "node": "root",
   "parent_class": null,
   "topology": "base_pooled",
@@ -80,7 +80,7 @@
     "derived_from": null
   },
   "about": {
-    "description": "Core Stack base map \u2014 4-class LULC (India)",
+    "description": "Core Stack base map: 4-class LULC (India)",
     "intended_use": "Coarse 4-class LULC across India at 10 m.",
     "limitations": "Linear model; rare-class recall limited.",
     "evidence": ""
