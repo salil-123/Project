@@ -10,7 +10,7 @@ Susmit's plan and the `drone_docker` reference structure.
 | 2 | Model weights → Drive | **Not needed right now.** Every deployed LULC model is a *linear* `.joblib` (largest tracked = **36 KB**; they replay as EE band math), so none approach GitHub's 100 MB limit — they ship in git + the image. The only >100 MB model (biomass RF, 528 MB) was decoupled in wk11 and is gitignored. The Drive hook is ready for a large *future* model: upload it, register its Drive file-id in `deploy/fetch_models.sh`, and run it on a fresh box. |
 | 3 | Reset path from localhost | **Done.** No hardcoded host anywhere in the frontend or STACD output (all relative). Behind nginx at a sub-path, see the nginx note below. |
 | 4 | Airflow for heavy compute | Optional. Our classify path is server-side Earth Engine (light), so Airflow isn't required to run. Scaffold + hook in `airflow/dags/` for when a batch/STACD pipeline is wanted. |
-| 5 | Dockerise → push to hub.docker.com, pull from there | **Done.** Image published: `salil2003/corestack-lulc:latest`. Pull-and-run with `docker-compose.hub.yml`. |
+| 5 | Dockerise → push to hub.docker.com, pull from there | **Done.** Image published: `salil2003/corestack-lulc:1.0.1`. Pull-and-run with `docker-compose.hub.yml`. |
 
 Second list: **(1) dockerise** ✓ · **(2) GitHub** ✓ (`origin/week10-lulc-models`) · **(3) nginx path/name
 fixes** — see below.
@@ -41,7 +41,7 @@ curl http://localhost:8000/api/health      # -> {"ok": true}
 ## Build + push a new image (dev machine)
 ```bash
 bash deploy/build_and_push.sh        # or: powershell -File deploy\build_and_push.ps1
-# reads docker_username / docker_pat from .env, builds, pushes salil2003/corestack-lulc:latest
+# reads docker_username / docker_pat from .env, builds, pushes salil2003/corestack-lulc:$(cat VERSION)
 ```
 
 ## Earth Engine auth on a headless server

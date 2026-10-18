@@ -10,19 +10,17 @@ set -a; source <(tr -d '\r' < .env); set +a
 : "${docker_username:?set docker_username in .env}"
 : "${docker_pat:?set docker_pat in .env}"
 
-IMAGE="${docker_username}/corestack-lulc:latest"
-# checklist #3 wants a version tag too, so a host can pin what it pulls
-VERSIONED="${docker_username}/corestack-lulc:$(tr -d '[:space:]' < VERSION)"
+# one tag, the VERSION (checklist #3): no :latest, so a host always pins exactly what it pulls
+IMAGE="${docker_username}/corestack-lulc:$(tr -d '[:space:]' < VERSION)"
 
 echo "==> docker login as ${docker_username}"
 echo "${docker_pat}" | docker login -u "${docker_username}" --password-stdin
 
 echo "==> building ${IMAGE}"
-docker build -t "${IMAGE}" -t "${VERSIONED}" .
+docker build -t "${IMAGE}" .
 
 echo "==> pushing ${IMAGE}"
 docker push "${IMAGE}"
-docker push "${VERSIONED}"
 
 docker logout >/dev/null 2>&1 || true
-echo "==> done: ${IMAGE} and ${VERSIONED}"
+echo "==> done: ${IMAGE}"

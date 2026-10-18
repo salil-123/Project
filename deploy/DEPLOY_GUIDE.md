@@ -37,7 +37,7 @@ Consequences:
 
 - **Code:** a git clone of `https://github.com/salil-123/Project.git`, **or** the `corestack-lulc-deploy.zip`
   package (no GitHub needed).
-- **Image:** `salil2003/corestack-lulc:1.0.1`, also tagged `:latest` (public on Docker Hub, dependencies-only). 1.0.1 adds Tessera to the sign-in and database drivers 1.0.0 brought. Since 18 Oct `1.0.0` points at this same build too, so an older compose file pulls it as well.
+- **Image:** `salil2003/corestack-lulc:1.0.1` (public on Docker Hub, dependencies-only). 1.0.1 adds Tessera to the sign-in and database drivers 1.0.0 brought. Since 18 Oct `1.0.0` points at this same build too, so an older compose file pulls it as well.
 - **Port:** `8000`
 
 ---
@@ -315,8 +315,8 @@ image is dependencies-only, so it needs one rebuild; after that it's back to `gi
 
 ```bash
 # on the build box (WSL docker here), from the repo root
-docker build -t salil2003/corestack-lulc:latest -t salil2003/corestack-lulc:$(cat VERSION) .
-docker push salil2003/corestack-lulc:latest && docker push salil2003/corestack-lulc:$(cat VERSION)
+docker build -t salil2003/corestack-lulc:$(cat VERSION) .
+docker push salil2003/corestack-lulc:$(cat VERSION)
 # or: deploy/build_and_push.sh   (reads docker_username / docker_pat from .env)
 # then on the tower
 docker compose -f docker-compose.hub.yml pull && docker compose -f docker-compose.hub.yml up -d
