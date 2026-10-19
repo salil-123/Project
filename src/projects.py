@@ -44,6 +44,10 @@ def delete_folder(pid: str) -> None:
     shutil.rmtree(folder(pid), ignore_errors=True)
 
 
+def delete_run(pid: str, n: int) -> None:
+    shutil.rmtree(run_dir(pid, n), ignore_errors=True)
+
+
 def _copy_scheme(src: Path, dst: Path) -> None:
     """The scheme files + weights, which is everything a classification needs."""
     dst.mkdir(parents=True, exist_ok=True)

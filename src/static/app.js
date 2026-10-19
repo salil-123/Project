@@ -721,7 +721,8 @@ async function init() {
 
 // a project of yours, gone for good after one confirm: its scheme, examples, weights and runs
 async function deleteProject(p) {
-  const runs = p.current_run ? ` and its ${p.current_run} run${p.current_run > 1 ? "s" : ""}` : "";
+  const nr = (p.runs || []).length;
+  const runs = nr ? ` and its ${nr} run${nr > 1 ? "s" : ""}` : "";
   if (!await uiConfirm(`Delete "${p.name}"?\n\nIts classes, examples, trained models${runs} are deleted for good.`,
                        { okText: "Delete", danger: true })) return;
   const r = await fetch(api(`/api/projects/${p.id}`), { method: "DELETE" });
@@ -741,7 +742,7 @@ async function showStart() {
       ${pub ? "" : `<button class="prow-del" title="Delete this project">Delete</button>`}
       <div class="prow-name">${esc(p.name)}${p.is_public && !pub ? ' <span class="pill pub">public</span>' : ""}</div>
       <div class="prow-meta">${pub ? esc(p.owner_name) + " · " : ""}${p.year} · ${p.base_scheme} ·
-        ${p.current_run ? `${p.current_run} run${p.current_run > 1 ? "s" : ""}` : "not run yet"} · ${ago(p.updated_at)}</div>
+        ${(p.runs || []).length ? `${p.runs.length} run${p.runs.length > 1 ? "s" : ""}` : "not run yet"} · ${ago(p.updated_at)}</div>
     </div>`;
   const mine = (await getJSON(api("/api/projects"))).projects || [];
   $("myProjects").innerHTML = mine.length ? mine.map((p) => row(p, false)).join("")
@@ -914,10 +915,28 @@ function renderRuns() {
   const runs = [...(PROJECT.runs || [])].reverse();
   $("runsList").innerHTML = runs.length ? runs.map((r) =>
     `<div class="run-item${RUN_META && RUN_META.run === r.run ? " sel" : ""}" data-n="${r.run}">
-       <span>${esc(r.name)}</span><span class="rmeta">${r.year} · ${ago(r.created_at)}</span></div>`).join("")
+       <span>${esc(r.name)}</span><span class="rmeta">${r.year} · ${ago(r.created_at)}</span>
+       ${PROJECT.mine ? `<button class="run-del" title="Delete this run">✕</button>` : ""}</div>`).join("")
     : `<p class="hint">No runs yet.</p>`;
-  document.querySelectorAll(".run-item").forEach((el) => el.onclick = () => showRun(Number(el.dataset.n)));
+  document.querySelectorAll(".run-item").forEach((el) => el.onclick = (e) => {
+    if (e.target.classList.contains("run-del")) return deleteRun(Number(el.dataset.n));
+    showRun(Number(el.dataset.n));
+  });
   $("dlTif").disabled = !RUN_META;
+}
+
+// one saved run gone, after a confirm; if it was the one on the map, the map clears
+async function deleteRun(n) {
+  const r0 = (PROJECT.runs || []).find((r) => r.run === n);
+  if (!await uiConfirm(`Delete ${r0 ? r0.name : "run " + n}?\n\nIts map, its saved scheme and its GeoTIFF go for good.`,
+                       { okText: "Delete", danger: true })) return;
+  const r = await fetch(api(`/api/projects/${PROJECT.id}/runs/${n}`), { method: "DELETE" });
+  const d = await readJson(r);
+  if (!r.ok) { setStatus("Error: " + errText(d, r), "err"); return; }
+  PROJECT.runs = d.runs;
+  if (RUN_META && RUN_META.run === n) { RUN_META = null; clearOverlay(); }
+  renderRuns();
+  setStatus(`Deleted ${r0 ? r0.name : "run " + n}.`, "ok");
 }
 
 // ---------------- runs: classify on purpose, keep every run ----------------

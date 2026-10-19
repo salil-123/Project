@@ -68,12 +68,20 @@ def load_softvote(path: str = SOFTVOTE_PATH):
     return joblib.load(path)
 
 
+# what a split's copy calls a class that was removed from it: those pixels stay unlabelled
+DROPPED = "__removed__"
+
+
 def load_colors():
     """Display colours for the classes actually predicted: the tree's leaves (which the
     refinement step relabels down to) plus the always-present 'other'/'nodata'."""
     colors = {"other": CLASS_COLORS["other"], "nodata": CLASS_COLORS["nodata"]}
     try:
         tree = hierarchy.load()
+        # every class, not only leaves: a split nothing resolves yet draws as its parent, in its colour
+        for cls, n in tree.items():
+            if n.get("color"):
+                colors[cls] = n["color"]
         for cls in hierarchy.leaves(tree):
             colors[cls] = tree[cls].get("color") or CLASS_COLORS.get(cls, "#999999")
     except Exception:
@@ -361,6 +369,8 @@ def _final_label(ee, bands_img, region, year, model_bundle, refinements):
     final = sub(base_children[0])
     for i, ch in enumerate(base_children[1:], start=1):
         final = final.where(base_idx.eq(i), sub(ch))
+    if DROPPED in code:
+        final = final.updateMask(final.neq(code[DROPPED]))
     return final.updateMask(base_idx.mask()), leaf_classes
 
 
