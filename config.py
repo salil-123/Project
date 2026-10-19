@@ -1,6 +1,10 @@
 """Central config + Earth Engine initialization for the Core Stack project."""
+import datetime
+import logging
 import os
 import re
+import threading
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -265,6 +269,55 @@ def ee_init():
     else:
         ee.Initialize(project=EE_PROJECT)
     return ee
+
+
+AE_COLLECTION = "GOOGLE/SATELLITE_EMBEDDING/V1/ANNUAL"
+AE_FIRST_YEAR = 2017
+AE_KNOWN_YEARS = list(range(2017, 2025))     # what we last saw, used only if EE can't be asked
+
+
+_ae_years = None                 # filled once Earth Engine has answered
+_ae_asked = threading.Event()    # set after the first attempt, whichever way it went
+_ae_lock = threading.Lock()
+_ae_retry_at = 0.0
+
+
+def _ask_ae_years():
+    """One round trip to Earth Engine: which years have an annual embedding."""
+    global _ae_years, _ae_retry_at
+    if not _ae_lock.acquire(blocking=False):
+        return                                   # someone is already asking
+    try:
+        ee = ee_init()
+        col = ee.ImageCollection(AE_COLLECTION)
+        cand = ee.List.sequence(AE_FIRST_YEAR, datetime.date.today().year)
+        has = cand.map(lambda y: col.filterDate(ee.Date.fromYMD(y, 1, 1), ee.Date.fromYMD(y, 1, 1)
+                                                .advance(1, "year")).limit(1).size())
+        years = [int(y) for y, n in zip(cand.getInfo(), has.getInfo()) if n > 0]
+        if years:
+            _ae_years = years
+    except Exception as e:
+        logging.getLogger(__name__).warning("Alpha Earth years not available from EE (%s); using %s",
+                                            e, AE_KNOWN_YEARS)
+        _ae_retry_at = time.time() + 600         # don't hammer a box that can't reach Google
+    finally:
+        _ae_lock.release()
+        _ae_asked.set()
+
+
+def ae_years(wait=2.0):
+    """The years Alpha Earth has annual embeddings for, asked from Earth Engine once per process, so a
+    new release (2025, 2026, ...) shows up without a code change. The asking happens in the background
+    and nobody waits more than `wait` seconds for it: until Earth Engine answers (about 10 s, longer
+    through a slow proxy) the known years stand in, and a failed attempt is retried ten minutes on.
+    Scripts that need the real list pass a long `wait`."""
+    if _ae_years:
+        return _ae_years
+    if not _ae_lock.locked() and time.time() >= _ae_retry_at:
+        threading.Thread(target=_ask_ae_years, daemon=True).start()
+    if wait:
+        _ae_asked.wait(wait)
+    return _ae_years or AE_KNOWN_YEARS
 
 
 if __name__ == "__main__":

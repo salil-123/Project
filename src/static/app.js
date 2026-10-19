@@ -704,14 +704,19 @@ async function init() {
     $("switchProject").classList.add("hidden");
   }
   PRESETS = (await getJSON(api("/api/presets"))).presets;
-  const years = [];
-  for (let y = 2024; y >= 2017; y--) years.push(y);
-  for (const id of ["npYear", "projYear"]) $(id).innerHTML = years.map((y) => `<option>${y}</option>`).join("");
+  try { INFER_OPTS = await getJSON(api("/api/inference-options")); } catch { /* best-effort */ }
+  // the years Alpha Earth has, as the server asked Earth Engine, newest first; a new release shows up
+  // here without a code change. The default stays the server's (the year the base model knows best)
+  const ae = INFER_OPTS.realistic || {};
+  const years = (ae.years && ae.years.length ? [...ae.years] : [2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024]).reverse();
+  for (const id of ["npYear", "projYear"]) {
+    $(id).innerHTML = years.map((y) => `<option>${y}</option>`).join("");
+    if (ae.default && years.includes(ae.default)) $(id).value = String(ae.default);
+  }
   $("npPreset").innerHTML = Object.keys(PRESETS).map((k) => `<option>${esc(k)}</option>`).join("");
   await refreshZooBadge();
   try { TESSERA = { ...TESSERA, ...(await getJSON(api("/api/tessera-sites"))) }; } catch { /* best-effort */ }
   try { STANDARDS = await getJSON(api("/api/standards")); } catch { /* best-effort */ }
-  try { INFER_OPTS = await getJSON(api("/api/inference-options")); } catch { /* best-effort */ }
   await loadRuleRegistry();
   if ($("embedding")) $("embedding").onchange = () => { tesseraYears(); refreshModelFamilies(); };
   await refreshModelFamilies();
