@@ -1998,7 +1998,34 @@ def create_project(body: ProjectIn, request: Request):
 def get_project(pid: str, request: Request):
     """One project (the middleware already checked it's yours or public, and opened its workspace)."""
     st = _state(request)
+    if st.get("owner"):
+        _repaint()
     return {**st["project"], "mine": st.get("owner", False), **_tree_payload()}
+
+
+def _repaint():
+    """Projects made before the colour wheel can have a split whose classes all share one colour (the
+    old picker ran out after seven, so they all came out pink). Repaint the repeats once, on the owner's
+    next visit: with the zoo card's own colours where the classes came from one, else the next free colour."""
+    tree = hierarchy.load()
+    changed = False
+    for node, n in tree.items():
+        kids = [c for c in n.get("children") or [] if c in tree]
+        if len({tree[c].get("color") for c in kids}) == len(kids):
+            continue
+        card = catalogue.get_card((n.get("from_model") or {}).get("card_id") or "") or {}
+        own = {p["class"]: p["color"] for p in card.get("produces", []) if p.get("color")}
+        seen = set()
+        for c in kids:
+            col = own.get(c)
+            if not col and tree[c].get("color") in seen:
+                col = hierarchy._pick_color(tree, node)
+            if col and col != tree[c].get("color"):
+                tree[c]["color"], changed = col, True
+            seen.add(tree[c]["color"])
+    if changed:
+        hierarchy.save(tree)
+        _reload()
 
 
 @app.patch("/api/projects/{pid}")

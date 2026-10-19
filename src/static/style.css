@@ -492,3 +492,20 @@ body.on-start .toast { left: 50%; z-index: 2600; }
 /* the read-only class panel on someone else's public project */
 #ctxView .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
 #ctxView .hint { line-height: 1.7; }
+
+/* project rows: delete sits at the right, out of the way of opening it */
+.prow { position: relative; }
+.prow-del { position: absolute; right: 10px; top: 10px; width: auto; padding: 3px 10px; font-size: 11px;
+  margin: 0; background: none; border: 1px solid #e3c9c4; color: #a23b2f; opacity: 0; }
+.prow:hover .prow-del { opacity: 1; }
+/* legend: a click shows that class alone; the rest fade until it's clicked again */
+.map-legend .lg-row { cursor: pointer; border-radius: 4px; padding: 1px 3px; }
+.map-legend .lg-row:hover { background: rgba(0, 0, 0, 0.05); }
+.map-legend .lg-row.on { background: rgba(47, 107, 63, 0.12); font-weight: 600; }
+.map-legend .lg-row.dim { opacity: 0.45; }
+.map-legend .lg-row.sub { padding-left: 18px; }
+.map-legend .lg-row small { color: #8a8d80; font-weight: 400; }
+.map-legend .sw.strip { width: 26px; }
+.map-legend .lg-fold { width: 12px; font-size: 10px; color: #4f5547; display: inline-block; }
+.map-legend .lg-all { font-size: 11px; font-weight: 400; margin-left: 6px; }
+.map-legend .lg-rows { max-height: 46vh; overflow-y: auto; }

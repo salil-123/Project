@@ -719,6 +719,17 @@ async function init() {
   else showStart();
 }
 
+// a project of yours, gone for good after one confirm: its scheme, examples, weights and runs
+async function deleteProject(p) {
+  const runs = p.current_run ? ` and its ${p.current_run} run${p.current_run > 1 ? "s" : ""}` : "";
+  if (!await uiConfirm(`Delete "${p.name}"?\n\nIts classes, examples, trained models${runs} are deleted for good.`,
+                       { okText: "Delete", danger: true })) return;
+  const r = await fetch(api(`/api/projects/${p.id}`), { method: "DELETE" });
+  if (!r.ok) { setStatus("Error: " + errText(await readJson(r), r), "err"); return; }
+  setStatus(`Deleted "${p.name}".`, "ok");
+  showStart();
+}
+
 // ---------------- start screen: new project or open one (point 9) ----------------
 async function showStart() {
   closeProject();
@@ -727,6 +738,7 @@ async function showStart() {
   history.replaceState(null, "", location.pathname);
   updateNewArea();
   const row = (p, pub) => `<div class="prow" data-id="${p.id}">
+      ${pub ? "" : `<button class="prow-del" title="Delete this project">Delete</button>`}
       <div class="prow-name">${esc(p.name)}${p.is_public && !pub ? ' <span class="pill pub">public</span>' : ""}</div>
       <div class="prow-meta">${pub ? esc(p.owner_name) + " · " : ""}${p.year} · ${p.base_scheme} ·
         ${p.current_run ? `${p.current_run} run${p.current_run > 1 ? "s" : ""}` : "not run yet"} · ${ago(p.updated_at)}</div>
@@ -738,6 +750,11 @@ async function showStart() {
   $("pubProjects").innerHTML = pub.length ? pub.map((p) => row(p, true)).join("")
     : `<p class="hint">Nobody has made a project public yet.</p>`;
   document.querySelectorAll("#start .prow").forEach((el) => el.onclick = () => openProject(el.dataset.id));
+  document.querySelectorAll("#start .prow-del").forEach((b) => b.onclick = (e) => {
+    e.stopPropagation();                       // the row itself opens the project
+    const p = mine.find((x) => x.id === b.closest(".prow").dataset.id);
+    if (p) deleteProject(p);
+  });
 }
 
 // "3 days ago", falling back to a date past a week (Susmit's past-runs list does the same)
@@ -994,41 +1011,141 @@ function countsLine(counts) {
 function clearOverlay() {
   predLayer.clearLayers();
   if (rasterLayer) { map.removeLayer(rasterLayer); rasterLayer = null; }
+  showOnly = null;
   showLegend(null);
+}
+
+let showOnly = null;              // the classes the map shows on their own; null shows them all
+let onMap = null;                 // the result being shown, so a legend click can redraw it
+let legendOpen = new Set();       // legend groups opened to their classes
+
+// Earth Engine tiles drawn through a canvas, so one class (or a split's classes) can be shown on its
+// own straight away, without asking Earth Engine again. A tile can come back as a JPEG, so a pixel is
+// matched to the nearest legend colour rather than an exact one.
+const ClassTiles = L.GridLayer.extend({
+  createTile(coords, done) {
+    const tile = document.createElement("canvas");
+    tile.width = tile.height = 256;
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const g = tile.getContext("2d");
+      g.drawImage(img, 0, 0);
+      if (showOnly) keepOnly(g, this.options.palette);
+      done(null, tile);
+    };
+    img.onerror = () => done(null, tile);
+    img.src = L.Util.template(this.options.url, coords);
+    return tile;
+  },
+});
+
+function keepOnly(g, palette) {
+  const px = g.getImageData(0, 0, 256, 256), d = px.data, seen = new Map();
+  for (let i = 0; i < d.length; i += 4) {
+    if (!d[i + 3]) continue;
+    const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
+    let keep = seen.get(key);
+    if (keep === undefined) {
+      let best = null, far = Infinity;
+      for (const [cls, [r, gg, b]] of palette) {
+        const dist = (d[i] - r) ** 2 + (d[i + 1] - gg) ** 2 + (d[i + 2] - b) ** 2;
+        if (dist < far) { far = dist; best = cls; }
+      }
+      keep = showOnly.has(best);
+      seen.set(key, keep);
+    }
+    if (!keep) d[i + 3] = 0;
+  }
+  g.putImageData(px, 0, 0);
+}
+
+const rgbOf = (hex) => [1, 3, 5].map((i) => parseInt((hex || "#999999").slice(i, i + 2), 16));
+
+// show these classes alone, or everything again if they're already the ones shown
+function toggleShowOnly(classes) {
+  const same = showOnly && showOnly.size === classes.length && classes.every((c) => showOnly.has(c));
+  showOnly = same ? null : new Set(classes);
+  if (rasterLayer && rasterLayer.redraw) rasterLayer.redraw();
+  if (onMap && onMap.cells) drawCells(onMap);
+  showLegend(onMap);
 }
 
 // the legend for whatever run is on the map: its own classes, colours and shares, biggest first
 const legendCtl = L.control({ position: "bottomright" });
 legendCtl.onAdd = () => { const d = L.DomUtil.create("div", "map-legend"); L.DomEvent.disableClickPropagation(d); return d; };
+// Classes from one big split (more than FOLD_OVER, like 26 fortnights) share one row with their colour
+// strip until it's opened. Clicking a row shows just that class, or that split's classes, on the map;
+// clicking it again shows everything.
 function showLegend(data) {
   const counts = data && data.counts;
   if (!counts || !Object.keys(counts).length) { legendCtl.remove(); return; }
   const colors = data.colors || COLORS;
   const tot = Object.values(counts).reduce((a, b) => a + b, 0) || 1;
-  const rows = Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, v]) =>
-    `<div class="lg-row"><span class="sw" style="background:${colors[k] || "#999"}"></span>
-       <span class="lg-name">${esc((TREE[k] || {}).name || k.replace(/_/g, " "))}</span>
-       <span class="lg-pct">${(100 * v / tot).toFixed(v / tot < 0.01 ? 1 : 0)}%</span></div>`).join("");
+  const pct = (v) => `${(100 * v / tot).toFixed(v / tot < 0.01 ? 1 : 0)}%`;
+  const groupOf = (k) => {
+    const p = TREE[k] && TREE[k].parent;
+    return p && p !== "root" && TREE[p] && (TREE[p].children || []).length > FOLD_OVER ? p : null;
+  };
+  const state = (cls) => !showOnly ? "" : cls.every((c) => showOnly.has(c)) ? " on" : " dim";
+  const row = (only, sw, name, v, extra = "") =>
+    `<div class="lg-row${extra}${state(only)}" data-only="${only.join(",")}">${sw}
+       <span class="lg-name">${name}</span><span class="lg-pct">${pct(v)}</span></div>`;
+  const out = [], done = new Set();
+  for (const [k, v] of Object.entries(counts).sort((a, b) => b[1] - a[1])) {
+    const grp = groupOf(k);
+    if (!grp) { out.push(row([k], `<span class="sw" style="background:${colors[k] || "#999"}"></span>`,
+                             esc((TREE[k] || {}).name || k.replace(/_/g, " ")), v)); continue; }
+    if (done.has(grp)) continue;
+    done.add(grp);
+    const kids = TREE[grp].children.filter((c) => c in counts);       // in the split's own order
+    const sum = kids.reduce((a, c) => a + counts[c], 0);
+    const open = legendOpen.has(grp);
+    const strip = `<span class="sw strip" style="background:linear-gradient(90deg,${kids.map((c) => colors[c] || "#999").join(",")})"></span>`;
+    out.push(row(kids, `<span class="lg-fold" data-grp="${grp}">${open ? "▾" : "▸"}</span>${strip}`,
+                 `${esc(TREE[grp].name)} <small>${kids.length} classes</small>`, sum, " grp"));
+    if (open) kids.forEach((c) => out.push(row([c], `<span class="sw" style="background:${colors[c] || "#999"}"></span>`,
+                                              esc(TREE[c].name), counts[c], " sub")));
+  }
   legendCtl.addTo(map);
-  legendCtl.getContainer().innerHTML = `<div class="lg-title">${esc((data.run && data.run.name) || "This run")}</div>${rows}`;
+  const box = legendCtl.getContainer();
+  box.innerHTML = `<div class="lg-title">${esc((data.run && data.run.name) || "This run")}` +
+    `${showOnly ? ` <a href="#" class="lg-all">show all</a>` : ""}</div><div class="lg-rows">${out.join("")}</div>`;
+  box.querySelectorAll(".lg-row").forEach((el) => el.onclick = (e) => {
+    const f = e.target.closest(".lg-fold");
+    if (f) { const g = f.dataset.grp; legendOpen.has(g) ? legendOpen.delete(g) : legendOpen.add(g); return showLegend(onMap); }
+    toggleShowOnly(el.dataset.only.split(","));
+  });
+  const all = box.querySelector(".lg-all");
+  if (all) all.onclick = (e) => { e.preventDefault(); toggleShowOnly([...showOnly]); };
 }
 
 function drawResult(data) {
   clearOverlay();
   const [w, s, e, n] = (data.run && data.run.bbox) || PROJECT.bbox;
+  onMap = data;
   if (data.render === "tiles") {
-    rasterLayer = L.tileLayer(data.tile_url, { opacity: 0.7, bounds: [[s, w], [n, e]] }).addTo(map);
+    const colors = data.colors || COLORS;
+    const palette = Object.keys(data.counts || {}).map((c) => [c, rgbOf(colors[c])]);
+    rasterLayer = new ClassTiles({ url: data.tile_url, palette, opacity: 0.7, bounds: [[s, w], [n, e]] }).addTo(map);
   } else if (data.render === "raster") {
     const [bw, bs, be, bn] = data.bounds;
     rasterLayer = L.imageOverlay(data.image_url, [[bs, bw], [bn, be]], { opacity: 0.7 }).addTo(map);
   } else if (data.cells) {
-    const cw = data.cell_w / 2, ch = data.cell_h / 2;
-    data.cells.forEach((c) => L.rectangle([[c.lat - ch, c.lon - cw], [c.lat + ch, c.lon + cw]],
-      { stroke: false, fillOpacity: 0.55, fillColor: data.colors[c.pred] || "#999" }).addTo(predLayer));
+    drawCells(data);
   }
   overlayVisible = true;
   $("eyeToggle").textContent = "👁"; $("eyeToggle").classList.remove("off");
   showLegend(data);
+}
+
+// the point-grid render (Tessera / Random Forest splits), filtered the same way as the tiles
+function drawCells(data) {
+  predLayer.clearLayers();
+  const cw = data.cell_w / 2, ch = data.cell_h / 2;
+  data.cells.filter((c) => !showOnly || showOnly.has(c.pred)).forEach((c) =>
+    L.rectangle([[c.lat - ch, c.lon - cw], [c.lat + ch, c.lon + cw]],
+      { stroke: false, fillOpacity: 0.55, fillColor: data.colors[c.pred] || "#999" }).addTo(predLayer));
 }
 
 // ---------------- IndiaSAT EE-native RF models (#13 wk10) ----------------
