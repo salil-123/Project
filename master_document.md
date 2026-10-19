@@ -32,12 +32,17 @@ Two ideas hold it together:
 
 ## 2. The live system (current architecture)
 
-Everything live sits at the repo root: `src/`, `data/`, `config.py`, `tessera_fast.py`.
-Run it from the repo root:
+Everything live sits at the repo root: `src/`, `data/`, `config.py`. Run it from the repo root:
 
 ```
 uvicorn backend:app --reload --app-dir src      # then open http://127.0.0.1:8000/
 ```
+
+The app is "Do It Yourself LULC": `/` is the front page, `/app` the tool. Every user works inside
+their own projects (week 18), each with its own copy of the scheme under `data/projects/<id>/`. It
+runs on the tower at `https://www.cse.iitd.ernet.in/act4dws5/diy-lulc/` from the Docker image
+`salil2003/corestack-lulc:1.0.1` (dependencies only, the code is the mounted checkout), with runs
+exported through the tower's Airflow DAG.
 
 ### Data / model flow
 
@@ -58,7 +63,7 @@ GEE assets ─► polygons ─► diverse subset ─► Tessera tiles ─► dua
 
 | File | Role |
 |------|------|
-| `backend.py` | FastAPI app. Loads both models, serves `/api/classify` (with `year`), the hierarchy ops (split/add/retrain), examples, save/reload, base-scheme switch, merge, the catalogue/zoo endpoints, and the static frontend. Every tree-mutating handler logs to the op-log. |
+| `backend.py` | FastAPI app. Loads both models, serves `/api/classify` (with `year`), the hierarchy ops (split/add/rule split/remove/retrain), zoo applies (any model on any number of classes, wk22), examples, save/reload, merge, the catalogue/zoo endpoints, users/projects/runs, and the static frontend. Every tree-mutating handler logs to the op-log. |
 | `infer.py` | Inference. `classify_bbox_tiles` (Realistic: linear model → EE band math → map-tile URL, server-side, no download), `classify_bbox_softvote` (Detailed: AE+Tessera grid, on-demand tile download). Composites trained splits recursively, then applies merge relabels (`_apply_merges` / `_merge_ee`). Follows the active base scheme. |
 | `hierarchy.py` | The class tree (`data/hierarchy.json`): seed 4 classes, `seed_from_classes` (alternate bases), split/add, validate, queries. Pure functions; only load/save touch disk. |
 | `refine.py` | The refinement engine: per-node split trainers, SPLIT/ADD/relabel/hard-negatives, base-model retrain, `train_worldcover_base` (the effective WC base), balance remedies, a hierarchical-vs-flat bake-off. |
@@ -76,11 +81,11 @@ GEE assets ─► polygons ─► diverse subset ─► Tessera tiles ─► dua
 | `aoi.py` | **(wk9)** Box size caps per render path (tiles, GeoTIFF, Tessera) and degenerate-box checks. |
 | `ee_rf.py` | **(wk10)** IndiaSAT's EE-native random forests (tree/crop, farm/plantation/scrub), trained and run inside Earth Engine. |
 | `stacd.py` | **(wk9)** STAC Item + DAG provenance for a classified output. |
-| `airflow_client.py`, `jobs.py` | **(wk12)** Trigger and poll the Airflow DAG; a file-backed job store keyed by run id. |
+| `airflow_client.py`, `jobs.py` | **(wk12)** Trigger and poll the Airflow DAG; a file-backed job store keyed by run id (training also runs as a background job the page polls, Oct). |
 | `logging_setup.py` | One logging config; logs to a mounted folder, `LOG_LEVEL` picks the detail. |
 | `auth.py`, `db.py`, `projects.py` | **(wk18)** Google sign-in verified on the server + session cookie; users and projects tables; a project's folder and its runs. |
-| `contributions.py` | Stubs only — interfaces for an evolving user-contribution store, not yet active. |
-| `static/{index.html,app.js,style.css}` | Leaflet frontend: map, base-class picker, hierarchy editor, example drawing, operations panel, year picker, merge panel, save/load, full-screen Model Zoo browser. |
+| `tessera_tiles.py` | **(wk21)** Where Tessera tiles live and how they're fetched: straight from Source Cooperative into geotessera's folder layout (the old download server is gone). |
+| `static/{landing.html,index.html,app.js,style.css}` | Front page + Leaflet tool: projects, map, hierarchy editor with a contextual class panel (split, rule split, add, merge, remove), example drawing, runs, downloads, full-screen Model Zoo browser. |
 
 ### The two deployed models
 
@@ -113,15 +118,12 @@ Two record types as JSON under `data/catalogue/` (a git repo):
 Cards are minted automatically on retrain (`catalogue.register_retrain`) and seeded for
 what's already on disk via `backfill()`. Publishing is an explicit git commit+push.
 
-### Current hierarchy (live, `data/hierarchy.json`)
+### Current hierarchy
 
-```
-root (All land)
-├─ greenery   → [tea, non_tea]        (classifier: greenery)
-├─ water
-├─ built_up
-└─ barren     → [barren_other, mining] (classifier: barren)
-```
+The shared `data/hierarchy.json` is just the base: root with greenery, water, built_up, barren. Every
+project grows its own tree from there (`data/projects/<id>/hierarchy.json`). The two public demo
+projects are Sanjay Van acacia (greenery → acacia / non_acacia) and Jharia mining (barren →
+barren_other / mining), shipped as `samples/*_v2.zip`.
 
 ---
 
@@ -147,9 +149,14 @@ root (All land)
 | **17** | Sep 2026 review talk. | 8 minute deck, framework first, every number traced. See §16. |
 | **18** | The app as a product + the water notebook. | Users, projects, runs, Google SSO, front page; water notebook with a neighbourhood model, sample images, deck for sir. See §17. |
 | **19** | Manual + walkthrough video. | Flow for review, rough edges from a live walk, GeoTIFF cap lowered, zoo-applied split panel fixed. See §18. |
+| **20** | Where the water model plugs in. | Water model on all five GT assets and six map boxes; persistence + stream-distance cleaning; IndiaSAT gate drops small water. See §19. |
+| **21** | DW / IndiaSAT say where, our model says when. | Layered water numbers and maps, any-date-range pipeline, water + acacia methodology docs. See §20. |
+| **Oct** | The app on the tower, public site. | Tower deploy runbook, DNS/proxy hardening, background training, DIY LULC rename, public demo projects, sir's public-site review fixes, image 1.0.1 with Tessera from Source Cooperative. See §21. |
+| **22** | Sir's tree and docs review. | One zoo model on several classes, rule split on any class, remove a class; acacia model saved + runnable on DW / IndiaSAT trees; usage sections for both docs; water-on-the-zoo plan. See §22. |
 
 Per-week detail lives in each `weekN/` folder (plan or task file, `notes/`) and the `docs/` folder
-(`pipeline.md`, `model.md`). The week folders are not in git; this document is the record.
+(`pipeline.md`, `model.md`). The week folders are not in git; this document is the record. Deployment
+lives in `deploy/` (`Deployment_guide.md` is the update guide the tower admin follows).
 
 ### Key facts carried in memory (verify before relying on)
 - **Tessera** is only usable for **2024 over India**; tile downloads are costly. Don't lean
@@ -806,3 +813,94 @@ recording. Plan and rough edges in `week19/walkthrough_plan.md`; the flow for re
   headless Edge with captions, chapter cards and a drawn cursor; `week19/make_video.py` speeds up the
   Earth Engine waits and writes `week19/video/corestack_lulc_walkthrough.mp4` + `chapters.txt`. A draft
   for sir's review.
+
+---
+
+## 19. Week 20: where the water model plugs in
+
+Source: `week18_instructions.txt` points 3 and 4. The shipped water model on all five GT assets
+(18,135 points, June 2023 to May 2024) and on six 3 km map boxes. Running it everywhere and keeping
+pixels wet 2 fortnights in a row within 20 m of their stream gave recall 0.80 with 2.6% false water
+(pooled). An IndiaSAT gate threw away most small water. Sporadic water was mostly one-fortnight
+radar flicker plus hill shadow. Notes in `week20/notes/water_benchmark.md`.
+
+## 20. Week 21: Dynamic World / IndiaSAT say where, our model says when
+
+Source: `week21/week21_instructions.txt`. Plan and tasks: `week21/water_plan.md`. No existing code
+was changed; everything new is in `week21/`.
+
+- **Numbers** (`sample_years.py`, `score.py`, `notes/water_compare.md`): same points, model run over
+  June 2022 to May 2025. Sir's mask taken literally (this year's DW or IndiaSAT) cuts recall to 0.74.
+  IndiaSAT adds nothing over DW on our GT. Looking back 4 years fixes the mask (recall 0.79, level
+  with the week 20 pick). Adding "wet two fortnights in a row last year keeps its sightings" gives
+  recall 0.83 with 8.9% false water, against DW alone 0.82 / 16% and IndiaSAT 0.41 / 0.3%. Since
+  sporadic water matters more and the week is about showing the layering, the final comparison keeps
+  model and cleaning fixed (3 fortnight majority) and changes only
+  the layer, scored only on points independent of training (the IndiaSat asset's water polygons are
+  mostly training bodies of `seasonal_water.geojson`, so its water points are left out): no layer
+  F1 0.84 / 10.6% false water, IndiaSAT layer 0.51 / 0.3%, DW layer 0.80 / 4.6%, DW or IndiaSAT
+  2019-23 + HAND 0.83 / 6.2% with forest false water 10.7% to 0.8% (`final_rows.py`). The
+  cleaning is a light 3 fortnight majority: wider ones score a bit higher but decide how long water
+  lasts, which is what the raster is for (Tanveer's water-body time series). Correcting over 3 years instead of 1 adds
+  nothing on its own (`more_metrics.py` has P/R/F1 every way).
+- **Maps** (`maps.py`): 12 boxes around IndiaSat water polygons, 4 urban / 4 rural / 4 forest.
+- **Pipeline** (`water_pipeline.py`): any start and end date, DW or IndiaSAT 2019-23 + HAND mask + 3 fortnight majority, two padding
+  fortnights each side. Matches the week 16 year stack pixel for pixel when mask and cleaning are off
+  (`check_pipeline.py`). Notebook and guide in `week21/deliverable/`.
+- **Write-up**: `week21/deliverable/water_methodology.md` and `acacia_methodology.md`; deck notes in
+  `week21/slide_explainer.md`.
+
+## 21. October: the app on the tower and the public site
+
+Between weeks 19 and 22 the work was on the live deployment (commits 9fca12c to 184d474, 5 to 18 Oct).
+
+- **Tower deploy.** The tower admin runs the app at `/act4dws5/diy-lulc/` with his own Earth Engine key,
+  nginx and the tower Airflow. `deploy/Deployment_guide.md` is written as an update guide for that
+  deploy, one repeatable redeploy path with checks. Sign-in and the deep health check answer in time
+  even when DNS inside the container hangs, and the guide tells a DNS fault from a proxy one. Exports
+  and DAG triggers run off the event loop; an export answers within `EXPORT_WAIT_S` (20 min) and a slow
+  asset write counts as success with its id. DAG callbacks work without a token, so the tower's DAG
+  stays as it is. A tower simulation (app + nginx sub-path + Airflow, broken-DNS mode) lives in
+  `deploy/sim/`.
+- **Training as a background job** the page polls, so nginx's 60 s limit no longer cuts it; impossible
+  options are refused up front. Counter-examples no longer train as the class they deny, and the
+  holdout is drawn polygon by polygon within each class.
+- **Do It Yourself LULC**: the new name and the CoRE stack description; the front page plays the acacia
+  walkthrough. Sanjay Van acacia joins Jharia as a public demo project.
+- **Sir's review of the public site (12 Oct)**: visitors see full step lists of both demo projects and a
+  read-only zoo (every write control hidden for them, and refused by the server); duplicate water
+  models removed, keeping the best; farm / shrub left out of the zoo (276 s per run even at 500 points a
+  class, it needs a stored classifier). Zoo cards draw their footprint again (dataset polygons now live
+  inside the zoo, one file per dataset card), and a run says which splits it couldn't use.
+- **Public / private switch** per project (from week 18): the owner flips it in the project header;
+  visitors can view a public project and its runs, signed-in users can copy it, only the owner writes.
+- **Image 1.0.1**: Python 3.12 + geotessera 0.8, so Tessera works on the tower, offered for any project
+  in India. Tessera tiles now come from Source Cooperative (`src/tessera_tiles.py`), since the server
+  geotessera downloads from is gone. The image goes out under its `VERSION` only (no `:latest`), and every
+  compose file and guide pins 1.0.1. Our own File Browser was dropped (the tower doesn't run one for us).
+- **Zoo publish** saves the cards on the server when there's no real git remote configured.
+- The DIY LULC methodology deck went to the repo root as PDF + PPTX (13 Oct).
+
+## 22. Week 22: one model on many classes, rules anywhere, remove a class, docs you can run
+
+Source: `week22_instructions.txt`. Tasks: `week22/task.md`. Point 6 (two short papers) is parked.
+
+| # | Ask | What shipped | Key files |
+|---|-----|--------------|-----------|
+| 1 | Water on the zoo + NDVI rule test | **Plan only** (sir parked it). The water model goes on the zoo as 26 classes by duration, "wet in N of 26 fortnights", named by the app and shaded light to dark blue; grouping (seasonal / perennial, kharif / rabi / zaid) is an optional merge. Open points: EE cost per render, never-seen pixels, legend. Steps for testing the greenery NDVI rules. | `week22/water_layer_plan.md` |
+| 2 | A zoo model on several classes of one tree | The class name clash check was the block (class ids are unique across the flat tree). Now a model used again gets the class tagged on: acacia under barren becomes `acacia_barren`, shown as "Acacia (Barren)". Works for trained models, rule cards and IndiaSAT models; an IndiaSAT model keeps a name map on its node (`ee_rf_names`) and one render trains its forest once however many classes use it. The zoo card pre-fills the tagged names. | `backend.{_rename_clashes,_class_label,apply_model,_apply_rule_card,apply_eerf}`, `ee_rf.composite_into(names, cache)`, `infer._apply_ee_rf`, `app.js freeName` |
+| 3 | Rule split on every class | The user was right: it was leaf-only. Now any class but root can take a rule; on a class that's already split the rule replaces that split after a confirm. A bad rule or a name used elsewhere is refused before anything is dropped. | `backend.split_by_rule`, `app.js` |
+| 4 | Remove an accidental class | "Remove this class" in the panel (`DELETE /api/class/{cls}`): the class and its subtree go, their examples are archived. The parent: a rule or IndiaSAT split goes whole; one class left collapses back (undoes an ADD); otherwise the parent keeps its model only if it never predicted the removed class, else it's marked for training again. Merges drop removed sources, and one left with a single source goes. Base classes and root are refused. Logged as `remove` in the op log and the import validator. | `backend.{remove_class,_clear_split,_subtree}`, `examples.archive`, `validate_ops`, `app.js removeEffect` |
+| 5 | Docs: features, model path, usage | The acacia doc's 71-feature model existed only inside an evaluation, so it's now saved: `week22/acacia_pipeline.py train` (week 16's cached samples, 751 crowns, 2022-24) writes `week22/models/acacia_linear.json` with the scaler folded in, and the five-fold scores match the doc exactly (P 0.70, R 0.78, F1 0.74, acc 0.78). `apply` scores only the tree pixels of Dynamic World (label 1) or IndiaSAT v3 (code 6) and writes a GeoTIFF (1 acacia, 0 other tree, 255 not tree). `week22/water_run.py` runs the week 21 water pipeline with the where-layer by name (`dw`, `indiasat`, `both`, `none`) and any model json. Both docs' "Using it" sections now cover setup, the features the model needs, where the model loads from, the command, and the output. | `week22/{acacia_pipeline,water_run}.py`, `week21/deliverable/{acacia,water}_methodology.md` |
+
+**Verified.** `week22/check_tree_ops.py` (21 checks against a local server, dev login): the same model on
+greenery and barren with separate relabelled weights, an IndiaSAT model on two classes, rule cards on two
+classes, a rule replacing a trained split, every remove case, export then import with the new op. A live
+run with acacia/non-acacia on greenery and barren plus tree/crop on both acacia classes rendered every
+class as tiles (156 s, the forest training dominates). `week22/ui_check.py` clicked the rule replace and
+the remove in headless Edge with no page errors (`week22/shots/`). The acacia TIFF over a 4 km² Sanjay Van
+box called 85% of labelled acacia crowns acacia and 31% of other trees (training crowns, a sanity check,
+not a score). The water command ran all four layers on a 10 km² Delhi box.
+
+**Still in progress, uncommitted:** reading Alpha Earth's years from Earth Engine (`config.ae_years`)
+instead of a fixed 2017-2024 list, in `config.py`, `backend.py`, `temporal_eval.py`.

@@ -330,7 +330,7 @@ function renderViewOnly(cls, n) {
   ctx.classList.remove("hidden");
   document.body.classList.add("ctx-open");
   setTimeout(() => map.invalidateSize(), 0);
-  ["ctxSplit", "ctxRuleSplit", "ctxImprove", "ctxExamples", "ctxMerge", "ctxAdd"]
+  ["ctxSplit", "ctxRuleSplit", "ctxImprove", "ctxExamples", "ctxMerge", "ctxAdd", "ctxRemove"]
     .forEach((id) => $(id).classList.add("hidden"));
   showBack(cls);
   $("ctxHead").textContent = n.name;
@@ -400,7 +400,13 @@ function renderContext(cls) {
 
   const show = (id, on) => $(id).classList.toggle("hidden", !on);
   show("ctxSplit", isLeaf);
-  show("ctxRuleSplit", isLeaf);
+  // a rule can split any class; on one that's already split it replaces that split
+  show("ctxRuleSplit", true);
+  $("ruleSummary").textContent = isLeaf ? "Split by a rule instead (no training)"
+                                        : "Replace this split with a rule (no training)";
+  // base classes come from the base map, so only classes made in this project can go
+  show("ctxRemove", n.parent !== "root");
+  $("removeHint").textContent = removeEffect(cls);
   show("ctxImprove", kids.length > 0);
   show("ctxExamples", inSplit);
   // inside a split the job is feeding the parent's model, so examples lead; splitting further comes after
@@ -493,7 +499,7 @@ function setLeftView(mode) {
 // the class an operation acts on, so clicking a step can open the right panel there
 function opTargetNode(e) {
   const a = e.args || {};
-  if (["split", "add", "rule_split"].includes(e.op)) return a.parent;
+  if (["split", "add", "rule_split", "remove"].includes(e.op)) return a.parent;
   if (["retrain", "apply", "apply_eerf", "upload"].includes(e.op)) return a.node;
   return null;
 }
@@ -522,6 +528,7 @@ function opSummary(e) {
     case "apply_eerf":    return `${a.card_id} → ${a.node}`;
     case "base_select":   return `scheme → ${a.scheme}`;
     case "reset":         return `to ${a.scheme}`;
+    case "remove":        return `${names(a.removed || [a.node])} out of ${a.parent}`;
     default:              return "";
   }
 }
@@ -963,7 +970,7 @@ async function useEeRfModel(cardId, targetNode) {
     closeZoo();
     await refreshTree(d);
     select(parent);
-    markStale(`Applied "${c.name}" to ${pname}`);
+    markStale(`Applied "${c.name}" to ${pname}${renamedNote(d)}`);
   } catch (err) { setStatus("Apply error: " + err, "err"); }
 }
 
@@ -1160,6 +1167,10 @@ function buildRule() {
 $("doRuleSplit").onclick = async () => {
   let rule;
   try { rule = buildRule(); } catch (e) { setStatus(e.message, "err"); return; }
+  const kids = TREE[selected].children || [];
+  if (kids.length && !await uiConfirm(`Replace the split of ${TREE[selected].name}?\n\n` +
+      `${kids.map((c) => TREE[c].name).join(", ")} and anything under them go, and the rule decides instead.`,
+      { okText: "Replace", danger: true })) return;
   const r = await postJSON(api("/api/split/rule"), { parent: selected, rule });
   const d = await readJson(r);
   if (!r.ok) { setStatus("Error: " + errText(d, r), "err"); return; }
@@ -1167,6 +1178,30 @@ $("doRuleSplit").onclick = async () => {
   await refreshTree(d);
   select(selected);
   markStale(`Rule split “${TREE[selected].name}” → ${d.classes.join(" / ")}`);
+};
+
+// ---------------- remove a class made by mistake ----------------
+// what removing `cls` would do, in words (the server applies the same three cases)
+function removeEffect(cls) {
+  const n = TREE[cls], p = TREE[n.parent];
+  if (!p) return "";
+  const under = (n.children || []).length ? " and everything under it" : "";
+  const rest = (p.children || []).filter((c) => c !== cls);
+  if (p.rule || p.ee_rf) return `${p.name} was split by a ${p.rule ? "rule" : "IndiaSAT model"}, so its whole split goes and ${p.name} is a single class again.`;
+  if (rest.length < 2) return `Takes ${n.name}${under} out, and ${p.name} is a single class again.`;
+  return `Takes ${n.name}${under} out. ${rest.map((c) => TREE[c].name).join(" / ")} stay${p.classifier ? `; ${p.name} may need training again` : ""}.`;
+}
+
+$("doRemove").onclick = async () => {
+  const cls = selected, n = TREE[cls];
+  if (!await uiConfirm(`Remove ${n.name}?\n\n${removeEffect(cls)} Its examples are put aside.`,
+                       { okText: "Remove", danger: true })) return;
+  const r = await fetch(api(`/api/class/${encodeURIComponent(cls)}`), { method: "DELETE" });
+  const d = await readJson(r);
+  if (!r.ok) { setStatus("Error: " + errText(d, r), "err"); return; }
+  await refreshTree(d);
+  select(d.parent);
+  markStale(`Removed ${d.removed.length > 1 ? d.removed.join(", ") : n.name}: ${d.effect}`);
 };
 
 $("doAdd").onclick = async () => {
@@ -1511,13 +1546,30 @@ function useButtonHTML(c) {
   const eeRf = c.topology === "ee_rf";
   const rows = (c.produces || []).map((p) => `<div class="use-row">
       <span class="chip">${swatch(p.class)}${esc(p.class)}</span><span class="arrow">→</span>
-      <input type="text" data-m="${esc(p.class)}" value="${esc(p.class)}" ${eeRf ? "disabled" : ""}></div>`).join("");
+      <input type="text" data-m="${esc(p.class)}" value="${esc(freeName(p.class, t))}" ${eeRf ? "disabled" : ""}></div>`).join("");
   const note = eeRf ? "Its class names are fixed. It trains inside Earth Engine and needs the IndiaSAT base."
                     : "Rename any to fit your scheme, or leave them. The same name twice merges those two.";
   return `<div class="use-box"><div class="k">Under ${tn} it becomes</div>
       <div id="useNames">${rows}</div><p class="hint">${note}</p>
       <button id="useForBtn" class="primary">Use for ${tn}</button></div>`;
 }
+
+// class ids are unique across the tree, so a model already used on another class gets this one's
+// name tagged on (tree -> tree_barren), the same thing the server does if you leave it
+function freeName(cls, target) {
+  const under = (c) => { for (let p = TREE[c] && TREE[c].parent; p; p = TREE[p] && TREE[p].parent) if (p === target) return true; return false; };
+  const taken = (c) => !!TREE[c] && !under(c);
+  if (!taken(cls)) return cls;
+  let name = `${cls}_${target}`, i = 2;
+  while (taken(name)) name = `${cls}_${target}_${i++}`;
+  return name;
+}
+
+// renames the server made, for the status line
+const renamedNote = (d) => {
+  const r = Object.entries(d.renamed || {});
+  return r.length ? ` (${r.map(([a, b]) => `${a} is ${b} here`).join(", ")}, since those names were taken)` : "";
+};
 
 // "where does this model slot in" hint (#2), auto-derived server-side from the card's node +
 // any WorldCover mapping, with a cheap client-side check of whether it's relevant to the view.
@@ -1951,7 +2003,7 @@ async function applyModel(id, targetNode, force = false, mapping = null) {
   closeZoo();
   await refreshTree(d);
   select(targetNode);
-  markStale(`${TREE[targetNode].name} now splits into ${(d.classes || []).join(" / ")}`);
+  markStale(`${TREE[targetNode].name} now splits into ${(d.classes || []).join(" / ")}${renamedNote(d)}`);
   return true;
 }
 

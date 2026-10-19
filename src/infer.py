@@ -382,16 +382,17 @@ def _apply_ee_rf(ee, final, final_classes, region, year):
     Returns (final, classes, extra_colors)."""
     try:
         tree = hierarchy.load()
-        nodes = [(cls, n["ee_rf"]) for cls, n in tree.items() if n.get("ee_rf")]
+        nodes = [(cls, n["ee_rf"], n.get("ee_rf_names") or {}) for cls, n in tree.items() if n.get("ee_rf")]
     except Exception:
         nodes = []
     if not nodes:
         return final, final_classes, {}
     import ee_rf as _eerf
-    extra = {}
-    for cls, which in nodes:
-        final, final_classes = _eerf.composite_into(ee, final, final_classes, region, cls, which, year)
-        extra.update(_eerf.model_colors(which))
+    extra, cache = {}, {}           # one trained forest per model, however many nodes use it
+    for cls, which, names in nodes:
+        final, final_classes = _eerf.composite_into(ee, final, final_classes, region, cls, which, year,
+                                                    names=names, cache=cache)
+        extra.update({names.get(c, c): col for c, col in _eerf.model_colors(which).items()})
     return final, final_classes, extra
 
 

@@ -205,20 +205,28 @@ def model_colors(which):
     return TREECROP_COLORS if which == "treecrop" else FARMSHRUB_COLORS
 
 
-def composite_into(ee, base_final, base_classes, region, parent, which, year=2024, start=None, end=None):
+def composite_into(ee, base_final, base_classes, region, parent, which, year=2024, start=None, end=None,
+                   names=None, cache=None):
     """Refine `parent` in an existing base label image with an ee_rf model's classes, in Earth Engine.
     Everywhere outside `parent` the base map stands; inside it the sub-model's classes take over.
     Returns (new_code_image, new_classes). Shared by the standalone composite and the MAIN classify
-    path, so a node marked with an ee_rf model refines that branch on every Run classification (#13)."""
+    path, so a node marked with an ee_rf model refines that branch on every Run classification (#13).
+    `names` renames the model's classes ({model_class: tree_class}, when the model sits on a second
+    node); `cache` lets one render reuse a trained forest across nodes instead of training it twice."""
     if parent not in base_classes:
         return base_final, base_classes
     p = base_classes.index(parent)
-    if which == "treecrop":
+    key = (which, year, start, end)
+    if cache is not None and key in cache:
+        classified, c2n = cache[key]
+    elif which == "treecrop":
         classified, c2n = _treecrop_classified(ee, region, start or f"{year-1}-07-01", end or f"{year}-07-01")
     else:
         classified, c2n = _farmshrub_classified(ee, region, year)
+    if cache is not None:
+        cache[key] = (classified, c2n)
     sub_codes = sorted(c2n)
-    sub_classes = [c2n[c] for c in sub_codes]
+    sub_classes = [(names or {}).get(c2n[c], c2n[c]) for c in sub_codes]
     # sub-model class index 0..K-1, shifted to sit after the base classes; painted only where the base
     # says `parent`. So the parent class becomes the sub-model's classes; the rest is untouched.
     sub_idx = ee.Image(0)

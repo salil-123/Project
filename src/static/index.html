@@ -245,7 +245,7 @@
     </section>
 
     <details id="ctxRuleSplit" class="ctx-block opts">
-      <summary>Split by a rule instead (no training)</summary>
+      <summary id="ruleSummary">Split by a rule instead (no training)</summary>
       <label>Index variable</label>
       <select id="ruleVar"></select>
       <p class="hint" id="ruleVarDesc"></p>
@@ -283,6 +283,12 @@
       <input id="mergeName" type="text" placeholder="e.g. extractive land">
       <label class="mergecolor">Colour <input id="mergeColor" type="color" value="#8e44ad"></label>
       <button id="doMerge">Create merge</button>
+    </section>
+
+    <section id="ctxRemove" class="ctx-block">
+      <h3>Remove this class</h3>
+      <p class="hint" id="removeHint"></p>
+      <button id="doRemove" class="danger">Remove <span class="ctxcls"></span></button>
     </section>
   </aside>
 
@@ -381,6 +387,6 @@
   <!-- runtime config from the server (API base, sign-in, Airflow). Served, not baked, so retargeting
        the UI at another backend is an .env change rather than a code edit. Must load before app.js. -->
   <script src="config.js"></script>
-  <script src="app.js?v=60"></script>
+  <script src="app.js?v=61"></script>
 </body>
 </html>

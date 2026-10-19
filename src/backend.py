@@ -1093,7 +1093,22 @@ def rules_registry():
 def split_by_rule(op: RuleSplitIn):
     """Split a leaf by an interpretable rule over indices instead of a trained model (#12). Creates
     the child classes the rule produces and stores the rule on the node; inference evaluates it in
-    EE so it renders as crisp tiles. Mints a local model card (a rule is a model the user built)."""
+    EE so it renders as crisp tiles. Mints a local model card (a rule is a model the user built).
+    A class that's already split gets its split replaced by the rule (the panel confirms first)."""
+    if op.parent == hierarchy.ROOT:
+        raise HTTPException(400, "the base map can't be replaced by a rule; split one of its classes")
+    tree = hierarchy.load()
+    if op.parent in tree and tree[op.parent].get("children"):
+        import rules
+        try:
+            rules.validate_rule(op.rule)         # a bad rule shouldn't cost the old split
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        clash = [c for c in rules.rule_classes(op.rule) if c in tree and not _under(tree, c, op.parent)]
+        if clash:
+            raise HTTPException(400, f"{', '.join(clash)} already name a class elsewhere; pick other names")
+        _clear_split(tree, op.parent)
+        hierarchy.save(tree)
     try:
         classes = refine.rule_split_op(op.parent, op.rule, colors=op.colors)
     except (KeyError, ValueError) as e:
@@ -1390,6 +1405,106 @@ def _drop_subtree(tree, cls):
     tree.pop(cls, None)
 
 
+def _clear_split(tree, node):
+    """Back to a bare leaf: children gone and whatever resolved them (model, rule, IndiaSAT model)."""
+    for ch in list(tree[node].get("children", [])):
+        _drop_subtree(tree, ch)
+    tree[node]["children"] = []
+    tree[node]["classifier"] = None
+    for k in ("rule", "ee_rf", "ee_rf_names", "from_model"):
+        tree[node].pop(k, None)
+
+
+def _rename_clashes(tree, classes, node):
+    """Class ids are unique across the whole tree, so a model used on a second node can't reuse its
+    names. Any name already living outside `node` gets the node tagged on (tree -> tree_barren, then
+    tree_barren_2 if even that's taken). Returns {old: new}, empty when nothing clashed."""
+    taken = lambda c: c in tree and not _under(tree, c, node)     # below node = being replaced, so free
+    out, used = {}, set(classes)
+    for c in classes:
+        if not taken(c):
+            continue
+        new, i = f"{c}_{node}", 2
+        while taken(new) or new in used:
+            new, i = f"{c}_{node}_{i}", i + 1
+        out[c] = new
+        used.add(new)
+    return out
+
+
+def _class_label(tree, cls, renamed, node):
+    """Display name for a new child: 'Tree (Barren)' for a renamed one, so the legend tells them apart."""
+    orig = next((o for o, n in renamed.items() if n == cls), None)
+    if orig:
+        return f"{orig.replace('_', ' ').title()} ({tree[node]['name']})"
+    return cls.replace("_", " ").title()
+
+
+def _subtree(tree, cls):
+    """`cls` and every class under it."""
+    out = [cls]
+    for ch in tree.get(cls, {}).get("children", []):
+        out += _subtree(tree, ch)
+    return out
+
+
+def _trained_classes(clf):
+    """The classes a node's saved classifier predicts, or None if it can't be read."""
+    import joblib
+    try:
+        return infer._bundle_classes(joblib.load(config.weights_path(clf)))
+    except Exception:
+        return None
+
+
+@app.delete("/api/class/{cls}")
+def remove_class(cls: str):
+    """Take a class made by mistake out of the scheme, with everything under it (sir's 'accidental
+    nodes'). What happens to its parent depends on how the parent was split:
+      - a rule or an IndiaSAT model can't drop one of its outputs, so that whole split goes
+      - one class left isn't a split, so the parent goes back to a plain class (undoes an ADD)
+      - otherwise the rest stay; the parent's model stays only if it never predicted this class
+    Its examples are archived, and merges lose it as a source (a merge left with one source goes)."""
+    tree = hierarchy.load()
+    if cls not in tree:
+        raise HTTPException(404, f"no class {cls!r} in the scheme")
+    parent = tree[cls]["parent"]
+    if parent in (None, hierarchy.ROOT):
+        raise HTTPException(400, "the base classes come from the base map and can't be removed")
+    p = tree[parent]
+    siblings = [c for c in p["children"] if c != cls]
+    if p.get("rule") or p.get("ee_rf") or len(siblings) < 2:
+        gone = [c for ch in p["children"] for c in _subtree(tree, ch)]
+        _clear_split(tree, parent)
+        effect = f"{p['name']} is a single class again"
+    else:
+        gone = _subtree(tree, cls)
+        _drop_subtree(tree, cls)
+        p["children"] = siblings
+        known = _trained_classes(p["classifier"]) if p.get("classifier") else None
+        if p.get("classifier") and (known is None or cls in known):
+            p["classifier"] = None
+            p.pop("from_model", None)
+            effect = f"{p['name']} needs training again without it"
+        else:
+            effect = f"{p['name']} keeps its model"
+    hierarchy.save(tree)
+    _reload()
+    archived = examples.archive(gone)
+    # merges can't point at classes that no longer exist
+    for r in merges.load():
+        left = [s for s in r["sources"] if s not in gone]
+        if len(left) == len(r["sources"]):
+            continue
+        if len(left) >= 2:
+            merges.add(r["name"], left, color=r.get("color"), target=r["target"])
+        else:
+            del_merge(r["target"])
+    oplog.append("remove", {"node": cls, "removed": gone, "parent": parent})
+    return {"removed": gone, "parent": parent, "effect": effect, "archived_examples": archived,
+            **_tree_payload()}
+
+
 class ApplyIn(BaseModel):
     card_id: str
     target_node: str | None = None     # apply under a different node than the card's own (#11)
@@ -1444,19 +1559,16 @@ def apply_model(op: ApplyIn):
     yours = list(dict.fromkeys(mapping.get(c, c) for c in model_classes))   # unique, in model order
     if len(yours) < 2:
         raise HTTPException(400, "after your mapping there's only one class left; a split needs two")
-    clash = [c for c in yours if c in tree and not _under(tree, c, node)]
-    if clash:
-        raise HTTPException(400, f"{clash} already name a class elsewhere in your scheme; map them "
-                                 "to a different name.")
+    # the same model on a second node: its names are taken, so they get the node's name tagged on
+    renamed = _rename_clashes(tree, yours, node)
+    if renamed:
+        mapping = {c: renamed.get(mapping.get(c, c), mapping.get(c, c)) for c in model_classes}
+        yours = [renamed.get(c, c) for c in yours]
 
     # rebuild the node's children as the user's classes, then register the classifier
-    for ch in list(tree[node].get("children", [])):
-        _drop_subtree(tree, ch)
-    tree[node]["children"] = []
-    tree[node].pop("rule", None)
-    tree[node].pop("ee_rf", None)
+    _clear_split(tree, node)
     for cls in yours:
-        hierarchy.add_class(tree, cls.replace("_", " ").title(), node, canonical=cls)
+        hierarchy.add_class(tree, _class_label(tree, cls, renamed, node), node, canonical=cls)
     if config.in_project():
         # the project keeps its own copy, renamed to the user's classes, so the zoo can move on
         # without changing this project's map
@@ -1473,7 +1585,7 @@ def apply_model(op: ApplyIn):
     _reload()
     oplog.append("apply", {"card_id": op.card_id, "node": node, "mapping": mapping or None})
     return {"applied": op.card_id, "node": node, "classes": yours, "mapping": mapping,
-            **_tree_payload()}
+            "renamed": renamed, **_tree_payload()}
 
 
 def _apply_rule_card(op, card, tree, node):
@@ -1485,22 +1597,26 @@ def _apply_rule_card(op, card, tree, node):
     name = lambda c: hierarchy.canonicalize((op.mapping or {}).get(c) or c)
     rule = {"clauses": [{"when": c["when"], "class": name(c["class"])} for c in rule["clauses"]],
             "default": name(rule["default"])}
-    for ch in list(tree[node].get("children", [])):
-        _drop_subtree(tree, ch)
-    tree[node]["children"] = []
-    tree[node].pop("ee_rf", None)
+    # the same rule on a second node: its class names get the node tagged on, like any zoo model
+    import rules
+    renamed = _rename_clashes(tree, rules.rule_classes(rule), node)
+    rule = {"clauses": [{**c, "class": renamed.get(c["class"], c["class"])} for c in rule["clauses"]],
+            "default": renamed.get(rule["default"], rule["default"])}
+    _clear_split(tree, node)
     hierarchy.save(tree)
     try:
         classes = refine.rule_split_op(node, rule)
     except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
     tree = hierarchy.load()
+    for cls in renamed.values():
+        tree[cls]["name"] = _class_label(tree, cls, renamed, node)
     tree[node]["from_model"] = {"card_id": op.card_id, "name": card.get("name") or op.card_id}
     hierarchy.save(tree)
     _reload()
     oplog.append("apply", {"card_id": op.card_id, "node": node, "mapping": op.mapping or None})
     return {"applied": op.card_id, "node": node, "classes": classes, "mapping": op.mapping or {},
-            **_tree_payload()}
+            "renamed": renamed, **_tree_payload()}
 
 
 def _under(tree, cls, node):
@@ -1534,31 +1650,25 @@ def apply_eerf(op: ApplyEeRfIn):
     if op.parent not in tree:
         raise HTTPException(400, f"the {op.parent!r} class isn't in the current base scheme; switch "
                                  "to the IndiaSAT base first")
-    classes = [p["class"] for p in card.get("produces", [])]
+    model_classes = [p["class"] for p in card.get("produces", [])]
     colmap = ee_rf.model_colors(which)
-    # the model's class names must be free (they key the flat tree) — if this model is already applied
-    # on another node its classes collide, so refuse cleanly instead of blowing up mid-rewrite (#5)
-    clash = [c for c in classes if c in tree and tree[c].get("parent") != op.parent]
-    if clash:
-        raise HTTPException(400, f"this model's classes {clash} are already in the tree (it's applied "
-                                 "elsewhere) — remove that instance first, then apply it here.")
-    # rebuild the parent's children as the model's classes, mark it with the model
-    for ch in list(tree[op.parent].get("children", [])):
-        _drop_subtree(tree, ch)
-    tree[op.parent]["children"] = []
-    for cls in classes:
-        hierarchy.add_class(tree, cls.replace("_", " ").title(), op.parent, canonical=cls)
-        if cls in tree:
-            tree[cls]["color"] = colmap.get(cls)
-    tree[op.parent]["ee_rf"] = which
-    tree[op.parent]["classifier"] = None          # not a joblib classifier; composited in EE
-    tree[op.parent].pop("rule", None)             # a node can't carry both a rule split and an ee_rf model
-    tree[op.parent].pop("from_model", None)       # the panel already names the IndiaSAT model
+    # names are fixed by the model, so a second node gets them tagged (tree -> tree_barren); the node
+    # keeps the model -> tree name map so the composite paints the right classes
+    renamed = _rename_clashes(tree, model_classes, op.parent)
+    classes = [renamed.get(c, c) for c in model_classes]
+    _clear_split(tree, op.parent)
+    for mc, cls in zip(model_classes, classes):
+        hierarchy.add_class(tree, _class_label(tree, cls, renamed, op.parent), op.parent, canonical=cls)
+        tree[cls]["color"] = colmap.get(mc)
+    tree[op.parent]["ee_rf"] = which             # not a joblib classifier; composited in EE
+    if renamed:
+        tree[op.parent]["ee_rf_names"] = dict(zip(model_classes, classes))
     hierarchy.save(tree)
     _reload()
     oplog.append("apply_eerf", {"card_id": op.card_id, "node": op.parent, "model": which,
                                 "classes": classes})
-    return {"applied": op.card_id, "node": op.parent, "classes": classes, **_tree_payload()}
+    return {"applied": op.card_id, "node": op.parent, "classes": classes, "renamed": renamed,
+            **_tree_payload()}
 
 
 # ----------------------------- catalogue (the model/dataset zoo) -----------------------------
