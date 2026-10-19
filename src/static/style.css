@@ -94,7 +94,7 @@ footer { font-size: 11px; color: #8a8d80; padding-top: 14px; border-top: 1px sol
 #tree .mchk { width: auto; margin: 0 6px 0 0; flex-shrink: 0; cursor: pointer; accent-color: #8e44ad; }
 #tree .tag.merge { color: inherit; }                /* coloured inline to the merge's own hue */
 /* fold arrow; leaves get an empty one so names stay lined up */
-#tree .fold { width: 14px; flex-shrink: 0; color: #4f5547; font-size: 12px; text-align: center; margin-right: 2px; }
+#tree .fold { width: 18px; flex-shrink: 0; color: #3a4a37; font-size: 16px; line-height: 1; text-align: center; margin-right: 2px; }
 /* a folded split: a strip of its classes' colours and how many there are */
 #tree .kids { width: 46px; height: 7px; border-radius: 4px; margin-left: 8px; flex-shrink: 0; }
 #tree .kidn { font-size: 10px; color: #8a8d80; margin-left: 5px; }
@@ -506,6 +506,12 @@ body.on-start .toast { left: 50%; z-index: 2600; }
 .map-legend .lg-row.sub { padding-left: 18px; }
 .map-legend .lg-row small { color: #8a8d80; font-weight: 400; }
 .map-legend .sw.strip { width: 26px; }
-.map-legend .lg-fold { width: 12px; font-size: 10px; color: #4f5547; display: inline-block; }
+.map-legend .lg-fold { width: 16px; font-size: 14px; color: #3a4a37; display: inline-block; line-height: 1; }
 .map-legend .lg-all { font-size: 11px; font-weight: 400; margin-left: 6px; }
 .map-legend .lg-rows { max-height: 46vh; overflow-y: auto; }
+
+/* a run's delete, quiet until the row is hovered */
+.run-item { position: relative; }
+.run-del { width: auto; margin: 0 0 0 8px; padding: 0 6px; font-size: 12px; line-height: 18px; background: none;
+  border: none; color: #a23b2f; opacity: 0; cursor: pointer; }
+.run-item:hover .run-del { opacity: 1; }

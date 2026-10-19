@@ -921,5 +921,12 @@ colour wheel get their repeated colours repainted on the owner's next visit, wit
 colours where there are some. Your projects can be deleted from the start page (owner only). Checked by
 `week22/ui_legend.py`.
 
+**Third round.** Removing one class from a split that has a model no longer throws the model away: inside
+a project the node's own copy relabels that class to `infer.DROPPED`, whose pixels are masked, so the rest
+keep working (before, removing fortnights 1, 2 and 24 turned the water model off and the run painted plain
+grey water). A split nothing resolves draws in its own colour instead of grey. Runs can be deleted from
+the runs list (`DELETE /api/projects/{pid}/runs/{n}`; numbers aren't reused). Fold arrows are bigger.
+Checked by `check_tree_ops.py` (28 checks), a live run, and `week22/ui_runs.py`.
+
 **Still in progress, uncommitted:** reading Alpha Earth's years from Earth Engine (`config.ae_years`)
 instead of a fixed 2017-2024 list, in `config.py`, `backend.py`, `temporal_eval.py`.

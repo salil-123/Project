@@ -1496,7 +1496,7 @@ def _remove(cls):
     tree = hierarchy.load()
     if cls not in tree:
         raise HTTPException(404, f"no class {cls!r} in the scheme")
-    parent = tree[cls]["parent"]
+    parent, cname = tree[cls]["parent"], tree[cls].get("name") or cls
     if parent in (None, hierarchy.ROOT):
         raise HTTPException(400, "the base classes come from the base map and can't be removed")
     p = tree[parent]
@@ -1510,7 +1510,14 @@ def _remove(cls):
         _drop_subtree(tree, cls)
         p["children"] = siblings
         known = _trained_classes(p["classifier"]) if p.get("classifier") else None
-        if p.get("classifier") and (known is None or cls in known):
+        if p.get("classifier") and known and cls in known and config.in_project():
+            # the model still answers with this class, so the project's copy now says "nobody" for it:
+            # those pixels stay unlabelled and every other class keeps working (a zoo model too)
+            import joblib
+            path = config.weights_path(p["classifier"])
+            joblib.dump(infer.relabel_bundle(joblib.load(path), {cls: infer.DROPPED}), path)
+            effect = f"{p['name']} keeps its model; what it called {cname} is left unlabelled"
+        elif p.get("classifier") and (known is None or cls in known):
             p["classifier"] = None
             p.pop("from_model", None)
             effect = f"{p['name']} needs training again without it"
@@ -2261,6 +2268,22 @@ def get_run(pid: str, n: int, request: Request):
     finally:
         config.reset_workspace(tok)
     return {"run": meta, "run_tree": run_tree, **out}
+
+
+@app.delete("/api/projects/{pid}/runs/{n}")
+def delete_run(pid: str, n: int, request: Request):
+    """Drop one saved run: its folder and its line in the project. Run numbers aren't reused, so a
+    later run never takes the name of one that's gone."""
+    _need_user(request)
+    if not projects.read_run(pid, n):
+        raise HTTPException(404, f"no run {n} in this project")
+    projects.delete_run(pid, n)
+    with db.Session() as s:
+        p = s.get(db.Project, pid)
+        p.runs = [r for r in (p.runs or []) if r["run"] != n]
+        s.commit()
+        runs = p.runs
+    return {"deleted": n, "runs": runs}
 
 
 @app.get("/api/projects/{pid}/runs/{n}/geotiff")
