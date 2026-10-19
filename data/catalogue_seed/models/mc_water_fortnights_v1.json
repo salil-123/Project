@@ -1,0 +1,180 @@
+{
+  "id": "mc_water_fortnights_v1",
+  "name": "Water by fortnight (26 classes, Sentinel-1/2)",
+  "node": "water",
+  "parent_class": "root",
+  "topology": "per_node_split",
+  "produces": [
+    {
+      "class": "fortnight1"
+    },
+    {
+      "class": "fortnight2"
+    },
+    {
+      "class": "fortnight3"
+    },
+    {
+      "class": "fortnight4"
+    },
+    {
+      "class": "fortnight5"
+    },
+    {
+      "class": "fortnight6"
+    },
+    {
+      "class": "fortnight7"
+    },
+    {
+      "class": "fortnight8"
+    },
+    {
+      "class": "fortnight9"
+    },
+    {
+      "class": "fortnight10"
+    },
+    {
+      "class": "fortnight11"
+    },
+    {
+      "class": "fortnight12"
+    },
+    {
+      "class": "fortnight13"
+    },
+    {
+      "class": "fortnight14"
+    },
+    {
+      "class": "fortnight15"
+    },
+    {
+      "class": "fortnight16"
+    },
+    {
+      "class": "fortnight17"
+    },
+    {
+      "class": "fortnight18"
+    },
+    {
+      "class": "fortnight19"
+    },
+    {
+      "class": "fortnight20"
+    },
+    {
+      "class": "fortnight21"
+    },
+    {
+      "class": "fortnight22"
+    },
+    {
+      "class": "fortnight23"
+    },
+    {
+      "class": "fortnight24"
+    },
+    {
+      "class": "fortnight25"
+    },
+    {
+      "class": "fortnight26"
+    }
+  ],
+  "training": {
+    "datasets": [
+      "ds_seasonal_water_v1"
+    ],
+    "embedding": {
+      "source": "sentinel1+2 fortnight",
+      "dim": 19
+    },
+    "algo": "linearsvc, pixel + neighbourhood model per sensor case",
+    "class_weight": "balanced"
+  },
+  "inference": {
+    "dataset": null,
+    "embedding": {
+      "source": "sentinel1+2 fortnight",
+      "bands": [
+        "VV",
+        "VH",
+        "VV_VH_ratio",
+        "B3",
+        "B4",
+        "B8",
+        "B8A",
+        "B11",
+        "NDWI",
+        "MNDWI",
+        "NDVI",
+        "mean3_VV",
+        "mean3_VH",
+        "mean3_NDWI",
+        "mean3_MNDWI",
+        "mean5_VV",
+        "mean5_VH",
+        "mean5_NDWI",
+        "mean5_MNDWI"
+      ]
+    }
+  },
+  "extent": {
+    "spatial": {
+      "type": "bbox",
+      "value": [
+        68.0,
+        6.0,
+        97.5,
+        37.5
+      ]
+    },
+    "temporal": {
+      "note": "the June to May water year starting in the project's year"
+    }
+  },
+  "metrics": {
+    "eval": "independent ground truth, June 2023 to May 2024, per pixel water / not water",
+    "precision": 0.88,
+    "recall": 0.79,
+    "f1": 0.84,
+    "false_water_on_land": 0.106,
+    "per_class": {
+      "water": {
+        "precision": 0.88,
+        "recall": 0.79,
+        "f1": 0.84
+      }
+    }
+  },
+  "artifact": {
+    "path": "data/refine/water_fortnights.joblib",
+    "format": "sklearn-joblib",
+    "published_path": "artifacts/mc_water_fortnights_v1.joblib"
+  },
+  "deployment": {
+    "ee_asset": null,
+    "tile_url": null,
+    "expressible_as_bandmath": true
+  },
+  "lineage": {
+    "base_model": null,
+    "derived_from": "ds_seasonal_water_v1"
+  },
+  "about": {
+    "description": "Splits water into 26 classes, one per fortnight of the June to May year: the last fortnight a pixel held water, so fortnight26 is water all year and an early number is water that dried up early. Rename the classes, or give several the same name to merge them, e.g. kharif / rabi / zaid.",
+    "intended_use": "Use it on Water (or any water-like class) to see how long into the year water lasted, per pixel.",
+    "limitations": "Water pixels that never held water that year stay unlabelled. Every run builds 26 fortnights of Sentinel-1/2, so it is slower than an Alpha Earth split. Ponds under about 500 m2 and spells under a fortnight are below what it resolves.",
+    "evidence": "week21/deliverable/water_methodology.md, section 2"
+  },
+  "zoo": {
+    "published": false,
+    "valid_region_label": "India",
+    "contributor": ""
+  },
+  "version": 1,
+  "created": "2026-10-19T17:41:49+00:00"
+}

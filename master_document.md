@@ -152,7 +152,7 @@ barren_other / mining), shipped as `samples/*_v2.zip`.
 | **20** | Where the water model plugs in. | Water model on all five GT assets and six map boxes; persistence + stream-distance cleaning; IndiaSAT gate drops small water. See §19. |
 | **21** | DW / IndiaSAT say where, our model says when. | Layered water numbers and maps, any-date-range pipeline, water + acacia methodology docs. See §20. |
 | **Oct** | The app on the tower, public site. | Tower deploy runbook, DNS/proxy hardening, background training, DIY LULC rename, public demo projects, sir's public-site review fixes, image 1.0.1 with Tessera from Source Cooperative. See §21. |
-| **22** | Sir's tree and docs review. | One zoo model on several classes, rule split on any class, remove a class; acacia model saved + runnable on DW / IndiaSAT trees; usage sections for both docs; water-on-the-zoo plan. See §22. |
+| **22** | Sir's tree and docs review. | One zoo model on several classes, rule split on any class, remove a class; acacia model saved + runnable on DW / IndiaSAT trees; usage sections for both docs; the water model in the zoo as a plain 26 class model. See §22. |
 
 Per-week detail lives in each `weekN/` folder (plan or task file, `notes/`) and the `docs/` folder
 (`pipeline.md`, `model.md`). The week folders are not in git; this document is the record. Deployment
@@ -887,7 +887,7 @@ Source: `week22_instructions.txt`. Tasks: `week22/task.md`. Point 6 (two short p
 
 | # | Ask | What shipped | Key files |
 |---|-----|--------------|-----------|
-| 1 | Water on the zoo + NDVI rule test | **Plan only** (sir parked it). The water model goes on the zoo as 26 classes by duration, "wet in N of 26 fortnights", named by the app and shaded light to dark blue; grouping (seasonal / perennial, kharif / rabi / zaid) is an optional merge. Open points: EE cost per render, never-seen pixels, legend. Steps for testing the greenery NDVI rules. | `week22/water_layer_plan.md` |
+| 1 | The water model on the framework | Read literally: a **26 class model** in the zoo, "Water by fortnight" (`mc_water_fortnights_v1`), fortnight1 ... fortnight26. Used for Water through the normal "Use for" box: keep the names or type your own, and the same name on several rows merges them (kharif on 1-11, rabi on 12-19, zaid on 20-26 gives Water -> Kharif / Rabi / Zaid). A pixel's class is the last fortnight of the June to May year it held water; never-wet water pixels stay unlabelled. No water-specific UI: the model is a third kind of split bundle (`features: water_fortnights`) next to linear and rule splits in `infer._refine_idx`. The model itself is unchanged (week 16 json); `src/water_fortnights.py` ports the week 16/21 method into the app with 0 pixel disagreements against `week21/water_pipeline.py`. The old one-fortnight card is retired, so the zoo keeps one water model. A Yamuna run takes 31-37 s. The greenery NDVI rule test is still to do. | `src/water_fortnights.py`, `infer._refine_idx`, `scripts/build_water_fortnights.py`, `models/refine/water_fortnights.joblib`, `data/catalogue_seed`, `week22/water_layer_plan.md` |
 | 2 | A zoo model on several classes of one tree | The class name clash check was the block (class ids are unique across the flat tree). Now a model used again gets the class tagged on: acacia under barren becomes `acacia_barren`, shown as "Acacia (Barren)". Works for trained models, rule cards and IndiaSAT models; an IndiaSAT model keeps a name map on its node (`ee_rf_names`) and one render trains its forest once however many classes use it. The zoo card pre-fills the tagged names. | `backend.{_rename_clashes,_class_label,apply_model,_apply_rule_card,apply_eerf}`, `ee_rf.composite_into(names, cache)`, `infer._apply_ee_rf`, `app.js freeName` |
 | 3 | Rule split on every class | The user was right: it was leaf-only. Now any class but root can take a rule; on a class that's already split the rule replaces that split after a confirm. A bad rule or a name used elsewhere is refused before anything is dropped. | `backend.split_by_rule`, `app.js` |
 | 4 | Remove an accidental class | "Remove this class" in the panel (`DELETE /api/class/{cls}`): the class and its subtree go, their examples are archived. The parent: a rule or IndiaSAT split goes whole; one class left collapses back (undoes an ADD); otherwise the parent keeps its model only if it never predicted the removed class, else it's marked for training again. Merges drop removed sources, and one left with a single source goes. Base classes and root are refused. Logged as `remove` in the op log and the import validator. | `backend.{remove_class,_clear_split,_subtree}`, `examples.archive`, `validate_ops`, `app.js removeEffect` |
@@ -900,7 +900,9 @@ run with acacia/non-acacia on greenery and barren plus tree/crop on both acacia 
 class as tiles (156 s, the forest training dominates). `week22/ui_check.py` clicked the rule replace and
 the remove in headless Edge with no page errors (`week22/shots/`). The acacia TIFF over a 4 km² Sanjay Van
 box called 85% of labelled acacia crowns acacia and 31% of other trees (training crowns, a sanity check,
-not a score). The water command ran all four layers on a 10 km² Delhi box.
+not a score). The water command ran all four layers on a 10 km² Delhi box. The water model through the
+zoo: `check_tree_ops.py` section 5 (26 classes, kharif / rabi / zaid by naming, remove), a live run and
+GeoTIFF on a Yamuna box, and `week22/ui_water.py` clicking the whole zoo flow in headless Edge.
 
 **Still in progress, uncommitted:** reading Alpha Earth's years from Earth Engine (`config.ae_years`)
 instead of a fixed 2017-2024 list, in `config.py`, `backend.py`, `temporal_eval.py`.
