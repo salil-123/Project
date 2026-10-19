@@ -928,5 +928,14 @@ grey water). A split nothing resolves draws in its own colour instead of grey. R
 the runs list (`DELETE /api/projects/{pid}/runs/{n}`; numbers aren't reused). Fold arrows are bigger.
 Checked by `check_tree_ops.py` (28 checks), a live run, and `week22/ui_runs.py`.
 
-**Still in progress, uncommitted:** reading Alpha Earth's years from Earth Engine (`config.ae_years`)
-instead of a fixed 2017-2024 list, in `config.py`, `backend.py`, `temporal_eval.py`.
+**Alpha Earth 2025.** Earth Engine now has 2025 embeddings. `config.ae_years` asks Earth Engine which
+years exist (in the background at startup; no request waits more than 2 s, the known 2017-2024 list
+stands in until it answers, and a failed attempt retries ten minutes on), and every year clamp and check
+in the backend uses it. The project year dropdowns read the list from `/api/inference-options`, so 2025 is
+offered (the default stays 2024) and a later release needs no code change. A 2025 project ran with the
+water and acacia models, its GeoTIFF downloaded, and 2025 is accepted as a training year.
+
+**Release check (20 Oct).** Before pushing: `check_tree_ops.py` 28/28; the week 18 journey 41/41 (its
+fixture still names the tea card retired on 12 Oct, `mc_greenery_prev1_v1`; with `mc_greenery_tea_v1` it
+passes); the five week 22 browser flows with no page errors; both doc commands; the tower simulation
+(`deploy/sim/sim.sh test`).
