@@ -152,7 +152,7 @@ def _apply_refinements(preds, Xae, valid, refinements, Xte=None, te_valid=None, 
     for parent in _refine_order(refinements):
         bundle = refinements[parent]
         kind = bundle.get("features")
-        if kind == "rule":
+        if kind in ("rule", "water_fortnights"):       # labels already sampled from EE
             if not rule_labels or parent not in rule_labels:
                 continue
             sel = (preds == parent)
@@ -177,7 +177,7 @@ def _sample_rule_labels(pts, bbox, year, refinements):
     at every grid point -> {parent: array of class strings per point}. This is how a rule split
     shows up on the point-grid render (detailed / Tessera mode); the crisp tile path evaluates the
     same rule directly in EE instead."""
-    rule_parents = [p for p, b in refinements.items() if b.get("features") == "rule"]
+    rule_parents = [p for p, b in refinements.items() if b.get("features") in ("rule", "water_fortnights")]
     if not rule_parents:
         return {}
     ee = config.ee_init()
@@ -187,9 +187,15 @@ def _sample_rule_labels(pts, bbox, year, refinements):
     fc = ee.FeatureCollection(feats)
     out = {}
     for parent in rule_parents:
-        idx_img, classes = rules.rule_label_ee(ee, region, year, refinements[parent]["rule"])
+        b = refinements[parent]
+        if b.get("features") == "water_fortnights":
+            idx_img, classes = _refine_idx(ee, None, region, year, b), _bundle_classes(b)
+            fallback = parent                          # never wet this year: keeps the parent's label
+        else:
+            idx_img, classes = rules.rule_label_ee(ee, region, year, b["rule"])
+            fallback = classes[0]
         samp = idx_img.rename("k").sampleRegions(collection=fc, scale=10).getInfo()["features"]
-        arr = np.array([classes[0]] * len(pts), dtype=object)
+        arr = np.array([fallback] * len(pts), dtype=object)
         for f in samp:
             p = f["properties"]
             ci = int(p.get("k", 0))
@@ -321,6 +327,9 @@ def _refine_idx(ee, bands_img, region, year, bundle):
     (`rules.rule_label_ee`). Both return an image whose values index into `_bundle_classes`."""
     if bundle.get("features") == "rule":
         return rules.rule_label_ee(ee, region, year, bundle["rule"])[0]
+    if bundle.get("features") == "water_fortnights":       # the 26 fortnight water model (wk22)
+        import water_fortnights
+        return water_fortnights.fortnight_index(ee, region, year, bundle["spec"], bundle.get("label", "last"))
     return _ee_label(ee, bands_img, bundle)
 
 
@@ -344,7 +353,8 @@ def _final_label(ee, bands_img, region, year, model_bundle, refinements):
         img = sub(children[0])
         for i, ch in enumerate(children[1:], start=1):
             img = img.where(idx.eq(i), sub(ch))
-        return img
+        # a water pixel that never held water this year has no fortnight: leave it unlabelled
+        return img.updateMask(idx.mask()) if refinements[cls].get("features") == "water_fortnights" else img
 
     base_idx = _ee_label(ee, bands_img, model_bundle)
     base_children = list(_svc_steps(model_bundle)[1].classes_)
@@ -410,7 +420,7 @@ def _labelled_bbox(bbox, year, model_bundle, refinements, colors):
     # since it isn't band math. Drop both; those classes show their parent label here — the backend
     # renders them on the point grid instead.
     refinements = {k: v for k, v in refinements.items()
-                   if (_is_ae(v) and not _is_nonlinear(v)) or v.get("features") == "rule"}
+                   if (_is_ae(v) and not _is_nonlinear(v)) or v.get("features") in ("rule", "water_fortnights")}
 
     bands_img, region = _alpha_image(ee, bbox, year)
     final, final_classes = _final_label(ee, bands_img, region, year, model_bundle, refinements)
