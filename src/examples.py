@@ -109,10 +109,19 @@ def archive_all():
     look pre-filled. This tucks the current markings into data/examples/archive/<timestamp>/ — it's
     a move, not a delete, so nothing's lost and trained models (which live as joblibs/zoo cards) are
     untouched. Returns the list of nodes whose examples were cleared."""
-    import shutil
     if not os.path.isdir(examples_dir()):
         return []
-    files = [fn for fn in os.listdir(examples_dir()) if fn.endswith(".geojson")]
+    return _archive([fn for fn in os.listdir(examples_dir()) if fn.endswith(".geojson")])
+
+
+def archive(nodes):
+    """Tuck away just these classes' markings (they were removed from the tree), so a class made
+    again under the same name starts empty. Same archive folder, still a move."""
+    return _archive([f"{n}.geojson" for n in nodes if os.path.exists(_path(n))])
+
+
+def _archive(files):
+    import shutil
     if not files:
         return []
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
