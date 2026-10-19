@@ -904,5 +904,14 @@ not a score). The water command ran all four layers on a 10 km² Delhi box. The 
 zoo: `check_tree_ops.py` section 5 (26 classes, kharif / rabi / zaid by naming, remove), a live run and
 GeoTIFF on a Yamuna box, and `week22/ui_water.py` clicking the whole zoo flow in headless Edge.
 
+**Tidy-ups after a look in the browser.** New classes pick from a full colour wheel instead of seven
+fixed colours (the reason everything had turned pink), and each merge gets a fresh colour too. A zoo card
+may carry its own class colours, so the water card paints an ordered light-green-to-navy ramp. A split with
+more than 8 classes starts folded in the tree (a strip of its colours and a count; ▸ unfolds it). Zoo
+tiles show 4 class chips and "+N more"; the card detail gives the range ("fortnight1 to fortnight26, 26
+classes"); long name lists in messages shorten the same way. Any class can be ticked, and "Remove" under the
+tree takes all ticked classes in one go (`POST /api/class/remove`; base classes are kept and named).
+Checked by `check_tree_ops.py` section 6 and `week22/ui_tidy.py`.
+
 **Still in progress, uncommitted:** reading Alpha Earth's years from Earth Engine (`config.ae_years`)
 instead of a fixed 2017-2024 list, in `config.py`, `backend.py`, `temporal_eval.py`.

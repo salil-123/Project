@@ -28,6 +28,20 @@ SEED = ROOT / "data" / "catalogue_seed"
 CARD_ID = "mc_water_fortnights_v1"
 OLD = "mc_water_fortnight_augmented_v1"
 INDIA = [68.0, 6.0, 97.5, 37.5]
+# light green -> teal -> blue -> navy: the later water lasts, the darker the class
+RAMP = ["#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#253494", "#081d58"]
+
+
+def ramp(n):
+    """`n` colours evenly along RAMP."""
+    rgb = [tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in RAMP]
+    out = []
+    for k in range(n):
+        x = k / (n - 1) * (len(rgb) - 1)
+        i = min(int(x), len(rgb) - 2)
+        f = x - i
+        out.append("#%02x%02x%02x" % tuple(round(a + (b - a) * f) for a, b in zip(rgb[i], rgb[i + 1])))
+    return out
 
 
 def main():
@@ -43,7 +57,7 @@ def main():
         "node": "water",
         "parent_class": "root",
         "topology": "per_node_split",
-        "produces": [{"class": c} for c in wf.CLASSES],
+        "produces": [{"class": c, "color": col} for c, col in zip(wf.CLASSES, ramp(len(wf.CLASSES)))],
         "training": {"datasets": ["ds_seasonal_water_v1"],
                      "embedding": {"source": "sentinel1+2 fortnight", "dim": len(spec["fusion"]["neighbourhood"]["bands"])},
                      "algo": "linearsvc, pixel + neighbourhood model per sensor case",

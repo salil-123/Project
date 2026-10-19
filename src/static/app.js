@@ -3,7 +3,10 @@
 // runs), owned by the signed-in user. The journey and why it's shaped this way: week18/app_design.md.
 let PRESETS = {}, COLORS = {}, TREE = {}, STANDARDS = {}, INFER_OPTS = {};
 let MERGES = [];                  // active merge rules, drawn onto the hierarchy tree (#1)
-let mergeSel = new Set();         // leaf ids ticked in the tree, waiting to be merged (#1)
+let mergeSel = new Set();         // classes ticked in the tree: merged (leaves) or removed together
+let collapsed = new Set();        // classes folded in the tree
+let autoFolded = new Set();       // big splits fold once on their own; after that it's the user's call
+const FOLD_OVER = 8;              // a split with more children than this starts folded
 const AE_INFERENCE_ID = "ds_alphaearth_annual_v1";   // the Alpha Earth feature-source card
 let ME = null;                    // the signed-in user
 let PROJECT = null;               // the open project (null on the start screen)
@@ -233,6 +236,9 @@ async function triggerDagAndPoll(conf, { interval = 3000, onState } = {}) {
   }
 }
 
+// "a / b / c", or for a long list its size and range, so 26 classes don't fill the status line
+const nameList = (xs) => xs.length > 6 ? `${xs.length} classes (${xs[0]} to ${xs[xs.length - 1]})` : xs.join(" / ");
+
 // ---------------- tree ----------------
 // the source->merge map, so a leaf can show which merge it's been relabelled into (#1)
 function mergeOf(cls) { return MERGES.find((m) => (m.sources || []).includes(cls)); }
@@ -243,27 +249,69 @@ function renderTree() {
   const walk = (cls, depth) => {
     const n = TREE[cls];
     const color = n.color || "#666";
-    const isLeaf = !(n.children || []).length;
+    const kids = n.children || [];
+    const isLeaf = !kids.length;
+    if (kids.length > FOLD_OVER && !autoFolded.has(cls)) { autoFolded.add(cls); collapsed.add(cls); }
+    const folded = collapsed.has(cls);
     const tag = n.classifier ? '<span class="tag">model</span>' : n.rule ? '<span class="tag">rule</span>'
               : n.ee_rf ? '<span class="tag">IndiaSAT</span>' : "";
     const mr = isLeaf ? mergeOf(cls) : null;
     const mtag = mr ? `<span class="tag merge" style="color:${mr.color || "#8e44ad"}">→ ${esc(mr.name)}</span>` : "";
-    // only leaves can be merge sources, so only leaves get the tick (and only on your own project)
-    const chk = isLeaf && cls !== "root" && PROJECT && PROJECT.mine
+    // any class can be ticked on your own project: leaves to merge, anything to remove together
+    const chk = cls !== "root" && PROJECT && PROJECT.mine
       ? `<input type="checkbox" class="mchk" data-cls="${cls}"${mergeSel.has(cls) ? " checked" : ""}>` : "";
+    // a folded split shows how many classes it hides and a strip of their colours
+    const fold = isLeaf || cls === "root" ? `<span class="fold"></span>`
+      : `<span class="fold" title="${folded ? "show" : "hide"} its classes">${folded ? "▸" : "▾"}</span>`;
+    const strip = folded ? `<span class="kids" style="background:linear-gradient(90deg,${
+      kids.map((c) => (TREE[c] && TREE[c].color) || "#999").join(",")})"></span><span class="kidn">${kids.length}</span>` : "";
     const div = document.createElement("div");
     div.className = "node" + (cls === selected ? " sel" : "");
     div.style.paddingLeft = 6 + depth * 14 + "px";
-    div.innerHTML = `${chk}<span class="swatch" style="background:${color}"></span>${esc(n.name)}${tag}${mtag}`;
-    div.onclick = (e) => { if (!e.target.classList.contains("mchk")) select(cls); };
+    div.innerHTML = `${fold}${chk}<span class="swatch" style="background:${color}"></span>${esc(n.name)}${tag}${mtag}${strip}`;
+    div.onclick = (e) => {
+      if (e.target.classList.contains("mchk")) return;
+      if (e.target.classList.contains("fold") && !isLeaf) {
+        folded ? collapsed.delete(cls) : collapsed.add(cls);
+        return renderTree();
+      }
+      select(cls);
+    };
     const cb = div.querySelector(".mchk");
-    if (cb) cb.onchange = () => { cb.checked ? mergeSel.add(cls) : mergeSel.delete(cls); };
+    if (cb) cb.onchange = () => { cb.checked ? mergeSel.add(cls) : mergeSel.delete(cls); updateTickBar(); };
     box.appendChild(div);
-    (n.children || []).forEach((c) => walk(c, depth + 1));
+    if (!folded) kids.forEach((c) => walk(c, depth + 1));
   };
   walk("root", 0);
   renderMergeNodes(box);
+  updateTickBar();
 }
+
+// ticked classes get one bar under the tree: how many, remove them, or clear the ticks
+function updateTickBar() {
+  const n = [...mergeSel].filter((c) => TREE[c]).length;
+  $("tickBar").classList.toggle("hidden", !n || !PROJECT || !PROJECT.mine);
+  $("tickCount").textContent = `${n} ticked`;
+}
+$("clearTicked").onclick = () => { mergeSel.clear(); renderTree(); };
+$("removeTicked").onclick = async () => {
+  const ticked = [...mergeSel].filter((c) => TREE[c]);
+  const base = ticked.filter((c) => TREE[c].parent === "root");
+  const names = ticked.map((c) => TREE[c].name).join(", ");
+  const keep = base.length ? ` Base classes (${base.map((c) => TREE[c].name).join(", ")}) stay.` : "";
+  if (!await uiConfirm(`Remove ${names}?\n\nEach goes with everything under it; a split left with one ` +
+      `class becomes a single class again.${keep}`, { okText: "Remove", danger: true })) return;
+  const r = await postJSON(api("/api/class/remove"), { classes: ticked });
+  const d = await readJson(r);
+  if (!r.ok) { setStatus("Error: " + errText(d, r), "err"); return; }
+  mergeSel.clear();
+  await refreshTree(d);
+  if (selected && !TREE[selected]) closePanel();
+  const kept = Object.keys(d.skipped || {});
+  markStale(d.removed.length
+    ? `Removed ${d.removed.length} class${d.removed.length > 1 ? "es" : ""}${kept.length ? `; kept ${kept.join(", ")}` : ""}`
+    : "Nothing removed: base classes stay.");
+};
 
 // the merge targets, drawn as virtual nodes under the real tree: swatch + sources + an undo ✕ (#1)
 function renderMergeNodes(box) {
@@ -288,6 +336,8 @@ let navStack = [];
 function select(cls, { back = false } = {}) {
   if (!back && selected && selected !== cls) navStack.push(selected);
   selected = cls;
+  // opening a class inside a folded split unfolds the way to it
+  for (let p = TREE[cls] && TREE[cls].parent; p; p = TREE[p] && TREE[p].parent) collapsed.delete(p);
   $("selName").textContent = TREE[cls] ? TREE[cls].name : "nothing";
   renderTree();
   renderContext(cls);
@@ -339,7 +389,7 @@ function renderViewOnly(cls, n) {
   const names = (ids) => ids.map((c) => `${swatch(c)} ${esc(TREE[c]?.name || c)}`).join("<br>");
   let what, how = "";
   if (kids.length) {
-    what = `Split into ${kids.map((c) => TREE[c]?.name || c).join(" / ")}.`;
+    what = `Split into ${nameList(kids.map((c) => TREE[c]?.name || c))}.`;
     if (n.from_model) how = `Made with the zoo model <b>${esc(n.from_model.name)}</b>.
       <button class="ghost" id="viewCard">See its model card</button>`;
     else if (n.rule) how = "Made with a rule on spectral indices, so no training.";
@@ -387,13 +437,13 @@ function renderContext(cls) {
   document.querySelectorAll("#context .ctxcls").forEach((s) => (s.textContent = n.name));
 
   let what;
-  if (n.rule) what = `Split by a rule into ${kids.join(" / ")}. Rules need no training.`;
-  else if (n.ee_rf) what = `Split by an IndiaSAT model into ${kids.join(" / ")}. It trains inside Earth Engine.`;
+  if (n.rule) what = `Split by a rule into ${nameList(kids)}. Rules need no training.`;
+  else if (n.ee_rf) what = `Split by an IndiaSAT model into ${nameList(kids)}. It trains inside Earth Engine.`;
   else if (kids.length && n.from_model) what = `Using "${n.from_model.name}" from the zoo. It's ready: ` +
       `run classification to see it. Give every class examples only if you want to train your own instead.`;
   else if (kids.length) what = n.classifier
-      ? `A trained split into ${kids.join(" / ")}. Add more examples and train again to improve it.`
-      : `Split into ${kids.join(" / ")} but not trained yet. Give every class some examples, then Train.`;
+      ? `A trained split into ${nameList(kids)}. Add more examples and train again to improve it.`
+      : `Split into ${nameList(kids)} but not trained yet. Give every class some examples, then Train.`;
   else what = inSplit ? `One of the classes the ${parent.name} split decides between.`
                       : "Not split yet. Split it into finer classes, or pull a new class out of it.";
   $("ctxWhat").textContent = what;
@@ -428,7 +478,7 @@ function renderContext(cls) {
   $("addHead").textContent = isLeaf ? `Pull a new class out of ${n.name}` : `Add another class to this split`;
   $("addHint").textContent = isLeaf
     ? `${n.name} becomes “${n.name} (rest)” plus the new class; you mark examples of the new one.`
-    : `It joins ${kids.join(" / ")}; give it examples, then train again.`;
+    : `It joins ${nameList(kids)}; give it examples, then train again.`;
   updateTesseraAvailability();
 }
 
@@ -510,7 +560,7 @@ const nameOf = (c) => (TREE[c] && TREE[c].name) || String(c).replace(/_/g, " ");
 // a short human line for one op, from its args/result
 function opSummary(e) {
   const a = e.args || {};
-  const names = (cs) => (cs || []).map((c) => (typeof c === "string" ? c : c.name)).join(" / ");
+  const names = (cs) => nameList((cs || []).map((c) => (typeof c === "string" ? c : c.name)));
   switch (e.op) {
     case "create":        return `${a.name} · ${a.year} · ${a.base_scheme}`;
     case "split":         return `${a.parent} → ${names(a.children)}${a.from ? " (from upload)" : ""}`;
@@ -566,15 +616,18 @@ async function updateDataDist() {
   $("doRetrain").disabled = missing.length > 0;
   $("doRetrain").textContent = node.from_model ? "Train your own" : node.classifier ? "Train again" : "Train";
   const max = Math.max(1, ...rows.map((r) => r.n));
-  const bars = rows.map((r) =>
+  const shown = rows.length > 8 ? rows.filter((r) => r.n || r.neg) : rows;
+  const hidden = rows.length - shown.length;
+  const bars = shown.map((r) =>
     `<div class="dd-row"><span class="sw" style="background:${COLORS[r.c] || "#888"}"></span>
       <span class="dd-name">${esc(TREE[r.c].name)}</span>
       <span class="dd-bar"><i style="width:${Math.round(100 * r.n / max)}%"></i></span>
-      <span class="dd-n">${r.n}${r.neg ? ` <small>−${r.neg}</small>` : ""}</span></div>`).join("");
+      <span class="dd-n">${r.n}${r.neg ? ` <small>−${r.neg}</small>` : ""}</span></div>`).join("") +
+    (hidden ? `<div class="dd-hint">${hidden} ${shown.length ? "more " : ""}classes with no examples yet</div>` : "");
   let hint, col;
   // a zoo model already works, so missing examples are optional here, not a warning
   if (missing.length && node.from_model) { hint = "none needed: the zoo model is in use. Add examples to every class to train your own."; col = "#6f7468"; }
-  else if (missing.length) { hint = `needs examples for ${missing.join(", ")} before it can train.`; col = "#b4791f"; }
+  else if (missing.length) { hint = `needs examples for ${nameList(missing)} before it can train.`; col = "#b4791f"; }
   else {
     const counts = rows.map((r) => r.n);
     const ratio = Math.max(...counts) / Math.max(1, Math.min(...counts));
@@ -602,8 +655,32 @@ async function refreshTree(data) {
 // longer exist so a stale selection can't leak into the next merge.
 async function loadMerges() {
   try { MERGES = (await getJSON(api("/api/merge"))).rules || []; } catch { MERGES = []; }
-  for (const c of [...mergeSel]) if (!TREE[c] || (TREE[c].children || []).length) mergeSel.delete(c);
+  for (const c of [...mergeSel]) if (!TREE[c]) mergeSel.delete(c);
+  $("mergeColor").value = freshColor();
   renderTree();
+}
+
+// the wheel colour furthest from every colour already on the map (the server does the same for
+// classes), so merges stop all coming out the same purple
+function freshColor() {
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+  const dist = (a, b) => { const r = (a[0] + b[0]) / 2, d = a.map((v, i) => v - b[i]);
+    return Math.sqrt((2 + r / 256) * d[0] ** 2 + 4 * d[1] ** 2 + (2 + (255 - r) / 256) * d[2] ** 2); };
+  const hex = (c) => "#" + c.map((v) => v.toString(16).padStart(2, "0")).join("");
+  const hsl = (h, l) => {           // hue in degrees, saturation 80%, lightness l -> [r, g, b]
+    const a = 0.8 * Math.min(l, 1 - l);
+    const f = (n) => { const k = (n + h / 30) % 12; return Math.round(255 * (l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))); };
+    return [f(0), f(8), f(4)];
+  };
+  const used = [...Object.values(TREE).map((n) => n.color), ...MERGES.map((m) => m.color)]
+    .filter((c) => /^#[0-9a-f]{6}$/i.test(c || "")).map(rgb);
+  let best = "#8e44ad", far = -1;
+  for (let h = 0; h < 360; h += 15) for (const l of [0.45, 0.3]) {
+    const c = hsl(h, l);
+    const d = used.length ? Math.min(...used.map((u) => dist(c, u))) : 0;
+    if (d > far) { far = d; best = hex(c); }
+  }
+  return best;
 }
 
 // ---------------- init: who's here, then start screen or a project ----------------
@@ -1177,7 +1254,7 @@ $("doRuleSplit").onclick = async () => {
   $("ruleTrue").value = ""; $("ruleFalse").value = ""; $("ruleExpr").value = "";
   await refreshTree(d);
   select(selected);
-  markStale(`Rule split “${TREE[selected].name}” → ${d.classes.join(" / ")}`);
+  markStale(`Rule split “${TREE[selected].name}” → ${nameList(d.classes)}`);
 };
 
 // ---------------- remove a class made by mistake ----------------
@@ -1261,9 +1338,9 @@ $("doRetrain").onclick = async () => {
 
 // ---------------- merge classes (#9) ----------------
 $("doMerge").onclick = async () => {
-  const sources = [...mergeSel];
+  const sources = [...mergeSel].filter((c) => TREE[c] && !(TREE[c].children || []).length);
   const name = $("mergeName").value.trim();
-  if (sources.length < 2) { setStatus("Tick at least two classes in the tree to merge.", "err"); return; }
+  if (sources.length < 2) { setStatus("Tick at least two classes without sub-classes to merge.", "err"); return; }
   if (!name) { setStatus("Name the merged class.", "err"); return; }
   const r = await postJSON(api("/api/merge"), { name, sources, color: $("mergeColor").value });
   const d = await readJson(r);
@@ -1414,9 +1491,14 @@ function updatePubSelBtn() {
   btn.textContent = pubSel.size ? `Publish selected (${pubSel.size})` : "Publish selected";
 }
 
-function swatch(cls) { return `<span class="sw" style="background:${COLORS[cls] || "#888"}"></span>`; }
+function swatch(cls, col) { return `<span class="sw" style="background:${COLORS[cls] || col || "#888"}"></span>`; }
+// a model with many classes shows the first few and a count, so a 26 class card stays a card
+const CHIP_MAX = 4;
+const moreChip = (n) => n > 0 ? `<span class="chip more">+${n} more</span>` : "";
 function classChips(classes) {
-  return (classes || []).map((c) => `<span class="chip">${swatch(c)}${c}</span>`).join("");
+  const all = classes || [];
+  return all.slice(0, CHIP_MAX).map((c) => `<span class="chip">${swatch(c)}${c}</span>`).join("") +
+         moreChip(all.length - CHIP_MAX);
 }
 
 // tile chips that prefer the STANDARD class name when the uploader mapped it (#14); falls back to the
@@ -1424,9 +1506,9 @@ function classChips(classes) {
 function tileClassChips(m) {
   const std = m.std_classes || [];
   if (!std.some((s) => s && s.std)) return classChips(m.classes);   // nothing mapped -> user classes
-  return std.map((s) => s.std
+  return std.slice(0, CHIP_MAX).map((s) => s.std
     ? `<span class="chip std" title="uploader: ${s.class}">${swatch(s.class)}${s.std}</span>`
-    : `<span class="chip">${swatch(s.class)}${s.class}</span>`).join("");
+    : `<span class="chip">${swatch(s.class)}${s.class}</span>`).join("") + moreChip(std.length - CHIP_MAX);
 }
 
 const isArchived = (id) => /_prev\d+_/.test(id || "");   // superseded snapshot cards (#9)
@@ -1545,7 +1627,7 @@ function useButtonHTML(c) {
   // the model's own name. Nothing to do unless you want your own names (sir's "class x is acacia").
   const eeRf = c.topology === "ee_rf";
   const rows = (c.produces || []).map((p) => `<div class="use-row">
-      <span class="chip">${swatch(p.class)}${esc(p.class)}</span><span class="arrow">→</span>
+      <span class="chip">${swatch(p.class, p.color)}${esc(p.class)}</span><span class="arrow">→</span>
       <input type="text" data-m="${esc(p.class)}" value="${esc(freeName(p.class, t))}" ${eeRf ? "disabled" : ""}></div>`).join("");
   const note = eeRf ? "Its class names are fixed. It trains inside Earth Engine and needs the IndiaSAT base."
                     : "Rename any to fit your scheme, or leave them. The same name twice merges those two.";
@@ -1597,7 +1679,14 @@ function stdName(kind, code) {
 // produced-class chips on the DETAIL pane: the uploader's own class, then what it maps to in a
 // standard scheme by NAME (so it reads the same as the tile, which shows the standard name) (#14).
 function produceChips(produces) {
-  return (produces || []).map((p) => {
+  const all = produces || [];
+  // a long list gives the range instead of every class (the naming box below lists them all)
+  if (all.length > 8) {
+    const one = (p) => `<span class="chip">${swatch(p.class, p.color)}${esc(p.class)}</span>`;
+    return `${one(all[0])}<span class="prose"> to </span>${one(all[all.length - 1])}` +
+           `<span class="prose"> (${all.length} classes)</span>`;
+  }
+  return all.map((p) => {
     const m = p.std_mapping || {};
     const std = Object.entries(m).map(([k, v]) => `${stdName(k, v)} (${k})`).join(", ");
     return `<span class="chip">${swatch(p.class)}${p.class}${std ? ` <span class="prose">→ ${std}</span>` : ""}</span>`;
@@ -2003,7 +2092,7 @@ async function applyModel(id, targetNode, force = false, mapping = null) {
   closeZoo();
   await refreshTree(d);
   select(targetNode);
-  markStale(`${TREE[targetNode].name} now splits into ${(d.classes || []).join(" / ")}${renamedNote(d)}`);
+  markStale(`${TREE[targetNode].name} now splits into ${nameList(d.classes || [])}${renamedNote(d)}`);
   return true;
 }
 

@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <link rel="stylesheet" href="vendor/leaflet.draw.css" />
   <!-- bump ?v= when these change so browsers can't serve a stale app.js against fresh HTML -->
-  <link rel="stylesheet" href="style.css?v=45" />
+  <link rel="stylesheet" href="style.css?v=47" />
 </head>
 <body>
   <aside id="sidebar">
@@ -69,6 +69,11 @@
       </div>
       <p class="hint">Pick a class to refine it. Selected: <b id="selName">nothing</b></p>
       <div id="tree"></div>
+      <div id="tickBar" class="tickbar hidden">
+        <span id="tickCount"></span>
+        <button id="removeTicked" class="danger">Remove</button>
+        <button id="clearTicked" class="ghost">Clear</button>
+      </div>
       <div id="ops" class="hidden"></div>
       <button id="startFresh" class="ghost">↺ Reset scheme to the base classes</button>
     </section>
@@ -387,6 +392,6 @@
   <!-- runtime config from the server (API base, sign-in, Airflow). Served, not baked, so retargeting
        the UI at another backend is an .env change rather than a code edit. Must load before app.js. -->
   <script src="config.js"></script>
-  <script src="app.js?v=61"></script>
+  <script src="app.js?v=64"></script>
 </body>
 </html>
