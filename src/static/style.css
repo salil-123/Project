@@ -93,6 +93,18 @@ footer { font-size: 11px; color: #8a8d80; padding-top: 14px; border-top: 1px sol
 /* the per-leaf tick for picking merge sources straight from the tree (#1) */
 #tree .mchk { width: auto; margin: 0 6px 0 0; flex-shrink: 0; cursor: pointer; accent-color: #8e44ad; }
 #tree .tag.merge { color: inherit; }                /* coloured inline to the merge's own hue */
+/* fold arrow; leaves get an empty one so names stay lined up */
+#tree .fold { width: 14px; flex-shrink: 0; color: #4f5547; font-size: 12px; text-align: center; margin-right: 2px; }
+/* a folded split: a strip of its classes' colours and how many there are */
+#tree .kids { width: 46px; height: 7px; border-radius: 4px; margin-left: 8px; flex-shrink: 0; }
+#tree .kidn { font-size: 10px; color: #8a8d80; margin-left: 5px; }
+/* what to do with the ticked classes */
+.tickbar { display: flex; align-items: center; gap: 8px; margin: 6px 0 2px; font-size: 12px; color: #5b6152; }
+.tickbar span { flex: 1; }
+.tickbar button { width: auto; padding: 4px 12px; font-size: 12px; margin: 0; }
+.chip.more { background: none; color: #8a8d80; }
+/* a model with many classes: the naming rows scroll instead of stretching the card */
+#useNames { max-height: 330px; overflow-y: auto; padding-right: 4px; }
 /* the merge targets, shown as virtual nodes under the real tree */
 #tree .merge-head { font-size: 10px; text-transform: uppercase; letter-spacing: .04em;
   color: #8a8d80; margin: 10px 0 2px 6px; }

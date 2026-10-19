@@ -1465,6 +1465,34 @@ def remove_class(cls: str):
       - one class left isn't a split, so the parent goes back to a plain class (undoes an ADD)
       - otherwise the rest stay; the parent's model stays only if it never predicted this class
     Its examples are archived, and merges lose it as a source (a merge left with one source goes)."""
+    return {**_remove(cls), **_tree_payload()}
+
+
+class RemoveIn(BaseModel):
+    classes: list[str]
+
+
+@app.post("/api/class/remove")
+def remove_classes(op: RemoveIn):
+    """Remove several ticked classes in one go. One that already went with an earlier one (its parent,
+    or a split that collapsed) is just skipped; base classes are skipped with the reason."""
+    removed, effects, skipped = [], [], {}
+    for cls in op.classes:
+        if cls in removed:
+            continue
+        try:
+            r = _remove(cls)
+        except HTTPException as e:
+            if cls not in hierarchy.load():
+                continue                         # went with something removed before it
+            skipped[cls] = e.detail
+            continue
+        removed += r["removed"]
+        effects.append(r["effect"])
+    return {"removed": removed, "effects": effects, "skipped": skipped, **_tree_payload()}
+
+
+def _remove(cls):
     tree = hierarchy.load()
     if cls not in tree:
         raise HTTPException(404, f"no class {cls!r} in the scheme")
@@ -1501,8 +1529,7 @@ def remove_class(cls: str):
         else:
             del_merge(r["target"])
     oplog.append("remove", {"node": cls, "removed": gone, "parent": parent})
-    return {"removed": gone, "parent": parent, "effect": effect, "archived_examples": archived,
-            **_tree_payload()}
+    return {"removed": gone, "parent": parent, "effect": effect, "archived_examples": archived}
 
 
 class ApplyIn(BaseModel):
@@ -1565,10 +1592,18 @@ def apply_model(op: ApplyIn):
         mapping = {c: renamed.get(mapping.get(c, c), mapping.get(c, c)) for c in model_classes}
         yours = [renamed.get(c, c) for c in yours]
 
+    # a card may bring its own class colours (an ordered model reads best as a ramp); a merged name
+    # takes the colour of its first class, the rest get the next free colour as usual
+    colour = {}
+    for p in card.get("produces", []):
+        if p.get("color"):
+            colour.setdefault(mapping.get(p["class"], p["class"]), p["color"])
+
     # rebuild the node's children as the user's classes, then register the classifier
     _clear_split(tree, node)
     for cls in yours:
-        hierarchy.add_class(tree, _class_label(tree, cls, renamed, node), node, canonical=cls)
+        hierarchy.add_class(tree, _class_label(tree, cls, renamed, node), node, canonical=cls,
+                            color=colour.get(cls))
     if config.in_project():
         # the project keeps its own copy, renamed to the user's classes, so the zoo can move on
         # without changing this project's map

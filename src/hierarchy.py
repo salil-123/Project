@@ -95,6 +95,21 @@ def canonicalize(name: str) -> str:
 _DISTINCT = ["#e040fb", "#ffd600", "#ff6d00", "#c6ff00", "#8e44ad", "#ff4081", "#b388ff"]
 
 
+def _wheel():
+    """A full colour wheel in two strengths, so a scheme with many classes keeps finding a fresh colour
+    instead of cycling back to the same seven (which is how everything ended up pink)."""
+    import colorsys
+    out = []
+    for light, sat in ((0.55, 0.85), (0.38, 0.75), (0.72, 0.70)):
+        for h in range(0, 360, 15):
+            r, g, b = colorsys.hls_to_rgb(h / 360, light, sat)
+            out.append("#%02x%02x%02x" % (round(r * 255), round(g * 255), round(b * 255)))
+    return out
+
+
+_CANDIDATES = _DISTINCT + _wheel()
+
+
 def _rgb(hexc: str):
     h = hexc.lstrip("#")
     return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
@@ -115,7 +130,7 @@ def _pick_color(tree: dict, parent: str = None) -> str:
             for n in tree.values() if n.get("color")]
     if not used:
         return _DISTINCT[0]
-    return max(_DISTINCT, key=lambda c: min(_dist(_rgb(c), u) * w for u, w in used))
+    return max(_CANDIDATES, key=lambda c: min(_dist(_rgb(c), u) * w for u, w in used))
 
 
 # ----------------------------- persistence -----------------------------
