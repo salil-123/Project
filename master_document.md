@@ -913,5 +913,13 @@ classes"); long name lists in messages shorten the same way. Any class can be ti
 tree takes all ticked classes in one go (`POST /api/class/remove`; base classes are kept and named).
 Checked by `check_tree_ops.py` section 6 and `week22/ui_tidy.py`.
 
+**Second round.** The legend groups a big split's classes into one row with their colour strip (Water
+by fortnight shows as one gradient row); clicking any legend row shows only that class, or that split's
+classes, on the map, and "show all" brings the rest back. It filters the Earth Engine tiles in the browser
+(nearest legend colour, since a tile can come back as JPEG), so nothing reruns. Projects made before the
+colour wheel get their repeated colours repainted on the owner's next visit, with the zoo card's own
+colours where there are some. Your projects can be deleted from the start page (owner only). Checked by
+`week22/ui_legend.py`.
+
 **Still in progress, uncommitted:** reading Alpha Earth's years from Earth Engine (`config.ae_years`)
 instead of a fixed 2017-2024 list, in `config.py`, `backend.py`, `temporal_eval.py`.
