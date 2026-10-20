@@ -3,6 +3,7 @@
 Samples Alpha Earth (server-side in GEE) on a grid over the bbox, predicts each
 cell with the saved pooled model, and returns a tidy dataframe the UI can draw.
 """
+import json
 import math
 import os
 import joblib
@@ -504,6 +505,128 @@ def classify_bbox_geotiff(bbox, year: int = 2024, model_bundle=None, refinements
     return url, final_classes
 
 
+# ----------------- a Tessera split at 10 m (no point grid) -----------------
+# Tessera isn't in Earth Engine, so its splits can't be band math there. They used to push the whole map
+# onto a 60 x 60 point grid; but the downloaded tiles are 10 m rasters, so we pull everything else down
+# from EE as a 10 m label array and run the Tessera splits on their parents' pixels right here.
+TE_CHUNK = 200_000           # pixels per batch: 200k x 128 floats is ~100 MB, a whole map would be GBs
+TE_NODATA = 255
+
+
+def _te_grid(bbox):
+    """A ~10 m lon/lat grid over the bbox: (width, height, dx, dy)."""
+    w, s, e, n = bbox
+    dx = 10 / (111_320 * math.cos(math.radians((s + n) / 2)))
+    dy = 10 / 110_574
+    return math.ceil((e - w) / dx), math.ceil((n - s) / dy), dx, dy
+
+
+def _te_key(bbox, year, refinements):
+    """What the 10 m map depends on: the box, the year, the scheme files and the Tessera weights."""
+    import hashlib
+    h = hashlib.sha1(json.dumps([list(bbox), year]).encode())
+    for f in ("hierarchy.json", "merge_rules.json"):
+        p = config.ws_path(f)
+        h.update(open(p, "rb").read() if os.path.exists(p) else b"-")
+    tree = hierarchy.load()
+    for parent in sorted(refinements):
+        clf = (tree.get(parent) or {}).get("classifier") or parent
+        p = config.weights_path(clf)
+        h.update(f"{parent}:{os.path.getmtime(p) if os.path.exists(p) else 0}".encode())
+    return h.hexdigest()
+
+
+def classify_bbox_te_raster(bbox, year: int = 2024, model_bundle=None, refinements=None, colors=None):
+    """The whole map at 10 m with its Tessera splits applied pixel by pixel. Returns {png (bytes), counts,
+    classes, codes (uint8 H x W, TE_NODATA = nothing), transform (lon/lat affine)}.
+
+    One cached result per workspace (a run's folder, or the project's), redone when the box, year,
+    scheme or a Tessera split's weights change, so reopening a run is a file read."""
+    import io
+    import tessera_tiles
+    import aoi
+    from PIL import Image
+    if refinements is None:
+        refinements = load_refinements()
+    te_refs = {k: v for k, v in refinements.items() if v.get("features") == "tessera"}
+    cache = config.ws_path("tessera_map.npz")
+    key = _te_key(bbox, year, te_refs)
+    if os.path.exists(cache):
+        z = np.load(cache, allow_pickle=False)
+        if str(z["key"]) == key:
+            return {"png": z["png"].tobytes(), "counts": json.loads(str(z["counts"])),
+                    "classes": [str(c) for c in z["classes"]], "codes": z["codes"],
+                    "transform": z["transform"].tolist()}
+
+    g = aoi.check(bbox, "tessera")
+    if not g["ok"]:
+        raise ValueError(g["reason"])
+    w, s, e, n = bbox
+    width, height, dx, dy = _te_grid(bbox)
+    # everything Earth Engine can do (base, AE and rule splits, IndiaSAT models, merges), down as a 10 m
+    # array; a Tessera split's parent comes through as itself
+    ee, final, classes, _, _ = _labelled_bbox(bbox, year, model_bundle, refinements, colors)
+    arr = ee.data.computePixels({
+        "expression": final.unmask(TE_NODATA).toUint8().rename("c"),
+        "fileFormat": "NUMPY_NDARRAY",
+        "grid": {"dimensions": {"width": width, "height": height},
+                 "affineTransform": {"scaleX": dx, "shearX": 0, "translateX": w,
+                                     "shearY": 0, "scaleY": -dy, "translateY": n},
+                 "crsCode": "EPSG:4326"}})
+    codes = np.array(arr["c"], dtype=np.uint8)
+    classes = list(classes)
+
+    parents = [classes.index(p) for p in te_refs if p in classes]
+    todo = np.flatnonzero(np.isin(codes, parents))
+    if todo.size:
+        tessera_tiles.prefetch([(w, s), (w, n), (e, s), (e, n), ((w + e) / 2, (s + n) / 2)], year)
+        names = np.array(classes, dtype=object)
+        flat = codes.reshape(-1)
+        for i in range(0, todo.size, TE_CHUNK):
+            idx = todo[i:i + TE_CHUNK]
+            r, c = np.divmod(idx, width)
+            Xte = tessera_tiles.sample_many(w + (c + 0.5) * dx, n - (r + 0.5) * dy, year)
+            preds = names[flat[idx]].copy()
+            _apply_refinements(preds, None, None, te_refs, Xte=Xte, te_valid=~np.isnan(Xte).any(axis=1))
+            _apply_merges(preds)
+            for cls in set(preds) - set(classes):
+                classes.append(cls)
+            lookup = {cls: k for k, cls in enumerate(classes)}
+            flat[idx] = [lookup[p] for p in preds]
+        if DROPPED in classes:
+            codes[codes == classes.index(DROPPED)] = TE_NODATA
+
+    found = np.bincount(codes[codes != TE_NODATA], minlength=len(classes))
+    counts = {classes[k]: int(v) for k, v in enumerate(found) if v}
+    colors = colors or load_colors()
+    lut = np.zeros((256, 4), dtype=np.uint8)
+    for k, cls in enumerate(classes):
+        h = colors.get(cls, "#999999").lstrip("#")
+        lut[k] = [int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16), 255]
+    buf = io.BytesIO()
+    Image.fromarray(lut[codes], "RGBA").save(buf, "PNG", optimize=True)
+    out = {"png": buf.getvalue(), "counts": counts, "classes": classes, "codes": codes,
+           "transform": [dx, 0, w, 0, -dy, n]}
+    tmp = cache + ".tmp.npz"
+    np.savez_compressed(tmp, key=key, png=np.frombuffer(out["png"], dtype=np.uint8), counts=json.dumps(counts),
+                        classes=np.array(classes), codes=codes, transform=np.array(out["transform"]))
+    os.replace(tmp, cache)
+    return out
+
+
+def te_geotiff(path, bbox, year: int = 2024, model_bundle=None, refinements=None):
+    """The same 10 m map as a one-band GeoTIFF of class codes. Returns the code -> class list."""
+    import rasterio
+    from rasterio.transform import Affine
+    r = classify_bbox_te_raster(bbox, year, model_bundle, refinements)
+    h, w = r["codes"].shape
+    with rasterio.open(path, "w", driver="GTiff", width=w, height=h, count=1, dtype="uint8",
+                       crs="EPSG:4326", transform=Affine(*r["transform"]), nodata=TE_NODATA,
+                       compress="deflate") as dst:
+        dst.write(r["codes"], 1)
+    return r["classes"]
+
+
 # ----------------- export the classified raster to a GEE asset (the STACD contract) -----------------
 def classify_to_asset(bbox, asset_id, year: int = 2024, region_geom=None, model_bundle=None,
                       refinements=None, colors=None, scale: int = 10, wait: bool = True,
@@ -694,12 +817,7 @@ def _sample_alpha(pts, bbox, year):
 
 
 def _sample_tessera(pts, year):
-    """Tessera 128-d at each point; downloads the area's tiles on demand (cached).
-
-    We pre-fetch the missing tiles with chunked-parallel range requests (~2x faster
-    than a single stream); geotessera then finds them cached and only grabs the small
-    scales/landmask files. verify_hashes=False so it trusts our pre-placed tiles.
-    """
+    """Tessera 128-d at each point; downloads the area's tiles on demand (cached, see tessera_tiles)."""
     import tessera_tiles
     import aoi
     # #3: guard the download fan-out — each 0.1 deg tile is ~150 MB. Derive the covering bbox

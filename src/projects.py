@@ -56,6 +56,8 @@ def _copy_scheme(src: Path, dst: Path) -> None:
             shutil.copy2(src / f, dst / f)
     if (src / "weights").is_dir():
         shutil.copytree(src / "weights", dst / "weights", dirs_exist_ok=True)
+    if (src / "tessera_map.npz").exists():        # the 10 m Tessera map just drawn, so reopening is a read
+        shutil.copy2(src / "tessera_map.npz", dst / "tessera_map.npz")
 
 
 def snapshot_run(pid: str, n: int, meta: dict) -> dict:
