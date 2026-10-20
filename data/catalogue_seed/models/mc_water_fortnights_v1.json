@@ -164,15 +164,15 @@
   },
   "metrics": {
     "eval": "independent ground truth, June 2023 to May 2024, per pixel water / not water",
-    "precision": 0.88,
+    "precision": 0.87,
     "recall": 0.79,
-    "f1": 0.84,
-    "false_water_on_land": 0.106,
+    "f1": 0.83,
+    "false_water_on_land": 0.116,
     "per_class": {
       "water": {
-        "precision": 0.88,
+        "precision": 0.87,
         "recall": 0.79,
-        "f1": 0.84
+        "f1": 0.83
       }
     }
   },
