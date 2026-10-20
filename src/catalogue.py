@@ -787,48 +787,6 @@ def mint_merge_card(rule):
     return card_id
 
 
-def mint_rule_card(node, rule):
-    """Mint a local Model Card for a rule split (#12). Like a merge, a rule isn't a trained
-    classifier — it's an interpretable expression over index variables (NDVI, slope, ...) — so it
-    carries no joblib. But it's still a model the user built and can share, and it renders as EE
-    band math, so it earns a card. `produces` the rule's classes; records the expression and the
-    registry variables it reads, so the zoo shows *why* each pixel goes where it does."""
-    import rules
-    classes = rules.rule_classes(rule)
-    used = sorted({v for c in rule.get("clauses", []) for v in rules.vars_in(c["when"])})
-    ae_id = ensure_inference_dataset_card()
-    card_id = f"mc_{node}_rule_v1"
-    human = " ; ".join(f"if {c['when']} → {c['class']}" for c in rule.get("clauses", []))
-    human = (human + f" ; else → {rule.get('default')}") if human else ""
-    write_card({
-        "id": card_id,
-        "name": f"Rule split: {node} ({' / '.join(classes)})",
-        "node": node,
-        "parent_class": (hierarchy.load().get(node) or {}).get("parent") or hierarchy.ROOT,
-        "topology": "rule_split",
-        "produces": [{"class": c} for c in classes],
-        # no labelled training data — the split is defined by a threshold rule, not learned
-        "training": {"datasets": [], "algo": "index rule (no training)",
-                     "balancing": {"method": "none"}},
-        "inference": {"dataset": ae_id, "embedding": {"source": "sentinel2+srtm indices", "dim": len(used)}},
-        "extent": {"spatial": {"type": "bbox", "value": INDIA_BBOX}, "temporal": {"year": 2024}},
-        "metrics": {"note": "rule-based split; no held-out metric, the expression itself is the behaviour"},
-        "artifact": {"path": "data/hierarchy.json", "format": "rule-expression"},
-        "deployment": {"ee_asset": None, "tile_url": None, "expressible_as_bandmath": True},
-        "lineage": {"base_model": None, "derived_from": None},
-        "rule": {"clauses": rule.get("clauses"), "default": rule.get("default"),
-                 "variables": used, "expression": human},
-        "about": {"description": f"Splits {node} by rule: {human}.",
-                  "intended_use": "An interpretable, training-free split over vegetation/water/"
-                                  "terrain indices, evaluated live in Earth Engine.",
-                  "limitations": "Only as good as the chosen thresholds; no learned calibration.",
-                  "evidence": ""},
-        "zoo": {"published": False, "valid_region_label": "India", "contributor": ""},
-        "version": 1, "created": _now(),
-    })
-    return card_id
-
-
 def mint_water_card(bundle, extent_bbox=None, metrics=None, card_id="mc_water_fortnight_v1",
                     name="Seasonal water (per-fortnight, Sentinel-1/2)"):
     """Mint the Model Card for the per-fortnight water classifier (#5/#7): a flat binary model
