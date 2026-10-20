@@ -985,3 +985,10 @@ the package (`--built-up-rule` / `mask_built=True` bring it back; with it the ou
 pixel for pixel). Every number in the water doc and paper recomputed (`week22/worldcover_numbers.py`).
 Found on the way: the doc's layering table used the same-year DW or IndiaSAT layer while the runner's
 `--layer both` looks back four years with the HAND check; the table now has both rows.
+
+**Public model repos (21 Oct).** The two models left the week folders for their own public repositories:
+https://github.com/salil-123/corestack-water (`water.py`, `model.json`, district notebook) and
+https://github.com/salil-123/corestack-acacia (`acacia.py` with apply / train / sample, `model.json`, the
+crowns and training table, `evaluate.py`). Each is one readable file, checked pixel for pixel against the
+pipeline its scores came from; the README is the methodology doc with the usage rewritten
+(`week22/build_repos.py` regenerates it). The water zoo card's evidence now links the repo.
