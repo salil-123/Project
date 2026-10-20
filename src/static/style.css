@@ -515,3 +515,5 @@ body.on-start .toast { left: 50%; z-index: 2600; }
 .run-del { width: auto; margin: 0 0 0 8px; padding: 0 6px; font-size: 12px; line-height: 18px; background: none;
   border: none; color: #a23b2f; opacity: 0; cursor: pointer; }
 .run-item:hover .run-del { opacity: 1; }
+/* a 10 m map image stays as square pixels when zoomed in, not a blur */
+.px-crisp { image-rendering: pixelated; }

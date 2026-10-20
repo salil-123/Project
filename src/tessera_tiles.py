@@ -1,42 +1,26 @@
 """Tessera tiles: one place for where they live and how they get fetched.
 
 Tessera's data moved to Source Cooperative (data.source.coop/tessera/tessera); the dl2.geotessera.org
-server that geotessera 0.8 downloads from is gone. So we fetch each tile's three files ourselves, straight
-into geotessera's own folder layout, and geotessera only ever reads them from disk:
+server that geotessera 0.8 downloads from is gone. So we fetch each tile's three files ourselves (into
+geotessera's folder layout, so tiles cached before still count) and read them ourselves too:
   npy/v1/<year>/<grid>/<grid>.npy           the embedding, ~150 MB
   npy/v1/<year>/<grid>/<grid>_scales.npy    its dequantising scales
   landmasks/v1/<grid>.tiff                  the tile's land mask and projection
 The big file comes down as parallel byte ranges, about twice as fast as one stream. Downloads go through
 urllib, which follows HTTPS_PROXY like everything else on the tower.
 """
-import functools
 import math
 import os
 import urllib.request
-import warnings
 from concurrent.futures import ThreadPoolExecutor
 
-import config
+import numpy as np
 
-warnings.filterwarnings("ignore", module="geotessera")
+import config
 
 SOURCE = os.getenv("TESSERA_SOURCE", "https://data.source.coop/tessera/tessera").rstrip("/")
 # Source Cooperative turns away urllib's default "Python-urllib" user agent with a 403, so name ourselves
 _UA = {"User-Agent": "corestack-lulc (Tessera tiles)"}
-
-# geotessera's own index of tiles covers the world (4.4M rows, 2.4 GB in memory and a 350 MB download).
-# We only ever read India for 2024, so the repo carries that slice (60k rows, 15 MB), cut from the full
-# one with the same columns. A fixed local index also means no "is it still current?" call to the server.
-INDEX_DIR = config.PROJECT_ROOT / "tessera_index"     # beside the code, not on the data mount
-
-
-@functools.lru_cache(maxsize=1)
-def client():
-    """A GeoTessera that reads our India index and the tiles prefetch() placed under config.TESSERA_DIR.
-    Hash checks are off: the files come from Tessera's own store, by exact byte ranges."""
-    from geotessera import GeoTessera
-    config.TESSERA_DIR.mkdir(parents=True, exist_ok=True)
-    return GeoTessera(embeddings_dir=config.TESSERA_DIR, registry_dir=INDEX_DIR, verify_hashes=False)
 
 
 def _snap(lon, lat):
@@ -80,10 +64,12 @@ def _fetch(url, dest, workers):
 def prefetch(points, year=2024, workers=8):
     """Fetch whatever the tiles under these (lon, lat) points are missing. Returns how many files it
     got; raises with the reason if one can't be fetched, since geotessera has nowhere else to get it."""
-    got = 0
+    got, needed = 0, set()
     for lon, lat in {_snap(lon, lat) for lon, lat in points}:
         for url, dest in _files(lon, lat, year):
+            needed.add(dest)
             if dest.exists():
+                os.utime(dest)                   # used now: the cache cap evicts by this
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
             tmp = dest.with_name(dest.name + ".part")
@@ -94,11 +80,57 @@ def prefetch(points, year=2024, workers=8):
                 raise RuntimeError(f"couldn't fetch Tessera tile data from {SOURCE} ({e})") from e
             os.replace(tmp, dest)                # only ever appears whole
             got += 1
+    if got:
+        _evict(keep=needed)
     return got
 
 
+def _evict(keep=()):
+    """Keep the cache under TESSERA_CACHE_GB: the files used longest ago go first, never the ones the
+    current request needs. Leftover .part files from a killed download go too."""
+    files = [f for f in config.TESSERA_DIR.rglob("*") if f.is_file() and f.suffix in (".npy", ".tiff", ".part")]
+    files.sort(key=lambda f: f.stat().st_mtime)
+    total, cap = sum(f.stat().st_size for f in files), config.TESSERA_CACHE_GB * (1 << 30)
+    for f in files:
+        if total <= cap:
+            break
+        if f in keep:
+            continue
+        total -= f.stat().st_size
+        f.unlink(missing_ok=True)
+
+
 def sample(points, year=2024):
-    """Tessera 128-d at each (lon, lat), fetching any missing tile data first. Never downloads through
-    geotessera itself (auto_download off), whose old server no longer exists."""
+    """Tessera 128-d at each (lon, lat), fetching any missing tile data first."""
     prefetch(points, year)
-    return client().sample_embeddings_at_points(points, year=year, auto_download=False)
+    lons, lats = zip(*points) if points else ((), ())
+    return sample_many(lons, lats, year)
+
+
+def sample_many(lons, lats, year=2024):
+    """Tessera 128-d for any number of pixels at once, a whole 10 m map included (geotessera's own
+    sampler loops per point in Python and loads each tile whole, ~600 MB once dequantised). The tiles are memory-mapped and only the pixels asked for get dequantised, so a 150 MB tile never
+    sits in memory whole. Assumes prefetch() already ran; a missing tile leaves its pixels NaN."""
+    import rasterio
+    from pyproj import Transformer
+    lons, lats = np.asarray(lons, dtype=float), np.asarray(lats, dtype=float)
+    out = np.full((len(lons), 128), np.nan, dtype=np.float32)
+    # same snapping as _snap, done on the whole array
+    tlon = np.round(np.floor(lons / 0.1) * 0.1 + 0.05, 2)
+    tlat = np.round(np.floor(lats / 0.1) * 0.1 + 0.05, 2)
+    for lon, lat in set(zip(tlon.tolist(), tlat.tolist())):
+        (_, npy), (_, scl), (_, tif) = _files(lon, lat, year)
+        if not (npy.exists() and scl.exists() and tif.exists()):
+            continue
+        sel = np.flatnonzero((tlon == lon) & (tlat == lat))
+        with rasterio.open(tif) as src:
+            crs, tf = src.crs, src.transform
+        x, y = Transformer.from_crs("EPSG:4326", crs, always_xy=True).transform(lons[sel], lats[sel])
+        col, row = ~tf * (x, y)
+        row, col = np.floor(row).astype(int), np.floor(col).astype(int)
+        emb, sc = np.load(npy, mmap_mode="r"), np.load(scl, mmap_mode="r")
+        ok = (row >= 0) & (row < emb.shape[0]) & (col >= 0) & (col < emb.shape[1])
+        r, c = row[ok], col[ok]
+        scale = sc[r, c]
+        out[sel[ok]] = emb[r, c].astype(np.float32) * (scale[:, None] if scale.ndim == 1 else scale)
+    return out

@@ -13,6 +13,7 @@ Then open http://127.0.0.1:8000/
 import os
 import sys
 import json
+import base64
 import time
 import logging
 import tempfile
@@ -373,6 +374,16 @@ def classify(west: float, south: float, east: float, north: float,
     guard = aoi.check(bbox, "tessera" if needs_tessera else "tiles")
     if not guard["ok"]:
         raise HTTPException(400, guard["reason"])
+    if tessera_live and not nonlinear_ae_live and mode != "detailed":
+        # a Tessera split runs on its tiles' own 10 m pixels, so the map stays as sharp as Alpha Earth's
+        try:
+            r = infer.classify_bbox_te_raster(bbox, year=2024, model_bundle=_base_model(), refinements=_refs())
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"render": "raster", "bounds": [west, south, east, north],
+                "image_url": "data:image/png;base64," + base64.b64encode(r["png"]).decode(),
+                "mode": mode, "year": 2024, "counts": r["counts"], "colors": infer.load_colors(),
+                "note": "Tessera split: run on Tessera's 2024 tiles at 10 m."}
     if mode == "detailed" or grid_live:
         n = max(8, min(n, 60))
         if mode == "detailed":
@@ -2312,15 +2323,21 @@ def run_geotiff(pid: str, n: int, request: Request):
         w, s_, e, nth = meta["bbox"]
         tok = config.use_workspace(projects.run_dir(pid, n))
         try:
-            d = classify_geotiff(west=w, south=s_, east=e, north=nth, year=meta["year"])
+            if any((b or {}).get("features") == "tessera" for b in _refs().values()):
+                # a Tessera run's map was made here, not in Earth Engine: write the same codes out
+                classes = infer.te_geotiff(str(tif), (w, s_, e, nth), 2024, model_bundle=_base_model(),
+                                           refinements=_refs())
+            else:
+                d = classify_geotiff(west=w, south=s_, east=e, north=nth, year=meta["year"])
+                import requests
+                r = requests.get(d["url"], timeout=600)
+                if r.status_code != 200:
+                    raise HTTPException(502, f"Earth Engine didn't hand the GeoTIFF over (HTTP {r.status_code})")
+                tif.write_bytes(r.content)
+                classes = d["classes"]
         finally:
             config.reset_workspace(tok)
-        import requests
-        r = requests.get(d["url"], timeout=600)
-        if r.status_code != 200:
-            raise HTTPException(502, f"Earth Engine didn't hand the GeoTIFF over (HTTP {r.status_code})")
-        tif.write_bytes(r.content)
-        projects.update_run(pid, n, legend={str(i): c for i, c in enumerate(d["classes"])})
+        projects.update_run(pid, n, legend={str(i): c for i, c in enumerate(classes)})
     safe = "".join(ch if ch.isalnum() else "_" for ch in _state(request)["project"]["name"])[:40]
     return FileResponse(tif, media_type="image/tiff", filename=f"{safe}_run{n}.tif")
 

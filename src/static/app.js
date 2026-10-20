@@ -1064,8 +1064,8 @@ const ClassTiles = L.GridLayer.extend({
   },
 });
 
-function keepOnly(g, palette) {
-  const px = g.getImageData(0, 0, 256, 256), d = px.data, seen = new Map();
+function keepOnly(g, palette, w = 256, h = 256) {
+  const px = g.getImageData(0, 0, w, h), d = px.data, seen = new Map();
   for (let i = 0; i < d.length; i += 4) {
     if (!d[i + 3]) continue;
     const key = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2];
@@ -1091,6 +1091,7 @@ function toggleShowOnly(classes) {
   const same = showOnly && showOnly.size === classes.length && classes.every((c) => showOnly.has(c));
   showOnly = same ? null : new Set(classes);
   if (rasterLayer && rasterLayer.redraw) rasterLayer.redraw();
+  if (onMap && onMap.render === "raster") drawRaster(onMap);
   if (onMap && onMap.cells) drawCells(onMap);
   showLegend(onMap);
 }
@@ -1154,7 +1155,8 @@ function drawResult(data) {
     rasterLayer = new ClassTiles({ url: data.tile_url, palette, opacity: 0.7, bounds: [[s, w], [n, e]] }).addTo(map);
   } else if (data.render === "raster") {
     const [bw, bs, be, bn] = data.bounds;
-    rasterLayer = L.imageOverlay(data.image_url, [[bs, bw], [bn, be]], { opacity: 0.7 }).addTo(map);
+    rasterLayer = L.imageOverlay(data.image_url, [[bs, bw], [bn, be]], { opacity: 0.7, className: "px-crisp" }).addTo(map);
+    if (showOnly) drawRaster(data);
   } else if (data.cells) {
     drawCells(data);
   }
@@ -1163,7 +1165,24 @@ function drawResult(data) {
   showLegend(data);
 }
 
-// the point-grid render (Tessera / Random Forest splits), filtered the same way as the tiles
+// a whole-map image (a Tessera split's 10 m map): filtered on a canvas the same way as the tiles. It's
+// a PNG, so colours come back exact and nearest-colour matching never guesses wrong
+function drawRaster(data) {
+  if (!showOnly) return rasterLayer.setUrl(data.image_url);
+  const img = new Image();
+  img.onload = () => {
+    const cv = document.createElement("canvas");
+    cv.width = img.width; cv.height = img.height;
+    const g = cv.getContext("2d");
+    g.drawImage(img, 0, 0);
+    const colors = data.colors || COLORS;
+    keepOnly(g, Object.keys(data.counts || {}).map((c) => [c, rgbOf(colors[c])]), img.width, img.height);
+    rasterLayer.setUrl(cv.toDataURL());
+  };
+  img.src = data.image_url;
+}
+
+// the point-grid render (Random Forest splits), filtered the same way as the tiles
 function drawCells(data) {
   predLayer.clearLayers();
   const cw = data.cell_w / 2, ch = data.cell_h / 2;

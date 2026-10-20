@@ -151,7 +151,7 @@ def summary():
 def build_training_frame(node, with_tessera=False, n_pix=sampling.N_PIX, year=sampling.YEAR):
     """Sample a node's example polygons into a labeled, embedded pixel frame.
 
-    Returns columns: label (== node), role, lat, lon, ae_000.. (+ te_000.. if asked).
+    Returns columns: label (== node), role, lat, lon, then ae_000.. or, with_tessera, te_000..
     Re-samples from GEE on every call (no cache, by design). Rows whose embeddings
     came back NaN (no coverage) are dropped.
     """
@@ -168,11 +168,9 @@ def build_training_frame(node, with_tessera=False, n_pix=sampling.N_PIX, year=sa
     carry = ["label", "role", "poly"] + (["area"] if "area" in gdf.columns else [])
     pts = sampling.interior_points(gdf[carry + ["geometry"]], n_pix=n_pix)
 
-    ae = sampling.sample_alpha(pts, year=year)
-    parts = [pts[carry + ["lat", "lon"]].reset_index(drop=True),
-             ae.reset_index(drop=True)]
-    if with_tessera:
-        parts.append(sampling.sample_tessera(pts, year=year).reset_index(drop=True))
+    # a Tessera split trains on Tessera alone, so skip the Alpha Earth pass (most of the wait on big sets)
+    emb = sampling.sample_tessera(pts, year=year) if with_tessera else sampling.sample_alpha(pts, year=year)
+    parts = [pts[carry + ["lat", "lon"]].reset_index(drop=True), emb.reset_index(drop=True)]
 
     df = pd.concat(parts, axis=1)
     emb_cols = [c for c in df.columns if c.startswith(("ae_", "te_"))]
