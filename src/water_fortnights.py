@@ -9,8 +9,9 @@ It's the shipped method (week16/district_raster.py + week21/water_pipeline.py), 
 folders don't travel with the app. Same model json, same steps, same pixels:
   per fortnight   Sentinel-1 median within 7 days of the slot centre + cloud masked Sentinel-2 median
   sensor switch   radar + clear optical -> fusion, radar only -> s1, optical only -> s2, neither -> 255;
-                  each case a pixel model and a 3x3/5x5 neighbourhood model, water if either says so;
-                  WorldCover built-up is never water
+                  each case a pixel model and a 3x3/5x5 neighbourhood model, water if either says so
+                  (no WorldCover built-up rule since 21 Oct 2026: on the independent ground truth it
+                  bought 0.004 F1 for a whole extra input; water methodology doc, section 5.3)
   correction      over the whole year at once with 2 padding fortnights a side: gaps take the last seen
                   state, then a majority of 3
   label           index of the last wet fortnight (0..25); never wet -> masked, so it stays unlabelled
@@ -25,7 +26,6 @@ WINDOW = 3               # fortnights in the majority vote
 NODATA = 255
 START_MONTH = 6          # the water year runs June to May
 BAD_SCL = [1, 3, 8, 9, 10, 11]                 # saturated, shadow, cloud med/high, cirrus, snow
-WORLDCOVER = "ESA/WorldCover/v200/2021"        # class 50 = built-up
 CLASSES = [f"fortnight{i}" for i in range(1, 27)]
 
 
@@ -105,11 +105,9 @@ def _water_band(ee, region, slot, spec):
     img = _with_means(ee, img, {b for m in ("fusion", "s1", "s2") for t in _twins(spec[m]) for b in t["bands"]})
     opt, sar = has_opt.unmask(0), has_sar.unmask(0)
     filled = img.unmask(0)
-    built = ee.Image(WORLDCOVER).select("Map").eq(50).unmask(0)
     return (_water(filled, spec["fusion"])
             .where(sar.And(opt.Not()), _water(filled, spec["s1"]))
             .where(opt.And(sar.Not()), _water(filled, spec["s2"]))
-            .where(built, 0)
             .where(sar.Not().And(opt.Not()), NODATA)).toUint8()
 
 

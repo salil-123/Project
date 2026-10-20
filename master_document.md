@@ -974,3 +974,14 @@ mostly *Prosopis juliflora*, so the headline mixed species with site. Within San
 is 0.65 (crowns held out), 0.63 (100 m blocks), 0.60 (a whole strip), 0.49 (strip and year). Both papers
 rewritten (first drafts kept as `*_v1`); the acacia paper and methodology doc now say plainly the study
 is bounded by the crown dataset available, and the water doc carries the plain precision and intervals.
+
+**Water model without WorldCover (21 Oct).** The built-up rule ("ESA WorldCover built-up is never water")
+was measured on the independent ground truth for the first time (`week22/worldcover_check.py`: the 9,968
+points on WorldCover built-up re-sampled with the rule off, three water years). Without it recall is
+unchanged (0.79), false water on land goes from 10.6% to 11.6%, balanced F1 from 0.835 to 0.831, false
+water on built-up land from 0.8% to 6.2% (Dynamic World 10%). So the rule is gone: the model needs only
+Sentinel-1 and Sentinel-2. Off in the app (`src/water_fortnights.py`), off by default in the runner and
+the package (`--built-up-rule` / `mask_built=True` bring it back; with it the output matches the old run
+pixel for pixel). Every number in the water doc and paper recomputed (`week22/worldcover_numbers.py`).
+Found on the way: the doc's layering table used the same-year DW or IndiaSAT layer while the runner's
+`--layer both` looks back four years with the HAND check; the table now has both rows.
