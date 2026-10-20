@@ -28,8 +28,10 @@ SEED = ROOT / "data" / "catalogue_seed"
 CARD_ID = "mc_water_fortnights_v1"
 OLD = "mc_water_fortnight_augmented_v1"
 INDIA = [68.0, 6.0, 97.5, 37.5]
-# light green -> teal -> blue -> navy: the later water lasts, the darker the class
-RAMP = ["#c7e9b4", "#7fcdbb", "#41b6c4", "#1d91c0", "#225ea8", "#253494", "#081d58"]
+# blues only, from the palest to near-black navy: the later water lasts, the darker the class. The ends
+# are pushed as far as blue goes so neighbouring fortnights stay apart
+RAMP = ["#eef6ff", "#d4e6f7", "#b3d3ee", "#85bce3", "#5aa0d6", "#3482c4", "#1765ad", "#0b4a8f",
+        "#08306b", "#041a40"]
 
 
 def ramp(n):

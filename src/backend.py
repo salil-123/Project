@@ -2023,16 +2023,19 @@ def get_project(pid: str, request: Request):
 
 def _repaint():
     """Projects made before the colour wheel can have a split whose classes all share one colour (the
-    old picker ran out after seven, so they all came out pink). Repaint the repeats once, on the owner's
-    next visit: with the zoo card's own colours where the classes came from one, else the next free colour."""
+    old picker ran out after seven, so they all came out pink), and a zoo card's colours can change.
+    On the owner's next visit, classes from a card take its current colours and other repeats get the
+    next free colour."""
     tree = hierarchy.load()
     changed = False
     for node, n in tree.items():
         kids = [c for c in n.get("children") or [] if c in tree]
-        if len({tree[c].get("color") for c in kids}) == len(kids):
-            continue
         card = catalogue.get_card((n.get("from_model") or {}).get("card_id") or "") or {}
         own = {p["class"]: p["color"] for p in card.get("produces", []) if p.get("color")}
+        # nothing repeated and nothing the card now colours differently: leave it be
+        if (len({tree[c].get("color") for c in kids}) == len(kids)
+                and all(own.get(c, tree[c].get("color")) == tree[c].get("color") for c in kids)):
+            continue
         seen = set()
         for c in kids:
             col = own.get(c)
