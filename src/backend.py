@@ -1135,15 +1135,9 @@ def split_by_rule(op: RuleSplitIn):
     except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
     _reload()
-    card = None
-    if not config.in_project():     # zoo cards are keyed by class; a project shares to the zoo explicitly
-        try:
-            card = catalogue.mint_rule_card(op.parent, op.rule)     # never fail the split over its card
-        except Exception:
-            pass
-    oplog.append("rule_split", {"parent": op.parent, "rule": op.rule, "classes": classes},
-                 result={"model": card})
-    return {"parent": op.parent, "classes": classes, "card": card, **_tree_payload()}
+    # no zoo card: a rule is an expression anyone can type, not a trained model
+    oplog.append("rule_split", {"parent": op.parent, "rule": op.rule, "classes": classes})
+    return {"parent": op.parent, "classes": classes, "card": None, **_tree_payload()}
 
 
 def _shared_base_guard(node):
