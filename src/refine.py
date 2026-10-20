@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root (config)
 
+import geopandas as gpd
 import joblib
 import numpy as np
 import pandas as pd
@@ -155,6 +156,8 @@ def _residual_rows(of_node, label, n_pix=30, cap=RESIDUAL_CAP, year=sampling.YEA
     """The parent's own pixels ('stayed b'), labelled as the residual child. For a base
     class they come from master_alpha_full (baked at 2024); for a deeper leaf, from its own
     examples re-sampled at `year`. The group id (polygon) rides along so splits stay leak-free."""
+    if of_node in BASE_CORE and not os.path.exists(FULL_CSV):
+        return _residual_from_map(of_node, label, year, cap)
     if of_node in BASE_CORE:
         df = pd.read_csv(FULL_CSV, usecols=["polygon_id", "core_class"] + AE_COLS)
         df = df[df.core_class == of_node].reset_index(drop=True)
@@ -168,6 +171,48 @@ def _residual_rows(of_node, label, n_pix=30, cap=RESIDUAL_CAP, year=sampling.YEA
     df = examples.build_training_frame(of_node, n_pix=n_pix, year=year)[["poly"] + AE_COLS].copy()
     df["label"] = label
     return df[["label", "poly"] + AE_COLS]
+
+
+RESIDUAL_EE_N = 3000     # one getInfo tops out near 5000 features
+RESIDUAL_PAD = 0.02      # degrees (~2 km) around the examples, so the rest has room to be sampled
+RESIDUAL_CELL = 0.01     # ~1 km cells as group ids: neighbouring pixels get held out together
+
+
+def _residual_from_map(of_node, label, year, cap=RESIDUAL_CAP):
+    """The parent's own pixels straight off the base map, for boxes without the 53 MB master table
+    (it's a dev file, the server never had it). Drawn around the split's example polygons in the
+    year being trained, minus the polygons themselves, which are the new classes, not the rest."""
+    import infer                       # infer imports half the app; only needed on this path
+    tree = hierarchy.load()
+    feats = [f for c in tree[of_node]["children"] if c != label
+             for f in examples.load_examples(c)["features"]]
+    if not feats:
+        raise ValueError(f"mark some examples of the new class under '{of_node}' first")
+    gdf = gpd.GeoDataFrame.from_features(feats, crs=4326)
+    w, s, e, n = gdf.total_bounds
+    bbox = [w - RESIDUAL_PAD, s - RESIDUAL_PAD, e + RESIDUAL_PAD, n + RESIDUAL_PAD]
+
+    ee, final, classes, region, _ = infer._labelled_bbox(bbox, year, infer.load_model(), {}, None)
+    if of_node not in classes:
+        raise ValueError(f"the base map has no '{of_node}' to draw the rest from")
+    outside = ee.Image.constant(1).paint(ee.FeatureCollection(gdf.__geo_interface__), 0)
+    keep = final.eq(classes.index(of_node)).And(outside).rename("keep")
+    bands, _ = infer._alpha_image(ee, bbox, year)
+    pts = (bands.addBands(keep).updateMask(keep)
+           .stratifiedSample(numPoints=min(cap, RESIDUAL_EE_N), classBand="keep", classValues=[1],
+                             classPoints=[min(cap, RESIDUAL_EE_N)], region=region, scale=10,
+                             seed=0, geometries=True, tileScale=4)
+           .getInfo()["features"])
+    if not pts:
+        raise ValueError(f"no '{of_node}' left around the examples to learn the rest from")
+    out = pd.DataFrame([[f["properties"].get(f"A{i:02d}") for i in range(64)] for f in pts],
+                       columns=AE_COLS, dtype=float)
+    lon, lat = np.array([f["geometry"]["coordinates"] for f in pts]).T
+    out["label"] = label
+    out["poly"] = [f"{label}:{a}_{b}" for a, b in zip(np.floor(lat / RESIDUAL_CELL).astype(int),
+                                                       np.floor(lon / RESIDUAL_CELL).astype(int))]
+    log.info(f"  {label}: {len(out)} rest pixels off the base map ({year})")
+    return out.dropna(subset=AE_COLS)[["label", "poly"] + AE_COLS]
 
 
 def _child_frame(tree, child, n_pix, year=sampling.YEAR, embedding="ae"):
