@@ -154,19 +154,10 @@ def _wc_rows(wc_code, label):
 
 def _residual_rows(of_node, label, n_pix=30, cap=RESIDUAL_CAP, year=sampling.YEAR):
     """The parent's own pixels ('stayed b'), labelled as the residual child. For a base
-    class they come from master_alpha_full (baked at 2024); for a deeper leaf, from its own
-    examples re-sampled at `year`. The group id (polygon) rides along so splits stay leak-free."""
-    if of_node in BASE_CORE and not os.path.exists(FULL_CSV):
-        return _residual_from_map(of_node, label, year, cap)
+    class they come off the base map around the examples; for a deeper leaf, from its own
+    examples. Both at `year`. The group id rides along so splits stay leak-free."""
     if of_node in BASE_CORE:
-        df = pd.read_csv(FULL_CSV, usecols=["polygon_id", "core_class"] + AE_COLS)
-        df = df[df.core_class == of_node].reset_index(drop=True)
-        if len(df) > cap:
-            df = df.sample(cap, random_state=0).reset_index(drop=True)
-        out = df[AE_COLS].copy()
-        out["label"] = label
-        out["poly"] = df.polygon_id.values
-        return out[["label", "poly"] + AE_COLS]
+        return _residual_from_map(of_node, label, year, cap)
     # deeper leaf: re-sample the node's own example polygons at the chosen year
     df = examples.build_training_frame(of_node, n_pix=n_pix, year=year)[["poly"] + AE_COLS].copy()
     df["label"] = label
@@ -179,9 +170,8 @@ RESIDUAL_CELL = 0.01     # ~1 km cells as group ids: neighbouring pixels get hel
 
 
 def _residual_from_map(of_node, label, year, cap=RESIDUAL_CAP):
-    """The parent's own pixels straight off the base map, for boxes without the 53 MB master table
-    (it's a dev file, the server never had it). Drawn around the split's example polygons in the
-    year being trained, minus the polygons themselves, which are the new classes, not the rest."""
+    """The parent's own pixels straight off the base map, drawn around the split's example polygons
+    in the year being trained, minus the polygons themselves, which are the new classes, not the rest."""
     import infer                       # infer imports half the app; only needed on this path
     tree = hierarchy.load()
     feats = [f for c in tree[of_node]["children"] if c != label
