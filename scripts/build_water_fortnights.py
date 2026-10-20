@@ -86,7 +86,7 @@ def main():
             "limitations": "Water pixels that never held water that year stay unlabelled. Every run builds "
                            "26 fortnights of Sentinel-1/2, so it is slower than an Alpha Earth split. "
                            "Ponds under about 500 m2 and spells under a fortnight are below what it resolves.",
-            "evidence": "week21/deliverable/water_methodology.md, section 2"},
+            "evidence": "https://github.com/salil-123/corestack-water (README, section 2)"},
         "zoo": {"published": False, "valid_region_label": "India", "contributor": ""},
         "version": 1,
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
