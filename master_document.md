@@ -906,7 +906,7 @@ GeoTIFF on a Yamuna box, and `week22/ui_water.py` clicking the whole zoo flow in
 
 **Tidy-ups after a look in the browser.** New classes pick from a full colour wheel instead of seven
 fixed colours (the reason everything had turned pink), and each merge gets a fresh colour too. A zoo card
-may carry its own class colours, so the water card paints an ordered light-green-to-navy ramp. A split with
+may carry its own class colours, so the water card paints an ordered blue ramp, palest blue to near-black navy. A split with
 more than 8 classes starts folded in the tree (a strip of its colours and a count; ▸ unfolds it). Zoo
 tiles show 4 class chips and "+N more"; the card detail gives the range ("fortnight1 to fortnight26, 26
 classes"); long name lists in messages shorten the same way. Any class can be ticked, and "Remove" under the

@@ -7,107 +7,107 @@
   "produces": [
     {
       "class": "fortnight1",
-      "color": "#c7e9b4"
+      "color": "#eef6ff"
     },
     {
       "class": "fortnight2",
-      "color": "#b6e2b6"
+      "color": "#e5f0fc"
     },
     {
       "class": "fortnight3",
-      "color": "#a4dcb7"
+      "color": "#dbeaf9"
     },
     {
       "class": "fortnight4",
-      "color": "#93d5b9"
+      "color": "#d1e4f6"
     },
     {
       "class": "fortnight5",
-      "color": "#82cebb"
+      "color": "#c5def3"
     },
     {
       "class": "fortnight6",
-      "color": "#73c8bd"
+      "color": "#bad7f0"
     },
     {
       "class": "fortnight7",
-      "color": "#64c3bf"
+      "color": "#accfec"
     },
     {
       "class": "fortnight8",
-      "color": "#55bdc1"
+      "color": "#9bc7e8"
     },
     {
       "class": "fortnight9",
-      "color": "#46b8c3"
+      "color": "#8bbfe4"
     },
     {
       "class": "fortnight10",
-      "color": "#3bb0c3"
+      "color": "#7bb5e0"
     },
     {
       "class": "fortnight11",
-      "color": "#33a7c2"
+      "color": "#6babdb"
     },
     {
       "class": "fortnight12",
-      "color": "#2a9ec1"
+      "color": "#5ca1d7"
     },
     {
       "class": "fortnight13",
-      "color": "#2195c0"
+      "color": "#4e96d0"
     },
     {
       "class": "fortnight14",
-      "color": "#1e8bbd"
+      "color": "#408cca"
     },
     {
       "class": "fortnight15",
-      "color": "#1f7fb7"
+      "color": "#3381c3"
     },
     {
       "class": "fortnight16",
-      "color": "#2072b2"
+      "color": "#2876bb"
     },
     {
       "class": "fortnight17",
-      "color": "#2166ac"
+      "color": "#1e6cb3"
     },
     {
       "class": "fortnight18",
-      "color": "#225ba6"
+      "color": "#1662a9"
     },
     {
       "class": "fortnight19",
-      "color": "#2351a2"
+      "color": "#11589f"
     },
     {
       "class": "fortnight20",
-      "color": "#24469d"
+      "color": "#0d4e94"
     },
     {
       "class": "fortnight21",
-      "color": "#243c98"
+      "color": "#0a4588"
     },
     {
       "class": "fortnight22",
-      "color": "#243392"
+      "color": "#093b7b"
     },
     {
       "class": "fortnight23",
-      "color": "#1d2e83"
+      "color": "#08326e"
     },
     {
       "class": "fortnight24",
-      "color": "#162875"
+      "color": "#072a5f"
     },
     {
       "class": "fortnight25",
-      "color": "#0f2366"
+      "color": "#05224f"
     },
     {
       "class": "fortnight26",
-      "color": "#081d58"
+      "color": "#041a40"
     }
   ],
   "training": {
@@ -202,5 +202,5 @@
     "contributor": ""
   },
   "version": 1,
-  "created": "2026-10-19T18:21:14+00:00"
+  "created": "2026-10-20T12:35:15+00:00"
 }
