@@ -992,3 +992,11 @@ https://github.com/salil-123/corestack-acacia (`acacia.py` with apply / train / 
 crowns and training table, `evaluate.py`). Each is one readable file, checked pixel for pixel against the
 pipeline its scores came from; the README is the methodology doc with the usage rewritten
 (`week22/build_repos.py` regenerates it). The water zoo card's evidence now links the repo.
+
+**Water scores from the public code (21 Oct).** `week22/repo_parity.py` ran the repo's own `water.py` at all
+17,239 evaluation points: 99.95% of point-fortnights agree with the cached calls, 31 points differ in the
+yearly call, all of them land that the old WorldCover rule had blanked on its own pixel grid while the
+rule-off re-sample (`worldcover_check.py`) picked built-up points by the point's own WorldCover pixel. The
+headline is unchanged (recall 0.79, false water 11.6%, F1 0.83); built-up false water is 6.5%, not 6.2%,
+and a few secondary figures moved by 0.1 to 0.4 points. The water README, doc and paper now carry the
+repo's numbers.
