@@ -935,6 +935,17 @@ in the backend uses it. The project year dropdowns read the list from `/api/infe
 offered (the default stays 2024) and a later release needs no code change. A 2025 project ran with the
 water and acacia models, its GeoTIFF downloaded, and 2025 is accepted as a training year.
 
+**Greenery NDVI rule test (20 Oct).** `week22/ndvi_rule_test.py` ran the app's own rule on the two demo
+areas for 2024 against IndiaSAT v3 inside the app's greenery. At the zoo rule card's 0.3, `ndvi_annual`
+calls 97% of Jharia's greenery dense and only 8-21% of IndiaSAT's scrub sparse; 0.4 balances it (82-86% of
+tree dense, 68-84% of scrub sparse). Rabi NDVI is no better. NDVI can't tell intensive crops from trees
+(double and triple crops 98-100% dense at 0.3). Sanjay Van is 95% tree, so it can't test the sparse side.
+No fix made yet. Notes: `week22/notes/ndvi_rule_test.md`.
+
+**Paper drafts (point 6, 20 Oct).** `week22/papers/water_paper.tex` and `acacia_paper.tex`, two-column,
+3 pages each, built to PDF, every number from the methodology docs; figures from the final pipelines
+(`make_figs.py`). Authors left as placeholders.
+
 **Release check (20 Oct).** Before pushing: `check_tree_ops.py` 28/28; the week 18 journey 41/41 (its
 fixture still names the tea card retired on 12 Oct, `mc_greenery_prev1_v1`; with `mc_greenery_tea_v1` it
 passes); the five week 22 browser flows with no page errors; both doc commands; the tower simulation
