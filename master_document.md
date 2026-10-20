@@ -950,3 +950,27 @@ No fix made yet. Notes: `week22/notes/ndvi_rule_test.md`.
 fixture still names the tea card retired on 12 Oct, `mc_greenery_prev1_v1`; with `mc_greenery_tea_v1` it
 passes); the five week 22 browser flows with no page errors; both doc commands; the tower simulation
 (`deploy/sim/sim.sh test`).
+
+**Live fixes (21 Oct).** On the tower, training a class added under a base class failed on
+`data/master_alpha_full.csv`, a 53 MB dev file the server never had. The "(rest)" class now always takes
+its examples off the base map around the user's examples, in the year being trained (`refine._residual_from_map`).
+The greenery rule card left the zoo (a rule is an expression, not a trained model) and rule splits no
+longer mint cards. The old DIY LULC methodology pdf/pptx were removed from the repo.
+
+**Tessera at 10 m (21 Oct).** A Tessera split used to push the whole map onto a 60 x 60 point grid. Now
+Earth Engine draws everything else as a 10 m array (`computePixels`) and the Tessera split runs on its
+parent's pixels straight from the downloaded tiles (`infer.classify_bbox_te_raster`,
+`tessera_tiles.sample_many`: memory-mapped, only the asked pixels dequantised). Run 3-17 s on Sanjay Van,
+reopen instant (cached per workspace, copied into the run), the run GeoTIFF is written locally. Training a
+Tessera split no longer samples Alpha Earth it throws away: 198 s to 17 s, same model. The tile cache is
+capped at `TESSERA_CACHE_GB` (8 GB), oldest used first. Notes: `week22/tessera_10m_task.md`.
+
+**Paper review and revision (21 Oct).** Three blind reviewers scored water 6 / 6 / 5.5 and acacia
+5 / 4.5 / 4.5. Water (`week22/papers/water_extra.py`): plain precision 0.46 (DW 0.23) next to the balanced
+0.88; 95% bootstrap intervals over polygons; the lead over DW (+0.04 F1) is ahead in 97% of draws but its
+interval touches zero; fallback and neighbourhood numbers were held out all along and now say how.
+Acacia (`week22/papers/acacia_extra.py`): IIT Delhi is 239 non-acacia / 1 acacia and the acacia class is
+mostly *Prosopis juliflora*, so the headline mixed species with site. Within Sanjay Van, balanced accuracy
+is 0.65 (crowns held out), 0.63 (100 m blocks), 0.60 (a whole strip), 0.49 (strip and year). Both papers
+rewritten (first drafts kept as `*_v1`); the acacia paper and methodology doc now say plainly the study
+is bounded by the crown dataset available, and the water doc carries the plain precision and intervals.
