@@ -251,7 +251,7 @@ function renderTree() {
     const color = n.color || "#666";
     const kids = n.children || [];
     const isLeaf = !kids.length;
-    if (kids.length > FOLD_OVER && !autoFolded.has(cls)) { autoFolded.add(cls); collapsed.add(cls); }
+    if (cls !== "root" && kids.length > FOLD_OVER && !autoFolded.has(cls)) { autoFolded.add(cls); collapsed.add(cls); }
     const folded = collapsed.has(cls);
     const tag = n.classifier ? '<span class="tag">model</span>' : n.rule ? '<span class="tag">rule</span>'
               : n.ee_rf ? '<span class="tag">IndiaSAT</span>' : "";
@@ -398,7 +398,7 @@ function renderViewOnly(cls, n) {
   } else if (parent && n.parent !== "root") {
     what = `One of the classes the ${parent.name} split decides between.`;
   } else {
-    what = `A class of the base map (${PROJECT.base_scheme === "worldcover" ? "WorldCover" : "IndiaSAT"}).`;
+    what = `A class of the base map (${BASE_NAMES[PROJECT.base_scheme] || "IndiaSAT"}).`;
   }
   $("ctxWhat").textContent = what;
   const v = $("ctxView");
@@ -795,10 +795,15 @@ function updateNewArea() {
     $("npArea").classList.remove("warn");
     $("npCreate").disabled = true;
   }
-  $("npBaseHint").textContent = $("npBase").value === "worldcover"
-    ? "Trees, shrubland, grassland, cropland, built-up, bare, water."
-    : "Greenery, water, built-up, barren.";
+  $("npBaseHint").textContent = BASE_HINTS[$("npBase").value] || "";
 }
+// what each starting scheme is and which project years draw the published map itself (see direct_base.py)
+const BASE_NAMES = { indiasat: "IndiaSAT", worldcover: "WorldCover", dynamicworld: "Dynamic World" };
+const BASE_HINTS = {
+  indiasat: "Greenery, water, built-up, barren. Years 2018 to 2025 show IndiaSAT's own map (a 2023 project shows 2022-23); other years use our classifier.",
+  worldcover: "Trees, shrubland, grassland, cropland, built-up, bare, water. 2020 and 2021 show ESA WorldCover itself; other years use our classifier.",
+  dynamicworld: "Water, trees, grass, flooded vegetation, crops, shrub and scrub, built area, bare ground, snow and ice. Every year shows Dynamic World's own label for that year.",
+};
 function setAreaMode(mode) {
   areaMode = mode;
   document.querySelectorAll("#npAreaMode button").forEach((b) => b.classList.toggle("sel", b.dataset.mode === mode));
@@ -880,7 +885,7 @@ function renderProjectHead() {
   const p = PROJECT;
   const km2 = bboxAreaKm2(p.bbox).toLocaleString(undefined, { maximumFractionDigits: 0 });
   $("projName").textContent = p.name;
-  $("projMeta").textContent = `${km2} km² · starts from ${p.base_scheme === "worldcover" ? "WorldCover" : "IndiaSAT"}`;
+  $("projMeta").textContent = `${km2} km² · starts from ${BASE_NAMES[p.base_scheme] || "IndiaSAT"}`;
   $("projYear").value = String(p.year);
   $("projPublic").value = p.is_public ? "1" : "0";
   // someone else's public project: look, download, copy; nothing that writes
@@ -1135,7 +1140,9 @@ function showLegend(data) {
   legendCtl.addTo(map);
   const box = legendCtl.getContainer();
   box.innerHTML = `<div class="lg-title">${esc((data.run && data.run.name) || "This run")}` +
-    `${showOnly ? ` <a href="#" class="lg-all">show all</a>` : ""}</div><div class="lg-rows">${out.join("")}</div>`;
+    `${showOnly ? ` <a href="#" class="lg-all">show all</a>` : ""}</div>` +
+    (data.base_source ? `<div class="lg-src">Base map: ${esc(data.base_source)}</div>` : "") +
+    `<div class="lg-rows">${out.join("")}</div>`;
   box.querySelectorAll(".lg-row").forEach((el) => el.onclick = (e) => {
     const f = e.target.closest(".lg-fold");
     if (f) { const g = f.dataset.grp; legendOpen.has(g) ? legendOpen.delete(g) : legendOpen.add(g); return showLegend(onMap); }

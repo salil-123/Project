@@ -35,6 +35,7 @@ from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel
 
 import hierarchy
+import direct_base
 import examples
 import infer
 import refine
@@ -404,13 +405,14 @@ def classify(west: float, south: float, east: float, north: float,
                 if nonlinear_ae_live else None)
         return {"render": "cells", "cells": cells, "cell_w": cw, "cell_h": ch,
                 "mode": mode, "year": year, "counts": df.pred.value_counts().to_dict(),
-                "note": note, "colors": infer.load_colors()}
+                "note": note, "colors": infer.load_colors(), "base_source": infer.base_source(year)}
 
     year = _ae_clamp(year)  # clamp to Alpha Earth's coverage
     tile_url, counts = infer.classify_bbox_tiles(bbox, year=year, model_bundle=_base_model(),
                                                  refinements=_refs())
     return {"render": "tiles", "tile_url": tile_url, "bounds": [west, south, east, north],
-            "mode": mode, "year": year, "counts": counts, "colors": infer.load_colors()}
+            "mode": mode, "year": year, "counts": counts, "colors": infer.load_colors(),
+            "base_source": infer.base_source(year)}
 
 
 @app.get("/api/classify.tif")
@@ -1319,9 +1321,14 @@ def get_base():
     return {"active": infer.active_base().get("scheme", "indiasat"),
             "schemes": {
                 "indiasat": {"label": "IndiaSAT (4 classes)",
-                             "classes": [c for c, _, _ in hierarchy._BASE]},
+                             "classes": [c for c, _, _ in hierarchy._BASE],
+                             "direct_years": [y + 1 for y in direct_base.INDIASAT_MAP_YEARS]},
                 "worldcover": {"label": "WorldCover (7 classes)",
-                               "classes": [canon for _, canon, _, _ in refine.WC_BASE]}}}
+                               "classes": [canon for _, canon, _, _ in refine.WC_BASE],
+                               "direct_years": sorted(direct_base.WC_YEARS)},
+                "dynamicworld": {"label": "Dynamic World (9 classes)",
+                                 "classes": [c for c, _, _ in direct_base.DW_CLASSES],
+                                 "direct_years": f"{direct_base.DW_FIRST_YEAR} and later"}}}
 
 
 def _switch_base(scheme):
@@ -1345,6 +1352,12 @@ def _switch_base(scheme):
         colors = {canon: color for _, canon, _, color in refine.WC_BASE}
         tree = hierarchy.seed_from_classes(bundle["classes"], names=names, colors=colors)
         infer.set_active_base("worldcover", refine.WORLDCOVER_BASE_PATH)
+    elif scheme == "dynamicworld":
+        # no classifier behind this one: the base is Dynamic World's own label for the project year
+        dw = direct_base.scheme_classes("dynamicworld")
+        tree = hierarchy.seed_from_classes([c for c, _, _ in dw], names={c: n for c, n, _ in dw},
+                                           colors={c: col for c, _, col in dw})
+        infer.set_active_base("dynamicworld", None)
     elif scheme == "indiasat":
         tree = hierarchy._seed()
         infer.set_active_base("indiasat", infer.MODEL_PATH)
@@ -1990,8 +2003,8 @@ def create_project(body: ProjectIn, request: Request):
     """New project: a row, a folder, and a fresh scheme seeded from the chosen base classes."""
     user = _need_user(request)
     _check_bbox(body.bbox)
-    if body.base_scheme not in ("indiasat", "worldcover"):
-        raise HTTPException(400, "base must be indiasat or worldcover")
+    if body.base_scheme not in direct_base.SCHEMES:
+        raise HTTPException(400, "base must be indiasat, worldcover or dynamicworld")
     year = _ae_clamp(int(body.year))
     name = body.name.strip() or "Untitled project"
     with db.Session() as s:
