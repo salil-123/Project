@@ -10,6 +10,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import config
+import direct_base
 import hierarchy
 import merges
 import rules
@@ -52,7 +53,7 @@ def set_active_base(scheme, model_path):
     import json
     os.makedirs(os.path.dirname(_active_base_file()), exist_ok=True)
     # stored as models/<file>, never a full path: project zips travel between machines
-    json.dump({"scheme": scheme, "model_path": config.portable(model_path)}, open(_active_base_file(), "w"), indent=2)
+    json.dump({"scheme": scheme, "model_path": config.portable(model_path) if model_path else None}, open(_active_base_file(), "w"), indent=2)
 
 
 def load_model(path: str = None):
@@ -62,7 +63,26 @@ def load_model(path: str = None):
     from before weights moved to the models/ mount. model_path() resolves either spelling, checking
     models/ first and falling back to the historical data/ home, so a stored path keeps working
     whether or not this box has run scripts/migrate_models.py."""
+    if path is None and active_base().get("scheme") == "dynamicworld":
+        return direct_base.stub_bundle("dynamicworld")        # no classifier: the base is Dynamic World itself
     return joblib.load(config.model_path(path or active_base().get("model_path", MODEL_PATH)))
+
+
+def direct_scheme(year):
+    """The live base scheme if it is drawn straight from its published map for this project year
+    (see direct_base), else None, meaning the classifier. `"direct": false` in active_base.json
+    forces the classifier."""
+    ab = active_base()
+    if ab.get("direct") is False:
+        return None
+    scheme = ab.get("scheme", "indiasat")
+    return scheme if direct_base.available(scheme, year) else None
+
+
+def base_source(year):
+    """Which map the base is for this year, e.g. 'IndiaSAT 2022-23', or None for the classifier."""
+    s = direct_scheme(year)
+    return direct_base.source_label(s, year) if s else None
 
 
 def load_softvote(path: str = SOFTVOTE_PATH):
@@ -365,8 +385,12 @@ def _final_label(ee, bands_img, region, year, model_bundle, refinements):
         # a water pixel that never held water this year has no fortnight: leave it unlabelled
         return img.updateMask(idx.mask()) if refinements[cls].get("features") == "water_fortnights" else img
 
-    base_idx = _ee_label(ee, bands_img, model_bundle)
     base_children = list(_svc_steps(model_bundle)[1].classes_)
+    scheme = direct_scheme(year)
+    if scheme:                                  # the published map stands in for the classifier's label image
+        base_idx = direct_base.index_image(ee, scheme, region, year, base_children)
+    else:
+        base_idx = _ee_label(ee, bands_img, model_bundle)
     final = sub(base_children[0])
     for i, ch in enumerate(base_children[1:], start=1):
         final = final.where(base_idx.eq(i), sub(ch))
@@ -847,7 +871,11 @@ def classify_bbox(bbox, n: int = 35, year: int = 2024, model_bundle=None, refine
 
     mask = ~np.isnan(X).any(axis=1)
     preds = np.array(["nodata"] * len(pts), dtype=object)
-    if mask.any():
+    scheme = direct_scheme(year)
+    if scheme:                                  # the published map's class at each cell, not a prediction
+        classes = list(_svc_steps(model_bundle)[1].classes_)
+        preds = direct_base.sample_labels(config.ee_init(), pts, bbox, scheme, year, classes)
+    elif mask.any():
         preds[mask] = model_bundle["model"].predict(X[mask])
     # a Tessera split (#16) can't ride the AE tile map, so it's rendered here on the point grid — sample
     # Tessera only when some live split actually needs it (it downloads tiles), then dispatch per split.

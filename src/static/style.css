@@ -517,3 +517,4 @@ body.on-start .toast { left: 50%; z-index: 2600; }
 .run-item:hover .run-del { opacity: 1; }
 /* a 10 m map image stays as square pixels when zoomed in, not a blur */
 .px-crisp { image-rendering: pixelated; }
+.map-legend .lg-src { font-size: 11px; color: #6f7468; margin-bottom: 4px; }
