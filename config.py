@@ -191,7 +191,9 @@ AOI_TESSERA_MAX_TILES = int(os.getenv("AOI_TESSERA_MAX_TILES", "6"))  # ~6 x 150
 # Tessera tiles (~150 MB per 0.1 degree square a year) and geotessera's registry files. On the data mount
 # so a download survives a restart; geotessera's own default is whatever folder the process starts in.
 TESSERA_DIR = Path(os.getenv("TESSERA_DIR") or (DATA_DIR / "tessera"))
-# the tile cache stops here: past it the tiles used longest ago go first (~150 MB each, so 8 GB is ~50)
+# the tile cache stops here: past it the tiles used longest ago go first (~150 MB each, so 8 GB is ~50).
+# it's trimmed after a run's downloads land, so it can sit up to ~0.9 GB (one 6 tile box) over per run
+# downloading at once: 8 GB keeps a 10 GB share of /data safe with two fresh boxes in flight
 TESSERA_CACHE_GB = float(os.getenv("TESSERA_CACHE_GB", "8"))
 
 # minimum polygon area (hectares) when vectorizing a class into segments (#4 wk10). Below this a

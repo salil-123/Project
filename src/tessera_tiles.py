@@ -11,6 +11,7 @@ urllib, which follows HTTPS_PROXY like everything else on the tower.
 """
 import math
 import os
+import threading
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 
@@ -26,6 +27,15 @@ _UA = {"User-Agent": "corestack-lulc (Tessera tiles)"}
 def _snap(lon, lat):
     return (round(math.floor(lon / 0.1) * 0.1 + 0.05, 2),
             round(math.floor(lat / 0.1) * 0.1 + 0.05, 2))
+
+
+def box_points(bbox):
+    """One point in every tile the box touches. The corners and centre alone skip the middle tiles of a
+    box three or more tiles across."""
+    w, s, e, n = bbox
+    return [(c * 0.1 + 0.05, r * 0.1 + 0.05)
+            for c in range(math.floor(w / 0.1), math.floor(e / 0.1) + 1)
+            for r in range(math.floor(s / 0.1), math.floor(n / 0.1) + 1)]
 
 
 def _files(lon, lat, year):
@@ -72,13 +82,20 @@ def prefetch(points, year=2024, workers=8):
                 os.utime(dest)                   # used now: the cache cap evicts by this
                 continue
             dest.parent.mkdir(parents=True, exist_ok=True)
-            tmp = dest.with_name(dest.name + ".part")
+            # a temp file of its own, so two users fetching the same tile don't write into one file
+            tmp = dest.with_name(f"{dest.name}.{os.getpid()}.{threading.get_ident()}.part")
             try:
                 _fetch(url, tmp, workers)
             except Exception as e:
                 tmp.unlink(missing_ok=True)
                 raise RuntimeError(f"couldn't fetch Tessera tile data from {SOURCE} ({e})") from e
-            os.replace(tmp, dest)                # only ever appears whole
+            try:
+                os.replace(tmp, dest)            # only ever appears whole
+            except OSError:
+                # windows won't swap a file another download is swapping in; theirs is the same tile
+                tmp.unlink(missing_ok=True)
+                if not dest.exists():
+                    raise
             got += 1
     if got:
         _evict(keep=needed)

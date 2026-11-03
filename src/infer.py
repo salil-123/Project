@@ -603,7 +603,7 @@ def classify_bbox_te_raster(bbox, year: int = 2024, model_bundle=None, refinemen
     parents = [classes.index(p) for p in te_refs if p in classes]
     todo = np.flatnonzero(np.isin(codes, parents))
     if todo.size:
-        tessera_tiles.prefetch([(w, s), (w, n), (e, s), (e, n), ((w + e) / 2, (s + n) / 2)], year)
+        tessera_tiles.prefetch(tessera_tiles.box_points(bbox), year)
         names = np.array(classes, dtype=object)
         flat = codes.reshape(-1)
         for i in range(0, todo.size, TE_CHUNK):
