@@ -32,6 +32,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="say what would be copied, copy nothing")
     args = ap.parse_args()
 
+    if db.FELL_BACK:
+        sys.exit("Postgres (DATABASE_URL) isn't answering, so there's nowhere to copy to; fix that first")
     if db._sqlite:
         sys.exit("DATABASE_URL isn't set to Postgres here, so there's nowhere to copy to")
     src_file = Path(args.src)

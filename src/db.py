@@ -3,17 +3,22 @@
 Same shape as Susmit's drone_docker (SQLAlchemy, a projects table owned by a user, a JSON history of
 runs on the row) so the two services read alike on the tower. Where we differ is the store: the
 cluster checklist wants its central Postgres (#9), so DATABASE_URL points there; a SQLite file under
-data/ is only the laptop fallback when DATABASE_URL is unset.
+data/ is used when DATABASE_URL is unset (a laptop), or when Postgres doesn't answer at start.
 
 Everything bulky (hierarchy, examples, weights, GeoTIFFs) lives in the project's folder, not here.
 """
+import time
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, create_engine, event
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, create_engine, event, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 import config
+import logging_setup
+
+log = logging_setup.get(__name__)
 
 
 def _now():
@@ -51,24 +56,58 @@ class Project(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
 
 
-_sqlite = config.DATABASE_URL.startswith("sqlite")
-# the checklist's spelling is postgresql://..., and which driver that means depends on the SQLAlchemy
-# version (2.1 switched the default from psycopg2 to psycopg 3). Name it, so an upgrade can't break it.
-_url = config.DATABASE_URL
-for _plain in ("postgresql://", "postgres://"):
-    if _url.startswith(_plain):
-        _url = "postgresql+psycopg://" + _url[len(_plain):]
-engine = create_engine(_url, future=True,
-                       connect_args={"check_same_thread": False, "timeout": 30} if _sqlite else {})
+def _wal(conn, _rec):
+    # WAL so a status poll never trips over a write, the same fix Susmit needed
+    cur = conn.cursor()
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.close()
+
+
+def _engine(url):
+    if url.startswith("sqlite"):
+        eng = create_engine(url, future=True, connect_args={"check_same_thread": False, "timeout": 30})
+        event.listen(eng, "connect", _wal)
+        return eng
+    # the checklist's spelling is postgresql://..., and which driver that means depends on the SQLAlchemy
+    # version (2.1 switched the default from psycopg2 to psycopg 3). Name it, so an upgrade can't break it.
+    for plain in ("postgresql://", "postgres://"):
+        if url.startswith(plain):
+            url = "postgresql+psycopg://" + url[len(plain):]
+    # pre_ping swaps a connection that died with a Postgres restart instead of failing a request on it
+    return create_engine(url, future=True, pool_pre_ping=True, connect_args={"connect_timeout": 10})
+
+
+def _reachable(eng, budget):
+    """Postgres answering SELECT 1 within `budget` seconds (it can take a moment after the box boots)."""
+    deadline = time.monotonic() + budget
+    while True:
+        try:
+            with eng.connect() as c:
+                c.execute(text("SELECT 1"))
+            return True
+        except OperationalError as e:
+            if time.monotonic() >= deadline:
+                log.error("Postgres unreachable after %ds: %s", budget, str(e).splitlines()[0])
+                return False
+            time.sleep(2)
+
+
+engine = _engine(config.DATABASE_URL)
+FELL_BACK = False      # True = Postgres was set but didn't answer, so this run is on the SQLite file
+if not config.DATABASE_URL.startswith("sqlite") and not _reachable(engine, config.DB_CONNECT_TIMEOUT_S):
+    if not config.DB_FALLBACK_SQLITE:
+        raise RuntimeError("Postgres (DATABASE_URL) isn't answering and DB_FALLBACK_SQLITE is false")
+    # Users can still sign in and work, but on the SQLite file: what they save now stays there and
+    # won't show once Postgres is back (no merge). Said loudly here and in /api/health.
+    log.warning("POSTGRES UNREACHABLE: running on the SQLite file %s until Postgres is fixed and the app "
+                "restarted. Anything saved meanwhile stays in that file.", config.SQLITE_URL)
+    engine, FELL_BACK = _engine(config.SQLITE_URL), True
+_sqlite = engine.dialect.name == "sqlite"
 Session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
-if _sqlite:
-    @event.listens_for(engine, "connect")
-    def _wal(conn, _rec):
-        # WAL so a status poll never trips over a write, the same fix Susmit needed
-        cur = conn.cursor()
-        cur.execute("PRAGMA journal_mode=WAL")
-        cur.close()
+
+def backend_name():
+    return "sqlite (Postgres unreachable)" if FELL_BACK else ("sqlite" if _sqlite else "postgres")
 
 
 def init():

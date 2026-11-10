@@ -145,7 +145,12 @@ def weights_write_path(clf) -> str:
 
 # ----------------------------- Users, sign-in, front page (week 18) -----------------------------
 # DATABASE_URL: Postgres on the cluster (checklist #9). Unset on a laptop -> a SQLite file in data/.
-DATABASE_URL = os.getenv("DATABASE_URL") or f"sqlite:///{(DATA_DIR / 'corestack.db').as_posix()}"
+SQLITE_URL = f"sqlite:///{(DATA_DIR / 'corestack.db').as_posix()}"
+DATABASE_URL = os.getenv("DATABASE_URL") or SQLITE_URL
+# Postgres set but not answering at start: wait DB_CONNECT_TIMEOUT_S, then carry on with the SQLite file
+# (DB_FALLBACK_SQLITE=false makes it refuse to start instead). /api/health says which one is live.
+DB_FALLBACK_SQLITE = os.getenv("DB_FALLBACK_SQLITE", "true").strip().lower() not in ("0", "false", "no")
+DB_CONNECT_TIMEOUT_S = int(os.getenv("DB_CONNECT_TIMEOUT_S", "60"))
 # Our Google OAuth client id. Public by design (every visitor's browser gets it, and Google only honours
 # it on the origins we allowed), so it lives here and no deploy can forget it. Set GOOGLE_CLIENT_ID=
 # (empty) in .env to fall back to the type-your-name dev login on a laptop.

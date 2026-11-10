@@ -179,7 +179,8 @@ def _tree_payload():
 
 @app.get("/api/health")
 def health(deep: bool = False):
-    out = {"status": "ok", "classes": _base_model().get("classes"), "wc_weight": _base_model().get("wc_weight")}
+    out = {"status": "ok", "classes": _base_model().get("classes"), "wc_weight": _base_model().get("wc_weight"),
+           "database": db.backend_name()}
     if deep:   # ?deep=1: can this box look up and reach the Google hosts (sign-in, Earth Engine) and Tessera's tiles?
         import socket
         import requests
