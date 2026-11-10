@@ -97,7 +97,6 @@ docs/revision_question_bank.md
 data/tessera/
 
 # kept on this machine, not online: the build narrative, design notes and offline data-prep / training scripts
-/master_document.md
 /deploy/DEPLOYMENT.md
 /deploy/airflow_job_flow_plan.md
 /deploy/upload_manifest.md
@@ -123,3 +122,5 @@ data/tessera/
 
 # every markdown doc (README, guides, notes) is kept on this machine, not online
 *.md
+!/README.md
+!/master_document.md
