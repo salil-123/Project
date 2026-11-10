@@ -16,7 +16,7 @@ YAMLs). This file is the order of operations.
 |---|---|---|
 | A shell on the tower with `docker`, `docker compose` and `git` | tower admin | |
 | The sub-path the app will live under (planned: `/act4dws5/diy-lulc/`) | tower admin | nginx, `STAC_ASSET_BASE` |
-| Postgres connection string (on hold: this deploy runs on SQLite, Postgres comes next time) | tower admin | `DATABASE_URL` |
+| Postgres connection string (a database the app's user can create tables in) | tower admin | `DATABASE_URL` |
 | Earth Engine service-account key `ee-key.json` for `modern-mystery-398416` | us | `deploy/ee-key.json` on the tower |
 | The Airflow REST URL and its creds | Saharsh | `AIRFLOW_*` |
 
@@ -73,7 +73,7 @@ STAC_ASSET_BASE=https://<host>/act4dws5/diy-lulc # public URL, no trailing slash
 
 SESSION_SECRET=<first random string>
 # SERVICE_TOKEN=                                 # optional for now, see step 9
-# DATABASE_URL=postgresql://USER:PASSWORD@POSTGRES_HOST:5432/DBNAME   # on hold; unset = data/corestack.db
+DATABASE_URL=postgresql://USER:PASSWORD@POSTGRES_HOST:5432/DBNAME    # unset = data/corestack.db, laptop only
 
 AIRFLOW_API_BASE=http://<airflow-host>:8080/api/v1
 AIRFLOW_USERNAME=<user>
@@ -116,7 +116,7 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST localhost:8000/api/projects \
 curl -s localhost:8000/config.js                     # introVideo: "media/diy_lulc_acacia.mp4"
 ```
 
-Once Postgres is switched on (next deploy), make sure the app is actually using it:
+Make sure the app is actually using Postgres:
 
 ```bash
 docker compose -f docker-compose.hub.yml exec lulc python -c "import config; print(config.DATABASE_URL.split(':')[0])"

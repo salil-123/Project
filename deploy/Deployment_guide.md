@@ -8,6 +8,9 @@ and the DAG stay as they are. Every step is safe to repeat and ends with a check
 
 ## What changes
 
+- **Users and projects move to the tower's Postgres** (step 3b). Same image, only a line in `.env`. The
+  two demo projects are set up again on the first start, and one command copies everyone's users and
+  projects over from the old SQLite file (step 4b).
 - **New image `1.0.1`** (adds Tessera embeddings), so this update needs an image `pull`, not just
   `git pull`. Tessera can be picked for any project in India up to 6 tiles in size; its tiles download
   on first use into `data/tessera/` (~150 MB each) and stay there.
@@ -56,6 +59,30 @@ python3 -c "import secrets; print(secrets.token_urlsafe(48))"    # SESSION_SECRE
 
 Leave `GOOGLE_CLIENT_ID` out; it's built in.
 
+## 3b. Postgres
+
+Users and projects go into the tower's Postgres from here on. Ask the tower admin for a database and a
+user that can create tables in it (the app makes its two tables, `users` and `projects`, on start). Then
+add one line to `.env`:
+
+```bash
+DATABASE_URL=postgresql://<user>:<password>@<postgres host>:5432/<database>
+```
+
+- Use the host's address as the container sees it, not `localhost` (inside the container that's the
+  container itself).
+- If the password has `@`, `/`, `:` or `#` in it, write those as `%40`, `%2F`, `%3A`, `%23`.
+- Leave it as `postgresql://`; the app picks the driver itself.
+
+So the two demo projects get set up again in Postgres, clear the note that says they're done:
+
+```bash
+rm -f data/.samples_seeded data/.sample_seeded
+```
+
+The old SQLite file `data/corestack.db` stays where it is and is no longer read by the app. Step 4b
+copies its users and projects across.
+
 ## 4. Pull the image and recreate
 
 ```bash
@@ -76,7 +103,15 @@ curl -s localhost:8000/api/health                                       # "statu
 curl -s 'localhost:8000/api/health?deep=1'                              # every host under "reach" says ok
 curl -s localhost:8000/api/tessera-sites | grep -o '"available":[a-z]*' # "available":true
 docker compose -f docker-compose.hub.yml exec lulc python config.py    # EE init OK
+docker compose -f docker-compose.hub.yml exec lulc python -c "import config; print(config.DATABASE_URL.split(':')[0])"
+                                                                        # postgresql (sqlite = DATABASE_URL didn't load)
+curl -s localhost:8000/api/projects/public | grep -o '"name":"[^"]*"'   # the two demo projects
 ```
+
+If the container keeps restarting or never answers after the Postgres line, it can't reach the database: the logs say
+`connection refused` (wrong host or port, or Postgres not listening on the network) or `password
+authentication failed`. The app doesn't fall back to SQLite on its own, so it never ends up on two
+databases at once.
 
 `data.source.coop` (where Tessera tiles come from) unreachable only stops Tessera training; everything else works. For the Google
 hosts it stops sign-in and maps. The message says which fix applies:
@@ -91,6 +126,20 @@ hosts it stops sign-in and maps. The message says which fix applies:
   HTTP_PROXY=http://<proxy host>:<port>
   NO_PROXY=localhost,127.0.0.1,<airflow host>
   ```
+
+## 4b. Copy the old users and projects into Postgres
+
+```bash
+docker compose -f docker-compose.hub.yml exec lulc python scripts/import_sqlite.py --dry-run   # counts only
+docker compose -f docker-compose.hub.yml exec lulc python scripts/import_sqlite.py
+```
+
+It copies the rows only; the project folders in `data/projects/` stay where they are, so each project
+opens exactly as before. A row already in Postgres is never overwritten, so it's safe to run again,
+now or months later. The old copies of the two demo projects are skipped, since step 3b set them up
+afresh.
+
+Check: run it a second time, it says `0 to copy`. Signed in, your old projects are on the start page.
 
 ## 5. nginx
 
@@ -133,6 +182,9 @@ Logs: `data/logs/corestack-lulc/app.log`, or `docker compose -f docker-compose.h
 | 502 from nginx | gunicorn without `-b 0.0.0.0:8000` (step 4) |
 | Tessera option missing for a prepared site | image still `1.0.0`: step 4 |
 | `.env` edits have no effect | `up -d`, not `restart` |
+| Container restarting, `connection refused` or `password authentication failed` | step 3b: the `DATABASE_URL` host, port or password |
+| `permission denied for schema public` | step 3b: the database user needs to be allowed to create tables |
+| Public projects list is empty | step 3b: `rm -f data/.samples_seeded`, then `up -d` |
 | Page looks old | Ctrl+Shift+R |
 
 ## Going back
@@ -145,3 +197,4 @@ docker compose -f docker-compose.hub.yml up -d
 ```
 
 The old commit pins the old image, so `pull` brings it back. `data/tessera/` can be deleted afterwards.
+`.env.backup` has no `DATABASE_URL`, so the app goes back to the SQLite file as it was before.
