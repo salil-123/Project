@@ -170,7 +170,7 @@ def _refine_order(refinements):
         return list(refinements)
 
 
-def _apply_refinements(preds, Xae, valid, refinements, Xte=None, te_valid=None, rule_labels=None):
+def _apply_refinements(preds, Xae, valid, refinements, Xte=None, te_valid=None, rule_labels=None, Xte_mean=None):
     """In-place: walk the tree of resolvers root->leaf, each node refining its own label into a
     child. Depth ordering makes a single pass recurse to any depth.
 
@@ -191,10 +191,12 @@ def _apply_refinements(preds, Xae, valid, refinements, Xte=None, te_valid=None, 
         is_te = kind == "tessera"
         if is_te and Xte is None:
             continue                                   # can't apply a Tessera split without te features
-        ok = te_valid if is_te else valid
+        X, ok = (Xte, te_valid) if is_te else (Xae, valid)
+        if is_te and bundle.get("smooth") and Xte_mean is not None:   # clustered split: the 3 x 3 mean
+            X, ok = Xte_mean, ~np.isnan(Xte_mean).any(axis=1)
         sel = (preds == parent) if ok is None else (ok & (preds == parent))
         if sel.any():
-            out = bundle["model"].predict((Xte if is_te else Xae)[sel])
+            out = bundle["model"].predict(X[sel])
             if bundle.get("relabel"):                  # zoo model mapped onto the user's classes
                 out = np.array([bundle["relabel"].get(c, c) for c in out], dtype=object)
             preds[sel] = out
@@ -359,6 +361,9 @@ def _refine_idx(ee, bands_img, region, year, bundle):
     if bundle.get("features") == "water_fortnights":       # the 26 fortnight water model (wk22)
         import water_fortnights
         return water_fortnights.fortnight_index(ee, region, year, bundle["spec"], bundle.get("label", "last"))
+    if bundle.get("smooth"):                                # a clustered split runs on the 3 x 3 mean
+        import cluster_split
+        bands_img = cluster_split.smooth_ee(bands_img)
     return _ee_label(ee, bands_img, bundle)
 
 
@@ -576,11 +581,12 @@ def classify_bbox_te_raster(bbox, year: int = 2024, model_bundle=None, refinemen
     cache = config.ws_path("tessera_map.npz")
     key = _te_key(bbox, year, te_refs)
     if os.path.exists(cache):
-        z = np.load(cache, allow_pickle=False)
-        if str(z["key"]) == key:
-            return {"png": z["png"].tobytes(), "counts": json.loads(str(z["counts"])),
-                    "classes": [str(c) for c in z["classes"]], "codes": z["codes"],
-                    "transform": z["transform"].tolist()}
+        # closed either way: an open stale cache can't be replaced on Windows
+        with np.load(cache, allow_pickle=False) as z:
+            if str(z["key"]) == key:
+                return {"png": z["png"].tobytes(), "counts": json.loads(str(z["counts"])),
+                        "classes": [str(c) for c in z["classes"]], "codes": z["codes"],
+                        "transform": z["transform"].tolist()}
 
     g = aoi.check(bbox, "tessera")
     if not g["ok"]:
@@ -609,9 +615,13 @@ def classify_bbox_te_raster(bbox, year: int = 2024, model_bundle=None, refinemen
         for i in range(0, todo.size, TE_CHUNK):
             idx = todo[i:i + TE_CHUNK]
             r, c = np.divmod(idx, width)
-            Xte = tessera_tiles.sample_many(w + (c + 0.5) * dx, n - (r + 0.5) * dy, year)
+            lons, lats = w + (c + 0.5) * dx, n - (r + 0.5) * dy
+            Xte = tessera_tiles.sample_many(lons, lats, year)
+            Xm = (tessera_tiles.sample_mean(lons, lats, dx, dy, year)
+                  if any(b.get("smooth") for b in te_refs.values()) else None)
             preds = names[flat[idx]].copy()
-            _apply_refinements(preds, None, None, te_refs, Xte=Xte, te_valid=~np.isnan(Xte).any(axis=1))
+            _apply_refinements(preds, None, None, te_refs, Xte=Xte, te_valid=~np.isnan(Xte).any(axis=1),
+                               Xte_mean=Xm)
             _apply_merges(preds)
             for cls in set(preds) - set(classes):
                 classes.append(cls)

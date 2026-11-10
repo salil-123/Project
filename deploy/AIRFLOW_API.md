@@ -87,7 +87,7 @@ pkill -f "airflow webserver"; sleep 3; airflow webserver -p 8080 &
 
 - The DAG exports a **GEE asset** (the pipeline output); it doesn't hand tiles back. The UI, after the run
   succeeds, separately calls `/api/classify` to draw the classification on the map so there's a visible
-  result. See `airflow_job_flow_plan.md` for the design and the hardening TODO (return the asset id so the
-  UI renders that exact asset instead of re-classifying).
+  result. A later improvement: return the asset id so the UI draws that exact asset instead of
+  re-classifying.
 - No Docker rebuild needed to ship changes here — the image is dependencies-only and the code is
   bind-mounted; deploy with `git pull` + restart, and make sure the `.env` above is in place.

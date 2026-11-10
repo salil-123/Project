@@ -29,6 +29,8 @@ KNOWN_OPS = {
     "create":           ["name"],                 # week 18: a project's first step
     "upload":           ["node"],                 # week 18: a standard-format upload
     "run":              ["run"],
+    "cluster_split":    ["parent", "k"],          # week 24: a class split into unnamed clusters
+    "cluster_names":    ["parent", "names"],      # week 24: those clusters named / merged
     "remove":           ["node"],                 # week 22: a class taken out with its subtree                  # a map was drawn and kept as run <n>; changes no scheme
 }
 

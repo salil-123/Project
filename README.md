@@ -47,7 +47,6 @@ project shows its last map without re-running, and a later retrain never changes
 - Splitting a class: use a zoo model and map its classes onto yours, or upload labelled polygons in
   the standard format (a GeoJSON with a `class` on every polygon; the app serves an example at
   `/api/upload-format/example.geojson`) and train.
-- Design and reasoning: `week18/app_design.md` (kept locally, with the other week folders).
 
 ## Repository structure
 ```
@@ -73,14 +72,12 @@ config.py            central config + Earth Engine init + path anchors (runs fro
 models/              trained weights, on their own mount (see models/README.md)
 outputs.yaml         retention policy for everything written under data/ (public/keep/delete)
 schema/              JSON schemas for the zoo's dataset/model cards
-scripts/             offline data-prep + training scripts (GEDI biomass, acacia, water, …)
+scripts/             one-off deployment helpers: migrate_models.py, import_sqlite.py (SQLite -> Postgres)
 data/                runtime state (hierarchy, op-log), trained .joblib models, zoo cards, examples
 deploy/              Dockerize + deployment: requirements, .env.example, build/push scripts,
-                     DEPLOYMENT.md, and stacd/ (onboarding YAMLs for the STACD framework)
+                     the deploy guides, and stacd/ (onboarding YAMLs for the STACD framework)
 airflow/dags/        week 12 template DAG for the /api/jobs flow (see deploy/AIRFLOW_API.md)
-deploy/sim/dags/     simulation only: a stand-in for the tower's STACD DAG, used by deploy/sim/
 Dockerfile           the serving image  ·  docker-compose*.yml  ·  .dockerignore
-master_document.md   the full week-by-week build narrative (deep-dive)
 ```
 
 ## Deploying

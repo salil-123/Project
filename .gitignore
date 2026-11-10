@@ -95,3 +95,28 @@ docs/revision_question_bank.md
 
 # Tessera tiles (~150 MB each), fetched on demand
 data/tessera/
+
+# kept on this machine, not online: the build narrative, design notes and offline data-prep / training scripts
+/master_document.md
+/deploy/DEPLOYMENT.md
+/deploy/airflow_job_flow_plan.md
+/deploy/upload_manifest.md
+/docs/cluster_readiness_tasks.md
+/docs/deployment_and_airflow_pipeline.md
+/docs/logging_demo.md
+/docs/model.md
+/docs/pipeline.md
+/docs/readiness_report.md
+/docs/logging_samples
+/scripts/benchmark_tessera_vs_ae.py
+/scripts/benchmark_training.py
+/scripts/build_water_fortnights.py
+/scripts/capture_log_samples.ps1
+/scripts/prep_acacia_examples.py
+/scripts/prep_gedi_biomass.py
+/scripts/prep_seasonal_water.py
+/scripts/regen_tea_acacia.py
+/scripts/restore_multiyear_acacia.py
+/scripts/sync_catalogue_seed.py
+/scripts/train_biomass.py
+/scripts/train_water_fortnight.py
