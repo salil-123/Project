@@ -124,21 +124,6 @@ def sample(points, year=2024):
     return sample_many(lons, lats, year)
 
 
-def sample_mean(lons, lats, dx, dy, year=2024, radius=1):
-    """Tessera averaged over each pixel's neighbourhood ((2r+1) x (2r+1) cells of dx by dy), for splits
-    that want a calmer map (the clustered split). Missing neighbours are skipped, not counted as zero."""
-    lons, lats = np.asarray(lons, dtype=float), np.asarray(lats, dtype=float)
-    total, seen = np.zeros((len(lons), 128), np.float32), np.zeros((len(lons), 1), np.float32)
-    for i in range(-radius, radius + 1):
-        for j in range(-radius, radius + 1):
-            x = sample_many(lons + i * dx, lats + j * dy, year)
-            ok = ~np.isnan(x).any(1)
-            total[ok] += x[ok]
-            seen[ok] += 1
-    with np.errstate(invalid="ignore"):
-        return np.where(seen > 0, total / seen, np.nan).astype(np.float32)
-
-
 def sample_many(lons, lats, year=2024):
     """Tessera 128-d for any number of pixels at once, a whole 10 m map included (geotessera's own
     sampler loops per point in Python and loads each tile whole, ~600 MB once dequantised). The tiles are memory-mapped and only the pixels asked for get dequantised, so a 150 MB tile never

@@ -120,3 +120,6 @@ data/tessera/
 /scripts/sync_catalogue_seed.py
 /scripts/train_biomass.py
 /scripts/train_water_fortnight.py
+
+# every markdown doc (README, guides, notes) is kept on this machine, not online
+*.md
